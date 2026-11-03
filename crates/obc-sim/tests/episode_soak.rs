@@ -144,3 +144,56 @@ fn save_and_load_continue_identically() {
         assert_eq!(a.rng.index, b.rng.index);
     }
 }
+
+/// Every first-episode floor has an exit reachable from the player start
+/// through open floor, doors, push walls and barriers.
+#[test]
+fn every_first_episode_exit_is_reachable() {
+    let Some((data, trig, maps)) = load() else {
+        eprintln!("skipped: OBC_DATA_DIR not set");
+        return;
+    };
+    let mut unreachable = Vec::new();
+    for mapon in 0..=22i16 {
+        let map = maps.map(mapon as usize).unwrap().unwrap();
+        let mut w = World::new(data.clone(), trig.clone());
+        player::new_game(&mut w, 1);
+        w.setup_game_level(&map, mapon);
+        let barrier =
+            |x: i32, y: i32| w.animwalls.iter().any(|a| i32::from(a.x) == x && i32::from(a.y) == y);
+        let pass = |x: i32, y: i32| {
+            let t = w.tile(x, y);
+            t == 0 || t & 0x80 != 0 || w.mapspot(x, y, 1) == 98 || barrier(x, y)
+        };
+        let p = w.plr();
+        let start = (i32::from(p.tilex as i16), i32::from(p.tiley as i16));
+        let mut seen = vec![false; 64 * 64];
+        let mut queue = std::collections::VecDeque::from([start]);
+        seen[(start.0 * 64 + start.1) as usize] = true;
+        let mut exits = 0;
+        while let Some((x, y)) = queue.pop_front() {
+            for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                let (nx, ny) = (x + dx, y + dy);
+                if !World::in_map(nx, ny) || seen[(nx * 64 + ny) as usize] {
+                    continue;
+                }
+                if (0x71..=0x73).contains(&w.tile(nx, ny)) {
+                    exits += 1;
+                }
+                if pass(nx, ny) {
+                    seen[(nx * 64 + ny) as usize] = true;
+                    queue.push_back((nx, ny));
+                }
+            }
+        }
+        let total = (0..64)
+            .flat_map(|x| (0..64).map(move |y| (x, y)))
+            .filter(|&(x, y)| (0x71..=0x73).contains(&w.tile(x, y)))
+            .count();
+        eprintln!("map {mapon:2}: {exits} exit faces reachable, {total} exit tiles");
+        if exits == 0 {
+            unreachable.push(mapon);
+        }
+    }
+    assert!(unreachable.is_empty(), "no reachable exit on maps {unreachable:?}");
+}
