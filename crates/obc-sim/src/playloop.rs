@@ -3,6 +3,7 @@
 //! A frame advances `tics` tics (ADR-013: Classic runs 2-tic frames at 35 Hz;
 //! replays may feed the original's recorded `tics`).
 
+use crate::actors;
 use crate::allies;
 use crate::events::SimEvent;
 use crate::player;
@@ -59,7 +60,17 @@ impl World {
 
         // Wall-break animation and the health cap.
         player::post_actors(self);
-        // TODO(M8): the random event roll (DS:0x0AB2, 2390:10f2) goes here.
+
+        // Random event (1942:18c1): while the face has not appeared (or in
+        // bogus mode), a 1-in-256 × 1-in-15 roll with fire released.
+        if (self.gamestate.cheatmode || !self.act.face_spawned)
+            && self.rnd() == 0
+            && self.rnd() % 15 == 0
+            && !self.buttonheld[0]
+        {
+            actors::spawn_face_apparition(self);
+            self.act.face_spawned = true;
+        }
         player::check_keys(self);
     }
 

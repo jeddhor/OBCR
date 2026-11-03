@@ -483,6 +483,10 @@ impl World {
         self.objfreelist = Some(0);
         self.lastobj = None;
         self.objcount = 0;
+        // "Give the player the first free spot" (1942:0c2f; WOLFSRC/WL_PLAY.C).
+        if let Some(p) = self.get_new_actor() {
+            self.player = p;
+        }
     }
 
     /// `GetNewActor`: OBC returns `None` instead of quitting when the list is full.

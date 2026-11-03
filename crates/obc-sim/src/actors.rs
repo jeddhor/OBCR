@@ -36,6 +36,9 @@ pub struct ActorsState {
     /// `US_RndT`) only while it is set. The level loader should clear it while
     /// `ScanInfoPlane` runs. Default `true`.
     pub ingame: bool,
+    /// The face apparition has appeared (DS:0x0AB2); set once and never
+    /// cleared in the original (once per program run).
+    pub face_spawned: bool,
     /// Kill-percentage timer (`DS:0xCD87`), written by `KillActor`. No reader
     /// was found (UNKNOWN, Q-ACT-4); kept for parity. Cleared per level.
     pub kill_timer: i16,
@@ -60,6 +63,7 @@ impl Default for ActorsState {
     fn default() -> Self {
         Self {
             ingame: true,
+            face_spawned: false,
             kill_timer: 0,
             sb_pro_mixer: false,
             debug_sparkle: false,
@@ -75,6 +79,8 @@ pub mod st {
     use crate::data::StateId;
 
     pub const GRENADE_FLY: StateId = 0x12EE;
+    /// Face apparition, sprites 668–675 (T_Projectile, then A_Remove).
+    pub const FACE: StateId = 0x28BE;
     pub const GRENADE_EXPLODE: StateId = 0x12FE;
     pub const SLIME_FLY: StateId = 0x133E;
     pub const SLIME_SPLASH: StateId = 0x134E;
@@ -720,6 +726,37 @@ pub fn spawn_grenade(w: &mut World, target: Option<ObjId>) {
         o.temp1 = p.temp1;
         o.temp2 = p.temp2;
     }
+}
+
+/// `SpawnFaceApparition` (ghidra 2390:10f2; ACTORS.md §5): on maps ≥ 6, a
+/// class-26 face two tiles in front of the player (`FixedByFrac(2.0, cos)`,
+/// `−FixedByFrac(2.0, sin)`), flying at the player as a `T_Projectile`.
+/// CONFIRMED up to the position; the angle comes from an FPU `atan2` that
+/// Ghidra did not disassemble (HYPOTHESIS: the same aim as [`calc_angle`]),
+/// and the remaining fields follow the other projectiles (HYPOTHESIS).
+#[doc(alias = "SpawnFaceApparition")]
+pub fn spawn_face_apparition(w: &mut World) {
+    if w.gamestate.mapon < 6 {
+        return;
+    }
+    let Some(n) = w.get_new_actor() else { return };
+    let p = *w.plr();
+    let x = p.x.wrapping_add(fixed_by_frac(0x20000, cos_sm(w, p.angle)));
+    let y = p.y.wrapping_sub(fixed_by_frac(0x20000, sin_sm(w, p.angle)));
+    let angle = calc_angle(p.x.wrapping_sub(x), y.wrapping_sub(p.y));
+    let o = w.obj_mut(n);
+    o.active = 1;
+    o.x = x;
+    o.y = y;
+    o.tilex = (x >> 16) as u16;
+    o.tiley = (y >> 16) as u16;
+    o.state = st::FACE;
+    o.ticcount = 8;
+    o.obclass = class::FACE;
+    o.dir = dir::NODIR;
+    o.angle = angle;
+    o.speed = 0x300;
+    o.flags = fl::NONMARK | fl::NEVERMARK;
 }
 
 /// Player flame thrower (`SpawnFlame(player, target)`, ghidra 30d6:0493/0547).

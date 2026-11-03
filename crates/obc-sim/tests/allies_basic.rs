@@ -57,8 +57,8 @@ fn world() -> World {
         }
     }
     w.areabyplayer[0] = true;
-    let p = w.get_new_actor().expect("empty list");
-    w.player = p;
+    // InitActorList already gave the player objlist[0].
+    let p = w.player;
     let o = w.obj_mut(p);
     o.obclass = class::PLAYER;
     o.active = 1;
