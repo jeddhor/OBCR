@@ -77,8 +77,8 @@ Template:
 
 ## ADR-010 — OPL emulation behind a trait, starting with Nuked-OPL3
 
-- **Status**: Proposed (decide in M6.1)
-- **Decision (proposed)**: Integrate Nuked-OPL3 (C, LGPL-2.1+) through the `cc` crate behind an `Opl` trait. A pure-Rust port may replace it later. Never use MAME `fmopl`.
+- **Status**: Accepted (2026-11-02), amended
+- **Decision**: Use the pure-Rust `nuked-opl3` crate (a port of Nuked-OPL3, LGPL-2.1+), which avoids a C toolchain dependency. Never use MAME `fmopl`.
 
 ## ADR-011 — Reverse-engineering state as text under version control
 
@@ -91,3 +91,22 @@ Template:
 - **Status**: Accepted (2026-11-02)
 - **Context**: The local DOSBox-X tree includes a JSON-RPC debugger agent (named pipe, Python client) and a line-based control server.
 - **Decision**: `tools/obc-oracle` drives the original through the JSON-RPC agent. Missing capabilities (key input, frame capture) are added to DOSBox-X on a local `obc-tools` branch that is never sent upstream.
+
+## ADR-013 — Classic frames are two tics
+
+- **Status**: Accepted (2026-11-02)
+- **Context**: The original's `PlayLoop` advances by `tics` measured by `CalcTics`; frame-rate-dependent logic (walk bob, animated walls, the event box, the 301-frame sparkle) runs once per frame, not per tic.
+- **Decision**: OBCR runs one original frame every two 70 Hz tics (`World::frame(cmd, 2)`, 35 Hz). Replays and the oracle may feed recorded `tics` values instead.
+- **Consequences**: Deterministic and close to the original on a typical machine; per-frame logic keeps its rate. Enhanced presentation interpolates between frames (ADR-015) without touching the simulation.
+
+## ADR-014 — Modern input extends the tic command, not the simulation rules
+
+- **Status**: Accepted (2026-11-02)
+- **Decision**: The modern profile and gamepads produce `TicCmd`s with two extra fields: `strafe` (sideways thrust while turning, same scale as the strafe button) and `turn` (turning added after `PollControls`' ±100·tics clamp, so mouse look is not speed-limited). The original profile never sets them. Everything downstream of the command is the original logic, so replays and lockstep stay deterministic.
+- **Consequences**: A modern-profile player can strafe and turn at once and turn faster than the original allowed; this is an input capability, recorded in the command stream.
+
+## ADR-015 — Enhanced frame interpolation is presentation only
+
+- **Status**: Accepted (2026-11-02)
+- **Decision**: With SMOOTH MOTION on (Enhanced only), the renderer blends the player pose and moving actors between the last two simulation frames at the display rate, using a fine view angle (`FINEANGLES` units) and float sine/cosine off whole degrees. Gameplay visibility, hit tests and everything else read the simulation state.
+- **Consequences**: Up to one frame (≈29 ms) of display latency; Classic keeps integer angles and the original tables.
