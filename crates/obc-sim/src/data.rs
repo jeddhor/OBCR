@@ -100,9 +100,34 @@ pub struct StatInfo {
     pub kind: i16,
 }
 
+/// Per-level presentation tables (docs/re/LEVEL_CODES.md §5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LevelTables {
+    /// Roof ramp index, floor ramp index, roof colour, floor colour per map slot 0..51
+    /// (`Rindex`/`Findex`/`Rclr`/`Fclr`, DS:0x9E6/0xA19/0xA4C/0xA7F).
+    pub rindex: Vec<u8>,
+    pub findex: Vec<u8>,
+    pub rclr: Vec<u8>,
+    pub fclr: Vec<u8>,
+    /// Ramps `{first, last}` (DS:0x9A4).
+    pub ramps: Vec<(u8, u8)>,
+    /// Floor/ceiling texture sets: `(floor page + 1, ceiling page + 1)` (DS:0x33BE).
+    pub floor_sets: [(u8, u8); 10],
+    /// Song per map for maps 0..9 (DS:0x098A).
+    pub songs: [u16; 10],
+}
+
+impl LevelTables {
+    /// Table index for a map slot: net levels 50-59 reuse entries 40-49.
+    pub fn index(mapon: i16) -> usize {
+        if mapon < 50 { mapon.max(0) as usize } else { (mapon - 10).clamp(0, 50) as usize }
+    }
+}
+
 /// All tables the simulation reads from the executable.
 #[derive(Debug, Clone)]
 pub struct GameData {
+    pub levels: LevelTables,
     pub states: BTreeMap<StateId, State>,
     /// `attackinfo[weapon][step]` (DS:0x0F66).
     pub attackinfo: [[AttackStep; 15]; 5],
@@ -166,7 +191,22 @@ impl GameData {
                 kind: i16::from_le_bytes([c[2], c[3]]),
             })
             .collect();
-        Ok(Self { states, attackinfo, statinfo })
+        let levels = LevelTables {
+            rindex: ds(exe, 0x09E6, 51)?.to_vec(),
+            findex: ds(exe, 0x0A19, 51)?.to_vec(),
+            rclr: ds(exe, 0x0A4C, 51)?.to_vec(),
+            fclr: ds(exe, 0x0A7F, 51)?.to_vec(),
+            ramps: ds(exe, 0x09A4, 13 * 4)?.chunks_exact(4).map(|c| (c[0], c[2])).collect(),
+            floor_sets: {
+                let b = ds(exe, 0x33BE, 20)?;
+                std::array::from_fn(|i| (b[2 * i], b[2 * i + 1]))
+            },
+            songs: {
+                let b = ds(exe, 0x098A, 20)?;
+                std::array::from_fn(|i| u16::from_le_bytes([b[2 * i], b[2 * i + 1]]))
+            },
+        };
+        Ok(Self { levels, states, attackinfo, statinfo })
     }
 
     pub fn state(&self, id: StateId) -> Option<&State> {

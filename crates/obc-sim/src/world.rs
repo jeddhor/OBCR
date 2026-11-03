@@ -282,6 +282,8 @@ pub struct World {
     pub tilemap: Vec<u8>,
     pub actorat: Vec<Occ>,
     pub spotvis: Vec<bool>,
+    /// Classic view geometry used by the gameplay visibility pass.
+    pub view: crate::vis::ViewGeom,
     pub objs: Vec<Obj>,
     pub player: ObjId,
     pub objfreelist: Option<ObjId>,
@@ -290,6 +292,9 @@ pub struct World {
     pub objlistfull: bool,
     pub doors: Vec<Door>,
     pub statics: Vec<Static>,
+    pub animwalls: Vec<crate::animwalls::AnimWall>,
+    /// Floor/ceiling texture sets for this level, `(floor page + 1, ceiling page + 1)`.
+    pub floor_sets: [(u8, u8); 10],
     pub pwall: PushWall,
     pub areaconnect: [[u8; NUMAREAS]; NUMAREAS],
     pub areabyplayer: [bool; NUMAREAS],
@@ -321,6 +326,13 @@ pub struct World {
     pub loadedgame: bool,
     /// Index of the actor DoActor is running (`actorindex`).
     pub actorindex: usize,
+    /// Quake frames left (DS:0x09D8), screen-shake frames (DS:0x0D40).
+    pub quake: i16,
+    pub shake: i16,
+    /// Darker distance shading (DS:0x33B8): sewers, quake frames.
+    pub dark: bool,
+    /// TREMORS option (DS:0x0D44), toggled with F8.
+    pub tremors: bool,
     /// State owned by `actors.rs` (enemies, projectiles, fire).
     pub act: crate::actors::ActorsState,
     /// State owned by `player.rs` (controls, weapons, effects).
@@ -343,6 +355,7 @@ impl World {
             tilemap: vec![0; MAPSIZE * MAPSIZE],
             actorat: vec![Occ::Empty; MAPSIZE * MAPSIZE],
             spotvis: vec![false; MAPSIZE * MAPSIZE],
+            view: crate::vis::ViewGeom::new(18),
             objs: Vec::new(),
             player: 0,
             objfreelist: None,
@@ -351,6 +364,8 @@ impl World {
             objlistfull: false,
             doors: Vec::new(),
             statics: Vec::new(),
+            animwalls: Vec::new(),
+            floor_sets: [(0, 0); 10],
             pwall: PushWall::default(),
             areaconnect: [[0; NUMAREAS]; NUMAREAS],
             areabyplayer: [false; NUMAREAS],
@@ -377,6 +392,10 @@ impl World {
             tic: 0,
             loadedgame: false,
             actorindex: 0,
+            quake: 0,
+            shake: 0,
+            dark: false,
+            tremors: true,
             act: Default::default(),
             ply: Default::default(),
             ally: Default::default(),
