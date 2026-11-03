@@ -101,3 +101,46 @@ fn first_episode_maps_run_without_panics_or_faults() {
         &faults[..faults.len().min(20)]
     );
 }
+
+/// Saving mid-level, loading and continuing gives the same world as never
+/// having saved (DESIGN §7.7).
+#[test]
+fn save_and_load_continue_identically() {
+    let Some((data, trig, maps)) = load() else {
+        eprintln!("skipped: OBC_DATA_DIR not set");
+        return;
+    };
+    for mapon in [0i16, 5, 12, 22] {
+        let map = maps.map(mapon as usize).unwrap().unwrap();
+        let mut a = World::new(data.clone(), trig.clone());
+        player::new_game(&mut a, 1);
+        a.gamestate.mapon = mapon;
+        a.setup_game_level(&map, mapon);
+        a.start_play_loop();
+        a.godmode = true;
+        for f in 0..600 {
+            a.frame(&script(f, 0), 2);
+            a.events.clear();
+        }
+        let header = obc_sim::save::SaveHeader {
+            format: obc_sim::save::FORMAT,
+            obcr: "test".into(),
+            release: "OBC-A".into(),
+            mapon,
+            difficulty: 1,
+            name: "TEST".into(),
+            timestamp: 0,
+        };
+        let bytes = obc_sim::save::write(&a, &header).unwrap();
+        let (h, mut b) = obc_sim::save::read(&bytes, data.clone(), trig.clone()).unwrap();
+        assert_eq!(h, header);
+        b.loadedgame = false;
+        for f in 600..1200 {
+            a.frame(&script(f, 0), 2);
+            b.frame(&script(f, 0), 2);
+        }
+        let again = obc_sim::save::write(&b, &header).unwrap();
+        assert_eq!(obc_sim::save::write(&a, &header).unwrap(), again, "map {mapon} diverged");
+        assert_eq!(a.rng.index, b.rng.index);
+    }
+}

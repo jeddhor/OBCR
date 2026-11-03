@@ -68,6 +68,10 @@ impl Sequence {
 }
 
 impl Screen for Sequence {
+    fn name(&self) -> &'static str {
+        "sequence"
+    }
+
     fn tick(&mut self, ctx: &mut Ctx) -> Transition {
         if let Some(step) = &mut self.fading {
             *step += 1;

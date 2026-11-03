@@ -10,7 +10,7 @@ use crate::world::{AREATILE, NUMAREAS, Occ, World};
 pub const MAXANIMWALLS: usize = 32;
 
 /// One animated-wall record (12 bytes at DS:0x46E2 in the original).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct AnimWall {
     pub x: u16,
     pub y: u16,

@@ -9,6 +9,7 @@ pub mod events;
 pub mod level;
 pub mod player;
 pub mod playloop;
+pub mod save;
 pub mod sound;
 pub mod state;
 pub mod statics;

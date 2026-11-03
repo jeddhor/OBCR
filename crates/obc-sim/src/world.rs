@@ -23,7 +23,7 @@ pub const MINSIGHT: i32 = 0x18000;
 pub type ObjId = u8;
 
 /// `actorat[x][y]`: what blocks a tile.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum Occ {
     #[default]
     Empty,
@@ -114,7 +114,7 @@ pub mod class {
 }
 
 /// `objtype` (0x42 bytes in OBC; docs/re/ACTORS.md §2).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct Obj {
     pub active: u16,
     pub ticcount: i16,
@@ -146,7 +146,7 @@ pub struct Obj {
 }
 
 /// Door actions (`dr_open` …).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum DoorAction {
     #[default]
     Open,
@@ -156,7 +156,7 @@ pub enum DoorAction {
 }
 
 /// `doorobj_t` (10 bytes in OBC at DS:0x7BA0).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct Door {
     pub tilex: u8,
     pub tiley: u8,
@@ -171,7 +171,7 @@ pub struct Door {
 }
 
 /// `statobj_t`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct Static {
     pub tilex: u8,
     pub tiley: u8,
@@ -182,7 +182,7 @@ pub struct Static {
 }
 
 /// The moving push wall.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct PushWall {
     pub state: u16,
     pub pos: u16,
@@ -193,7 +193,7 @@ pub struct PushWall {
 }
 
 /// `gamestate` (DS:0x86FC, docs/re/PLAYER.md §2).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct GameState {
     pub difficulty: i16,
     pub mapon: i16,
@@ -256,7 +256,7 @@ pub mod bt {
 }
 
 /// One tic's input (`controlx`, `controly`, `buttonstate`, plus special keys).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct TicCmd {
     pub controlx: i16,
     pub controly: i16,
@@ -277,9 +277,13 @@ pub struct TicCmd {
     pub wipe_visor: bool,
 }
 
-/// The whole simulated world.
+/// The whole simulated world. Saved games serialize it (crate::save); the
+/// executable's tables, the view geometry and per-frame scratch are rebuilt.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct World {
+    #[serde(skip)]
     pub data: Arc<GameData>,
+    #[serde(skip, default = "empty_tables")]
     pub trig: Arc<Tables>,
     pub rng: Rng,
     pub gamestate: GameState,
@@ -292,6 +296,7 @@ pub struct World {
     pub actorat: Vec<Occ>,
     pub spotvis: Vec<bool>,
     /// Classic view geometry used by the gameplay visibility pass.
+    #[serde(skip, default = "default_view")]
     pub view: crate::vis::ViewGeom,
     pub objs: Vec<Obj>,
     pub player: ObjId,
@@ -328,8 +333,13 @@ pub struct World {
     /// Map ThermoSensor (DS:0x3304).
     pub thermosensor: bool,
     /// Actor positions for the ThermoSensor overlay (`actorpos`).
+    #[serde(skip, default = "no_actorpos")]
     pub actorpos: [u16; MAXACTORS],
+    #[serde(skip)]
     pub events: Vec<SimEvent>,
+    /// Palette mode (`SetPaletteMode`, DS:0x8F0C): 1 normal, 2 dark
+    /// (generators off). Follows the `Lighting` events.
+    pub lighting: u8,
     /// Level tic counter for diagnostics and traces.
     pub tic: u32,
     pub loadedgame: bool,
@@ -346,6 +356,18 @@ pub struct World {
     pub ply: crate::player::PlayerState,
     /// State owned by `allies.rs`.
     pub ally: crate::allies::AlliesState,
+}
+
+fn empty_tables() -> Arc<Tables> {
+    Arc::new(Tables { finetangent: Vec::new(), sintable: Vec::new() })
+}
+
+fn default_view() -> crate::vis::ViewGeom {
+    crate::vis::ViewGeom::new(18)
+}
+
+fn no_actorpos() -> [u16; MAXACTORS] {
+    [0; MAXACTORS]
 }
 
 impl World {
@@ -396,6 +418,7 @@ impl World {
             thermosensor: false,
             actorpos: [0; MAXACTORS],
             events: Vec::new(),
+            lighting: 1,
             tic: 0,
             loadedgame: false,
             actorindex: 0,
@@ -470,6 +493,9 @@ impl World {
     }
 
     pub fn emit(&mut self, e: SimEvent) {
+        if let SimEvent::Lighting(n) = e {
+            self.lighting = n;
+        }
         self.events.push(e);
     }
 

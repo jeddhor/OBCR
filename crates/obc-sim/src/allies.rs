@@ -106,7 +106,7 @@ const KEY_S: u8 = 4;
 
 /// Module state kept in `World::ally`. The ally count (DS:0x32FC) and mode
 /// (DS:0x2A24) live in `World::allycount` / `World::allymode`.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AlliesState {
     /// `switchstay` (DS:0x2BC6): 1 while `S` runs `SwitchAlly`, 0 for `A`.
     pub switchstay: i16,

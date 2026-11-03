@@ -10,6 +10,9 @@ publish.workspace = true
 [dependencies]
 obc-core.workspace = true
 obc-formats.workspace = true
+serde.workspace = true
+postcard.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

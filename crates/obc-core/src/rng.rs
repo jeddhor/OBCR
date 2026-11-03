@@ -21,7 +21,7 @@ pub const RNDTABLE: [u8; 256] = [
 ];
 
 /// Index into [`RNDTABLE`] (`rndindex`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct Rng {
     pub index: u8,
 }

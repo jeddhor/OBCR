@@ -45,6 +45,8 @@ const DEATH_BLACK: u32 = 50;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum After {
     NextLevel,
+    /// Death or victory: the high-score check, then the menu.
+    Scores,
     Menu,
 }
 
@@ -132,8 +134,51 @@ impl Game {
         g
     }
 
+    /// A loaded game: `GameLoop` skips `SetupGameLevel` (`loadedgame`), then
+    /// `StartMusic` and the `PlayLoop` entry as usual.
+    pub fn from_world(ctx: &mut Ctx, mut world: World) -> Self {
+        world.loadedgame = false;
+        let mut g = Self::new_at(ctx, world.gamestate.difficulty, 0);
+        g.world = world;
+        g.set_view_size(ctx.settings.game.viewsize);
+        g.world.events.clear();
+        g.start_music(ctx);
+        g.world.start_play_loop();
+        g.hud = Hud::default();
+        g.phase = Phase::FadeIn(0);
+        g.drain_events(ctx);
+        g
+    }
+
     pub fn world(&self) -> &World {
         &self.world
+    }
+
+    /// For tools and tests that steer a game.
+    pub fn world_mut(&mut self) -> &mut World {
+        &mut self.world
+    }
+
+    /// F9 `QuickSave` (1618:1210): the slot last saved from the menu.
+    fn quick_save(&mut self, ctx: &mut Ctx) {
+        let Some(slot) = ctx.settings.game.quicksave_slot.map(usize::from) else {
+            self.hud.message("NO CURRENT SAVE".into());
+            return;
+        };
+        if slot >= crate::saves::SLOTS {
+            self.hud.message("UNABLE TO SAVE".into());
+            return;
+        }
+        let name = crate::saves::list(ctx.save_dir)[slot]
+            .as_ref()
+            .map_or_else(|| format!("SLOT {}", slot + 1), |h| h.name.clone());
+        match crate::saves::write(ctx.save_dir, slot, &self.world, &name, ctx.assets) {
+            Ok(()) => self.hud.message(format!("SAVED {name}")),
+            Err(e) => {
+                eprintln!("quicksave: {e}");
+                self.hud.message(format!("CANT SAVE {name}"));
+            }
+        }
     }
 
     /// `SetupGameLevel`, `StartMusic`, then the `PlayLoop` entry.
@@ -287,7 +332,19 @@ impl Game {
             }
             ex::COMPLETED => {
                 ctx.audio.send(AudioCommand::StopMusic);
-                // TODO(M11): AutoSave here, before `mapon` advances.
+                // AutoSave before `mapon` advances (GAMEFLOW §9.3).
+                let w = &self.world;
+                if w.gamestate.difficulty < 4
+                    && let Err(e) = crate::saves::write(
+                        ctx.save_dir,
+                        crate::saves::AUTOSAVE,
+                        w,
+                        "AutoSave",
+                        ctx.assets,
+                    )
+                {
+                    eprintln!("autosave: {e}");
+                }
                 self.phase = Phase::ExitFade(0);
             }
             _ => {
@@ -353,12 +410,15 @@ impl Screen for Game {
                     ctx.audio.send(AudioCommand::StopMusic);
                     self.sound.stop_all(ctx.audio);
                     self.in_menu = true;
-                    return Transition::Push(crate::menu::in_game(ctx.assets));
+                    return Transition::Push(crate::menu::in_game(Box::new(self.world.clone())));
                 }
                 if ui.pause {
                     self.paused = true;
                     ctx.audio.send(AudioCommand::PauseMusic(true));
                     return Transition::None;
+                }
+                if ui.quicksave && self.world.gamestate.difficulty <= 4 {
+                    self.quick_save(ctx);
                 }
                 if ui.floor_on {
                     self.floor_mode = 2;
@@ -398,7 +458,7 @@ impl Screen for Game {
             Phase::DeathFade(t) => {
                 let t = t + FRAME_TICS as u32;
                 if t >= DEATH_RED + DEATH_BLACK {
-                    return self.push_sequence(ctx, "F6", After::Menu);
+                    return self.push_sequence(ctx, "F6", After::Scores);
                 }
                 self.phase = Phase::DeathFade(t);
                 Transition::None
@@ -418,21 +478,32 @@ impl Screen for Game {
                 self.start_level(ctx);
                 Transition::None
             }
-            Phase::Sequence(After::Menu) => {
-                // TODO(M11): high-score check and name entry.
-                Transition::Reset(crate::menu::main_menu(ctx.assets))
+            Phase::Sequence(After::Menu) => Transition::Reset(crate::menu::main_menu(ctx.assets)),
+            Phase::Sequence(After::Scores) => {
+                // DrawHighScores(1): name entry if the score qualifies (not in bogus mode).
+                let g = &self.world.gamestate;
+                let entry = (!g.cheatmode).then_some((g.score, (g.mapon + 1) as u16));
+                Transition::Reset(Box::new(crate::menu::HighScores::new(ctx, entry)))
             }
             Phase::Victory(t) => {
                 let t = t + FRAME_TICS as u32;
                 if t >= 1000 || ui.menu || cmd.buttons.iter().any(|&b| b) {
                     ctx.audio.send(AudioCommand::StopMusic);
                     // F7 is not shipped; the victory picture follows (GAMEFLOW §5.5).
-                    return self.push_sequence(ctx, "F7", After::Menu);
+                    return self.push_sequence(ctx, "F7", After::Scores);
                 }
                 self.phase = Phase::Victory(t);
                 Transition::None
             }
         }
+    }
+
+    fn game_mut(&mut self) -> Option<&mut Game> {
+        Some(self)
+    }
+
+    fn name(&self) -> &'static str {
+        "game"
     }
 
     fn draw(&mut self, a: &Assets, out: &mut Frame) {

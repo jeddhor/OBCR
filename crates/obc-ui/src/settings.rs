@@ -22,11 +22,24 @@ pub struct GameSettings {
     pub gametype: i16,
     /// VIEW SIZE: 12, 14, 16, 18 or 20.
     pub viewsize: u16,
+    /// `quicksaveslot` (DS:0x420): the slot last saved from the menu, for F9.
+    pub quicksave_slot: Option<u8>,
+    /// The high-score table (the original keeps it in `CONFIG.DAT`); empty
+    /// means the defaults from `COUNT.EXE`.
+    pub scores: Vec<Score>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Score {
+    pub name: String,
+    pub score: i32,
+    /// Floor reached (1-based).
+    pub completed: u16,
 }
 
 impl Default for GameSettings {
     fn default() -> Self {
-        Self { gametype: 1, viewsize: 18 }
+        Self { gametype: 1, viewsize: 18, quicksave_slot: None, scores: Vec::new() }
     }
 }
 

@@ -81,6 +81,16 @@ fn config_path(cli: &Cli) -> PathBuf {
     })
 }
 
+/// Saved games: `<user data dir>/saves`, or next to an explicit `--config`.
+fn save_dir(cli: &Cli) -> PathBuf {
+    match &cli.config {
+        Some(c) => c.parent().unwrap_or(std::path::Path::new(".")).join("saves"),
+        None => directories::ProjectDirs::from("", "", "OBCR")
+            .map(|d| d.data_dir().join("saves"))
+            .unwrap_or_else(|| PathBuf::from("saves")),
+    }
+}
+
 fn main() {
     if let Err(e) = run() {
         let msg = format!("{e:#}");
@@ -93,6 +103,7 @@ fn main() {
 fn run() -> Result<()> {
     let cli = Cli::parse();
     let cfg_path = config_path(&cli);
+    let saves = save_dir(&cli);
     let mut settings = Settings::load(&cfg_path);
     if cli.classic {
         settings.video.mode = "classic".into();
@@ -126,7 +137,7 @@ fn run() -> Result<()> {
     let mut stack: Vec<Box<dyn Screen>> = vec![first];
 
     if let Some(tics) = cli.shot {
-        return headless_shot(&assets, &mut settings, &mut stack, tics, &cli);
+        return headless_shot(&assets, &mut settings, &mut stack, tics, &cli, &saves);
     }
 
     let mut platform = Platform::new(VideoSettings {
@@ -177,6 +188,7 @@ fn run() -> Result<()> {
                     input: &input,
                     settings: &mut settings,
                     requests: &mut requests,
+                    save_dir: &saves,
                 };
                 tick(&mut stack, &mut ctx)
             };
@@ -264,6 +276,7 @@ fn headless_shot(
     stack: &mut Vec<Box<dyn Screen>>,
     tics: u32,
     cli: &Cli,
+    saves: &std::path::Path,
 ) -> Result<()> {
     let (_mixer, audio) = Mixer::new(AUDIO_RATE);
     let mut input = InputState::default();
@@ -274,8 +287,14 @@ fn headless_shot(
     }
     for _ in 0..tics {
         let mut requests = Requests::default();
-        let mut ctx =
-            Ctx { assets, audio: &audio, input: &input, settings, requests: &mut requests };
+        let mut ctx = Ctx {
+            assets,
+            audio: &audio,
+            input: &input,
+            settings,
+            requests: &mut requests,
+            save_dir: saves,
+        };
         if !tick(stack, &mut ctx) {
             break;
         }

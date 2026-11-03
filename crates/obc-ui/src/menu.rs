@@ -10,10 +10,12 @@ use obc_core::input::{InputState, pad, sc};
 use obc_render::Framebuffer;
 use obc_render::draw2d::{draw_pic, draw_text, text_width};
 use obc_render::palette::{Palette, faded};
+use obc_sim::world::World;
 
 use crate::assets::Assets;
 use crate::game::Game;
 use crate::present::Aspect;
+use crate::saves;
 use crate::screen::{Ctx, Frame, Screen, Transition};
 use crate::sound::DIGI_RATE;
 
@@ -25,6 +27,7 @@ mod pic {
     pub const MENU: usize = 4;
     pub const CITY: usize = 5;
     pub const CREDITS: usize = 6;
+    pub const CITY_BLUE: usize = 8;
     pub const SPLAT: usize = 20;
     pub const CURSOR_OFF: usize = 22;
     pub const CURSOR_ON: usize = 23;
@@ -150,6 +153,10 @@ impl Default for Title {
 }
 
 impl Screen for Title {
+    fn name(&self) -> &'static str {
+        "title"
+    }
+
     fn tick(&mut self, ctx: &mut Ctx) -> Transition {
         if self.stage == 0 && self.t == 0 {
             start_cp_music(ctx, 8);
@@ -242,7 +249,6 @@ enum Mode {
     ViewSize,
     GameType,
     Confirm(usize),
-    Message(&'static str, u32),
     Help(u32),
     FadeIn(u32),
 }
@@ -256,6 +262,8 @@ pub struct Menu {
     /// Copies of the settings shown on the menu, refreshed every tic.
     viewsize: u16,
     gametype: i16,
+    /// The game as it was when the panel opened, for SAVE GAME.
+    world: Option<Box<World>>,
 }
 
 /// The main menu, out of game.
@@ -263,14 +271,17 @@ pub fn main_menu(_a: &Assets) -> Box<dyn Screen> {
     Box::new(Menu::new(false))
 }
 
-/// The control panel over a running game (Esc).
-pub fn in_game(_a: &Assets) -> Box<dyn Screen> {
-    Box::new(Menu::new(true))
+/// The control panel over a running game (Esc), holding a copy of the world.
+pub fn in_game(world: Box<World>) -> Box<dyn Screen> {
+    let mut m = Menu::new(true);
+    m.world = Some(world);
+    Box::new(m)
 }
 
 impl Menu {
     fn new(in_game: bool) -> Self {
         Self {
+            world: None,
             in_game,
             cur: if in_game { CONTINUE } else { START_GAME },
             blink: 0,
@@ -306,7 +317,9 @@ impl Menu {
         match self.cur {
             VIEW_SIZE => self.mode = Mode::ViewSize,
             GAME_TYPE => self.mode = Mode::GameType,
-            HIGH_SCORES => self.mode = Mode::Message("HIGH SCORES: COMING SOON", 105),
+            HIGH_SCORES => {
+                return Transition::Push(Box::new(HighScores::new(ctx, None).view_only()));
+            }
             AUDIO_MIX => return Transition::Push(Box::new(Options::new(true))),
             START_GAME => {
                 ctx.audio.send(AudioCommand::StopMusic);
@@ -315,7 +328,12 @@ impl Menu {
             }
             CONTINUE => return Transition::Pop,
             ABORT_GAME | EXIT => self.mode = Mode::Confirm(self.cur),
-            LOAD_GAME | SAVE_GAME => self.mode = Mode::Message("NOT AVAILABLE YET", 105),
+            LOAD_GAME => return Transition::Push(Box::new(SlotMenu::new(ctx, None))),
+            SAVE_GAME => {
+                if let Some(w) = &self.world {
+                    return Transition::Push(Box::new(SlotMenu::new(ctx, Some(w.clone()))));
+                }
+            }
             _ => {}
         }
         Transition::None
@@ -323,6 +341,10 @@ impl Menu {
 }
 
 impl Screen for Menu {
+    fn name(&self) -> &'static str {
+        "menu"
+    }
+
     fn tick(&mut self, ctx: &mut Ctx) -> Transition {
         let input = ctx.input;
         ctx.requests.relative_mouse = Some(false);
@@ -447,10 +469,6 @@ impl Menu {
                     self.mode = Mode::Items;
                 }
             }
-            Mode::Message(m, t) => {
-                self.mode =
-                    if t == 0 || any_key(input) { Mode::Items } else { Mode::Message(m, t - 1) };
-            }
             Mode::Help(t) => {
                 if t > 5 && any_key(input) {
                     self.mode = Mode::Items;
@@ -516,13 +534,323 @@ impl Menu {
         match &self.mode {
             Mode::Confirm(EXIT) => message_box(out.layer, a, &pal, &["BACK TO DOS ", "Y/N"]),
             Mode::Confirm(_) => message_box(out.layer, a, &pal, &["ABORT THIS GAME Y/N "]),
-            Mode::Message(m, _) => message_box(out.layer, a, &pal, &[m]),
             _ => {}
         }
         out.palette = match self.mode {
             Mode::FadeIn(t) => faded(&pal, 10 - t.min(10) as i32, 10, [0, 0, 0]),
             _ => pal,
         };
+    }
+}
+
+// ---------------------------------------------------------------- load / save
+
+/// Text entry for save names and high scores (`US_LineInput`).
+#[derive(Debug, Clone, Default)]
+struct LineInput {
+    text: String,
+    max: usize,
+}
+
+impl LineInput {
+    /// Applies this tic's typing. Returns Some(true) on Enter, Some(false) on Esc.
+    fn update(&mut self, input: &InputState) -> Option<bool> {
+        for c in input.text.chars() {
+            if (' '..='~').contains(&c) && self.text.len() < self.max {
+                self.text.push(c);
+            }
+        }
+        if input.pressed(sc::BACKSPACE) {
+            self.text.pop();
+        }
+        if input.pressed(sc::ENTER) {
+            return Some(true);
+        }
+        if input.pressed(sc::ESCAPE) {
+            return Some(false);
+        }
+        None
+    }
+}
+
+/// LOAD GAME / SAVE GAME slot list (GAMEFLOW §9.1): ten slots, the last is
+/// AutoSave (loadable, not writable from the menu).
+pub struct SlotMenu {
+    world: Option<Box<World>>,
+    slots: Vec<Option<obc_sim::save::SaveHeader>>,
+    cur: usize,
+    editing: Option<LineInput>,
+    error: Option<(String, u32)>,
+}
+
+impl SlotMenu {
+    /// `world` set: save it; otherwise load.
+    fn new(ctx: &Ctx, world: Option<Box<World>>) -> Self {
+        let slots = saves::list(ctx.save_dir);
+        let cur = if world.is_some() {
+            ctx.settings.game.quicksave_slot.map_or(0, usize::from).min(saves::AUTOSAVE - 1)
+        } else {
+            slots.iter().position(Option::is_some).unwrap_or(0)
+        };
+        Self { world, slots, cur, editing: None, error: None }
+    }
+
+    fn saving(&self) -> bool {
+        self.world.is_some()
+    }
+
+    fn label(&self, i: usize) -> String {
+        match &self.slots[i] {
+            Some(h) if i == saves::AUTOSAVE => format!("AutoSave  FLOOR {}", h.mapon + 1),
+            Some(h) => format!("{}  FLOOR {}", h.name, h.mapon + 1),
+            None if i == saves::AUTOSAVE => "AutoSave".into(),
+            None if self.saving() => "available".into(),
+            None => "empty".into(),
+        }
+    }
+
+    /// Writes the held world to the current slot; true on success.
+    fn save(&mut self, ctx: &mut Ctx, name: &str) -> bool {
+        let Some(w) = &self.world else { return false };
+        match saves::write(ctx.save_dir, self.cur, w, name, ctx.assets) {
+            Ok(()) => {
+                ctx.settings.game.quicksave_slot = Some(self.cur as u8);
+                true
+            }
+            Err(e) => {
+                self.error = Some((format!("CANT SAVE: {e}"), 175));
+                false
+            }
+        }
+    }
+}
+
+impl Screen for SlotMenu {
+    fn name(&self) -> &'static str {
+        "slots"
+    }
+
+    fn tick(&mut self, ctx: &mut Ctx) -> Transition {
+        let input = ctx.input;
+        ctx.requests.relative_mouse = Some(false);
+        if let Some((_, t)) = &mut self.error {
+            *t = t.saturating_sub(1);
+            if *t == 0 || any_key(input) {
+                self.error = None;
+            }
+            return Transition::None;
+        }
+        if let Some(edit) = &mut self.editing {
+            ctx.requests.text_input = Some(true);
+            match edit.update(input) {
+                Some(true) if !edit.text.trim().is_empty() => {
+                    let name = edit.text.trim().to_string();
+                    self.editing = None;
+                    ctx.requests.text_input = Some(false);
+                    return if self.save(ctx, &name) { Transition::Pop } else { Transition::None };
+                }
+                Some(false) => {
+                    self.editing = None;
+                    ctx.requests.text_input = Some(false);
+                }
+                _ => {}
+            }
+            return Transition::None;
+        }
+        if back(input) {
+            return Transition::Pop;
+        }
+        let last = if self.saving() { saves::AUTOSAVE - 1 } else { saves::AUTOSAVE };
+        if input.pressed(sc::UP) || input.pad_pressed(pad::DPAD_UP) {
+            self.cur = if self.cur == 0 { last } else { self.cur - 1 };
+            play_digi(ctx, MOVE_SOUND);
+        }
+        if input.pressed(sc::DOWN) || input.pad_pressed(pad::DPAD_DOWN) {
+            self.cur = if self.cur >= last { 0 } else { self.cur + 1 };
+            play_digi(ctx, MOVE_SOUND);
+        }
+        if !select(input) {
+            return Transition::None;
+        }
+        if self.saving() {
+            let text = self.slots[self.cur].as_ref().map(|h| h.name.clone()).unwrap_or_default();
+            if input.pad_pressed(pad::SOUTH | pad::START) {
+                // A gamepad has no keyboard: keep the slot's name or number it.
+                let name = if text.is_empty() { format!("SLOT {}", self.cur + 1) } else { text };
+                return if self.save(ctx, &name) { Transition::Pop } else { Transition::None };
+            }
+            self.editing = Some(LineInput { text, max: saves::NAME_MAX });
+            ctx.requests.text_input = Some(true);
+        } else if self.slots[self.cur].is_some() {
+            return match saves::read(ctx.save_dir, self.cur, ctx.assets) {
+                Ok((_, w)) => {
+                    ctx.audio.send(AudioCommand::StopMusic);
+                    Transition::Reset(Box::new(Game::from_world(ctx, w)))
+                }
+                Err(e) => {
+                    self.error = Some((format!("CANT LOAD: {e}"), 175));
+                    Transition::None
+                }
+            };
+        }
+        Transition::None
+    }
+
+    fn draw(&mut self, a: &Assets, out: &mut Frame) {
+        show_pic(out, a, pic::CITY_BLUE);
+        let pal = a.picpal;
+        let fg = nearest(&pal, [255, 255, 255]);
+        let hi = nearest(&pal, [255, 220, 0]);
+        let dim = nearest(&pal, [140, 140, 170]);
+        let Some(font) = a.fonts.first() else { return };
+        let title: &[u8] = if self.saving() { b"SAVE GAME" } else { b"LOAD GAME" };
+        let tw = text_width(font, title);
+        draw_text(out.layer, font, title, 160 - tw / 2, 4, hi);
+        for i in 0..saves::SLOTS {
+            let y = 24 + 17 * i as i32;
+            let inactive = self.saving() && i == saves::AUTOSAVE;
+            let c = if inactive {
+                dim
+            } else if i == self.cur {
+                hi
+            } else {
+                fg
+            };
+            if i == self.cur
+                && let Some(p) = a.pics.get(pic::CURSOR_ON)
+            {
+                draw_pic(out.layer, p, 18, y + 2);
+            }
+            let text = match &self.editing {
+                Some(e) if i == self.cur => format!("{}_", e.text),
+                _ => self.label(i),
+            };
+            out.layer.bar(32, y, 270, 14, nearest(&pal, [16, 16, 48]));
+            draw_text(out.layer, font, text.as_bytes(), 36, y + 1, c);
+        }
+        if let Some((m, _)) = &self.error {
+            message_box(out.layer, a, &pal, &[m.as_str()]);
+        }
+        out.palette = pal;
+    }
+}
+
+// ---------------------------------------------------------------- high scores
+
+/// The default table in `COUNT.EXE` (file 0x383E4; DATA_FORMATS §7).
+const DEFAULT_SCORES: usize = 0x383E4;
+
+fn default_scores(a: &Assets) -> Vec<crate::settings::Score> {
+    a.exe
+        .file(DEFAULT_SCORES, 7 * 28)
+        .ok()
+        .and_then(|b| obc_formats::config::parse_high_scores(b).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|h| crate::settings::Score { name: h.name, score: h.score, completed: h.completed })
+        .collect()
+}
+
+/// `DrawHighScores(enter)` (2f4d:1422, GAMEFLOW §8) on pic 8. With a new
+/// qualifying score, its row is boxed and the name typed (18 characters).
+pub struct HighScores {
+    scores: Vec<crate::settings::Score>,
+    editing: Option<(usize, LineInput)>,
+    then_menu: bool,
+    t: u32,
+}
+
+impl HighScores {
+    /// `entry`: the finished game's score and floor, if it may enter the table.
+    pub fn new(ctx: &mut Ctx, entry: Option<(i32, u16)>) -> Self {
+        if ctx.settings.game.scores.len() != 7 {
+            ctx.settings.game.scores = default_scores(ctx.assets);
+        }
+        let mut scores = ctx.settings.game.scores.clone();
+        let mut editing = None;
+        if let Some((score, completed)) = entry
+            && let Some(i) = scores.iter().position(|s| s.score <= score)
+        {
+            scores.insert(i, crate::settings::Score { name: String::new(), score, completed });
+            scores.truncate(7);
+            editing = Some((i, LineInput { text: String::new(), max: 18 }));
+        }
+        Self { scores, editing, then_menu: true, t: 0 }
+    }
+
+    fn view_only(mut self) -> Self {
+        self.then_menu = false;
+        self
+    }
+
+    fn leave(&self, ctx: &Ctx) -> Transition {
+        if self.then_menu { Transition::Reset(main_menu(ctx.assets)) } else { Transition::Pop }
+    }
+}
+
+impl Screen for HighScores {
+    fn name(&self) -> &'static str {
+        "high-scores"
+    }
+
+    fn tick(&mut self, ctx: &mut Ctx) -> Transition {
+        self.t += 1;
+        ctx.requests.relative_mouse = Some(false);
+        if let Some((i, edit)) = &mut self.editing {
+            ctx.requests.text_input = Some(true);
+            let done =
+                edit.update(ctx.input).is_some() || ctx.input.pad_pressed(pad::SOUTH | pad::START);
+            if done {
+                let name = if edit.text.trim().is_empty() {
+                    "PLAYER".to_string()
+                } else {
+                    edit.text.clone()
+                };
+                self.scores[*i].name = name;
+                ctx.settings.game.scores = self.scores.clone();
+                self.editing = None;
+                ctx.requests.text_input = Some(false);
+                self.t = 0;
+            }
+            return Transition::None;
+        }
+        if (self.t > 10 && any_key(ctx.input)) || self.t > 1000 {
+            return self.leave(ctx);
+        }
+        Transition::None
+    }
+
+    fn draw(&mut self, a: &Assets, out: &mut Frame) {
+        show_pic(out, a, pic::CITY_BLUE);
+        let pal = a.picpal;
+        let Some(font) = a.fonts.first() else { return };
+        let white = nearest(&pal, [255, 255, 255]);
+        let title = b"HIGH SCORES";
+        draw_text(out.layer, font, title, 160 - text_width(font, title) / 2, 20, white);
+        draw_text(out.layer, font, b"NAME", 24, 43, white);
+        draw_text(out.layer, font, b"L", 210, 43, white);
+        draw_text(out.layer, font, b"SCORE", 246, 43, white);
+        for (i, s) in self.scores.iter().enumerate() {
+            let y = 62 + 18 * i as i32;
+            // Each row its own colours ('W' − 2i and 'o' − 2i).
+            let (c1, c2) = (b'W' - 2 * i as u8, b'o' - 2 * i as u8);
+            let editing = self.editing.as_ref().filter(|(r, _)| *r == i);
+            if editing.is_some() {
+                out.layer.bar(20, y - 2, 270, 16, 0x6F);
+                out.layer.bar(21, y - 1, 268, 14, 0x30);
+            }
+            draw_text(out.layer, font, format!("{}.", i + 1).as_bytes(), 6, y, c1);
+            let name = match editing {
+                Some((_, e)) => format!("{}_", e.text),
+                None => s.name.clone(),
+            };
+            draw_text(out.layer, font, name.as_bytes(), 24, y, c2);
+            draw_text(out.layer, font, s.completed.to_string().as_bytes(), 210, y, c1);
+            let score = s.score.to_string();
+            let w = text_width(font, score.as_bytes());
+            draw_text(out.layer, font, score.as_bytes(), 300 - w, y, c2);
+        }
+        out.palette = pal;
     }
 }
 
@@ -535,6 +863,10 @@ pub struct QuitScreen {
 }
 
 impl Screen for QuitScreen {
+    fn name(&self) -> &'static str {
+        "quit"
+    }
+
     fn tick(&mut self, ctx: &mut Ctx) -> Transition {
         self.t += 1;
         if self.t > 50 + 70 + 50 + 70 + 30 || (self.t > 50 && any_key(ctx.input) && self.t > 170) {
@@ -722,6 +1054,10 @@ impl Options {
 }
 
 impl Screen for Options {
+    fn name(&self) -> &'static str {
+        "options"
+    }
+
     fn tick(&mut self, ctx: &mut Ctx) -> Transition {
         let input = ctx.input;
         ctx.requests.relative_mouse = Some(false);

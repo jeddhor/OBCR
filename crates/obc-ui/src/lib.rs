@@ -6,6 +6,7 @@ pub mod game;
 pub mod hud;
 pub mod menu;
 pub mod present;
+pub mod saves;
 pub mod scene;
 pub mod screen;
 pub mod sequence;

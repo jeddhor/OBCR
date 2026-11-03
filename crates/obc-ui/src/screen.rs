@@ -29,6 +29,8 @@ pub struct Ctx<'a> {
     pub settings: &'a mut Settings,
     /// Requests to the platform layer, applied after the tic.
     pub requests: &'a mut Requests,
+    /// Where saved games go (the OS user data directory).
+    pub save_dir: &'a std::path::Path,
 }
 
 /// Platform changes requested by screens.
@@ -62,5 +64,13 @@ pub trait Screen {
     /// Screens below an opaque screen are not drawn.
     fn opaque(&self) -> bool {
         true
+    }
+    /// The running game, if this screen is one (tools and tests).
+    fn game_mut(&mut self) -> Option<&mut crate::game::Game> {
+        None
+    }
+    /// A short name for logs and tests.
+    fn name(&self) -> &'static str {
+        "screen"
     }
 }

@@ -82,7 +82,8 @@ impl World {
         player::play_loop_start(self);
         self.dark = (0..=4).contains(&self.gamestate.mapon);
         allies::init_allies(self);
-        if self.tilemap.contains(&96) { 2 } else { 1 }
+        self.lighting = if self.tilemap.contains(&96) { 2 } else { 1 };
+        self.lighting
     }
 
     /// Start of `Died` (ghidra 1823:0cda): hands away, random death scream

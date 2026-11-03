@@ -30,7 +30,7 @@ use crate::world::{
 
 /// Module state kept in `World::act`: the original's actor-related globals
 /// that no other module owns.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ActorsState {
     /// `ingame` (`DS:0x8CBC`): `SpawnFireActor` plays its sound (and draws
     /// `US_RndT`) only while it is set. The level loader should clear it while

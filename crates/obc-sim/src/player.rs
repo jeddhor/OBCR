@@ -86,7 +86,7 @@ pub mod snd {
 }
 
 /// One blood splat on the "visor" (DS:0x3312, 8-byte records).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Splat {
     /// Sprite offset 0..7 (sprites 640–647).
     pub shape: i16,
@@ -102,7 +102,7 @@ pub struct Splat {
 pub const MAXSPLATS: usize = 19;
 
 /// Module state kept in `World::ply`: player globals that are not in `gamestate`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PlayerState {
     /// *walkcount* (DS:0x95BD): hand-bob index, incremented once per frame while moving.
     pub walkcount: i16,
