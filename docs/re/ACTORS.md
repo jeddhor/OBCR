@@ -287,7 +287,7 @@ Wolf3D's function plus three OBC changes (CONFIRMED):
 - Attack decision is Wolf3D's: `CheckLine`, `dist = max(|dx|,|dy|)` in tiles, `chance = (!dist || (dist==1 && distance<0x4000)) ? 300 : (tics<<4)/dist`, attack if `US_RndT() < chance`, else `dodge = 1`.
 - Attack states by class (table `2390:1fce`): 3 → `0x153E`, 4 and 8–11 → `0x184E`, 6 → `0x1B8E`, 7 → `0x169E`, 12 → `0x1CCE`, 13 → `0x200E`, 15 → `0x1EBE` (unused: class 15 uses T_BossChase), 16 → `0x214E`, 21 → `0x144E` followed by `FireFlash()` (`1942:0f44`). Classes 5, 14, 17–20 return without acting.
 - Direction choice when `dir == nodir` and at each tile: classes 5 and 6 always use `SelectChaseDir` (never dodge). Others with `dodge` call `HalveSpeed(ob)` (`2390:2a15`, `speed >>= 1` arithmetic), `SelectDodgeDir`, `DoubleSpeed(ob)` (`2390:2a2f`). **K:** the halve/double pair clears bit 0 of `speed` permanently (rats have odd speeds). CONFIRMED.
-- Door waiting uses `doorobjlist` at `DS:0x7BA0` (10-byte entries, `action` at +6, 0 = open): as Wolf3D.
+- Door waiting uses `doorobjlist` at `DS:0x7BAA` (10-byte entries, `action` at +6, 0 = open): as Wolf3D. (Earlier notes said 0x7BA0; corrected by the ally port's instruction read.)
 
 Consequence of the SelectDodgeDir 1-in-5 gate (HYPOTHESIS about visible behaviour, CONFIRMED code): when a dodging actor reaches its tile centre and SelectDodgeDir keeps the old direction without calling TryWalk, `distance` keeps its old value and `tilex/tiley` are not advanced, so the next MoveObj continues in the same direction without a collision check until the loop snaps it back to the old tile centre. Needs an oracle trace before porting decisions (Q-ACT-1 below).
 
@@ -1051,7 +1051,7 @@ For `re/symbols/count_exe.csv` (not edited by this investigation). Confidence is
 | `2f4d:1388` | `RandomNear` | CONFIRMED |
 | `30d6:0012` / `0089` / `0161` | `IsBurnable` / `Ignite` / `SpawnFireActor` | LIKELY |
 
-DGROUP: `DS:0x94ED actorpos[100]`, `DS:0x95B7 actorindex`, `DS:0x3306 bewitched`, `DS:0x330F objlistfull`, `DS:0x32FC allycount`, `DS:0x8716 gamestate.weapon`, `DS:0x8718 gamestate.chosenweapon`, `DS:0x8728 killcount`, `DS:0x872A secrettotal`, `DS:0x872E killtotal`, `DS:0x8CBA loadedgame`, `DS:0xBFEB madenoise`, `DS:0xCD9B thrustspeed`, `DS:0x7BA0 doorobjlist`, `DS:0x7E2A laststatobj`, `DS:0x7E2C statobjlist`, `DS:0x0E68 opposite`, `DS:0x0E7A diagonal`, `DS:0x00DC dirangle` (all three tables byte-identical in meaning to Wolf3D).
+DGROUP: `DS:0x94ED actorpos[100]`, `DS:0x95B7 actorindex`, `DS:0x3306 bewitched`, `DS:0x330F objlistfull`, `DS:0x32FC allycount`, `DS:0x8716 gamestate.weapon`, `DS:0x8718 gamestate.chosenweapon`, `DS:0x8728 killcount`, `DS:0x872A secrettotal`, `DS:0x872E killtotal`, `DS:0x8CBA loadedgame`, `DS:0xBFEB madenoise`, `DS:0xCD9B thrustspeed`, `DS:0x7BAA doorobjlist`, `DS:0x7E2A laststatobj`, `DS:0x7E2C statobjlist` (225 entries, Wolf3D 400), `DS:0x0E68 opposite`, `DS:0x0E7A diagonal`, `DS:0x00DC dirangle` (all three tables byte-identical in meaning to Wolf3D).
 
 ---
 
@@ -1078,4 +1078,7 @@ DGROUP: `DS:0x94ED actorpos[100]`, `DS:0x95B7 actorindex`, `DS:0x3306 bewitched`
 - **Q-ACT-7** Whether class 13 is the manual's "Victor", and whether the face apparition (class 26) is his face. Approach: oracle playthrough of the last map; manual text.
 - **Q-ACT-8** Item numbers 5, 8, 11 dropped by enemies (sprites 31, 37, 30): pickup semantics.
 - Ally specifics (`2634`), Q-017.
+- **Grenades and doors** (port finding, LIKELY): `30d6:12b1` scorches door tiles near a blast and destroys a door the grenade hits directly; PLAYER.md's "doors survive grenade blasts" is wrong.
+- **Swamp creature** (HYPOTHESIS, needs a trace): the slime ball probably splashes at the thrower's own feet, because the thrower is shootable and still on its tile when the ball first moves.
+- **Face apparition** (port, CONFIRMED up to the position): `2390:10f2` spawns it two tiles in front of the player (`FixedByFrac(2.0, cos/sin)`); PlayLoop rolls for it only while `DS:0x0AB2 == 0` or in bogus mode, and sets the flag after a successful roll even on maps < 6 where nothing spawns.
 - Nothing here is trace-confirmed. First traces to take: soldier idle→sight→chase→death, rat bite at range 1, saucer hover, swamp creature cycle, fire spread, trench-coat boss death (playstate 6).

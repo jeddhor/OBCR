@@ -251,6 +251,8 @@ Wolf3D's `SelectChaseDir` and `SelectDodgeDir` (`WOLFSRC/WL_STATE.C`) with the p
 
 Wolf3D `CheckLine` (`WOLFSRC/WL_STATE.C`) generalised to two actors, plus an OBC addition: tiles whose **plane-1** value (`mapsegs[1]`, segment in `DS:0x9411`) is 0x69–0x6B (105–107) are see-through even when `tilemap` is solid. Doors block according to `doorposition`, as in Wolf3D. Actors do not block. CONFIRMED.
 
+**Bug (K candidate), CONFIRMED by instruction read during the port:** the start point uses the **low word** of the first actor's `x`/`y` (the fraction inside its tile) where Wolf3D uses `x >> 8` (global position in 1/256 tiles). The traced ray therefore starts from a point unrelated to the actor's real position and is skewed by about 45° on average. OBCR keeps the bug.
+
 ### 4.4 Firing — `T_AllyShoot(ob)`, `ghidra 2634:0214` (action of `s_allyshoot1`)
 
 CONFIRMED (asm, including the hand-disassembled switch at `2634:032c`, table at `2634:0366`):
