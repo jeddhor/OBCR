@@ -31,13 +31,12 @@ fn load() -> Option<(Arc<GameData>, Arc<Tables>, MapArchive)> {
 /// Wander: walk forward, turn when the position stops changing, fire in
 /// bursts, press use often, switch weapons now and then.
 fn script(frame: u32, stuck: u32) -> TicCmd {
-    let mut c = TicCmd::default();
-    c.controly = -70;
+    let mut c = TicCmd { controly: -70, ..TicCmd::default() };
     if stuck > 3 || frame % 97 < 12 {
-        c.controlx = if (frame / 200) % 2 == 0 { 70 } else { -70 };
+        c.controlx = if (frame / 200).is_multiple_of(2) { 70 } else { -70 };
     }
     c.buttons[bt::ATTACK] = frame % 40 < 20;
-    c.buttons[bt::USE] = frame % 7 == 0;
+    c.buttons[bt::USE] = frame.is_multiple_of(7);
     c.buttons[bt::RUN] = frame % 300 < 150;
     if frame % 500 == 250 {
         c.buttons[bt::WEAPON1 + ((frame / 500) % 5) as usize] = true;
