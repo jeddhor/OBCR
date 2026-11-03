@@ -3,6 +3,10 @@
 //! STUB: interface fixed by the simulation skeleton; implementation pending.
 
 use crate::data::Func;
+/// Module state kept in `World::ally`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AlliesState {}
+
 use crate::world::{ObjId, TicCmd, World};
 
 /// Runs an ally state function.

@@ -4,6 +4,10 @@
 //! STUB: interface fixed by the simulation skeleton; implementation pending.
 
 use crate::data::Func;
+/// Module state kept in `World::act`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ActorsState {}
+
 use crate::world::{ObjId, World};
 
 /// Runs an actor state function (think or action).

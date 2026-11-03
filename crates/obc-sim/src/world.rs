@@ -321,6 +321,12 @@ pub struct World {
     pub loadedgame: bool,
     /// Index of the actor DoActor is running (`actorindex`).
     pub actorindex: usize,
+    /// State owned by `actors.rs` (enemies, projectiles, fire).
+    pub act: crate::actors::ActorsState,
+    /// State owned by `player.rs` (controls, weapons, effects).
+    pub ply: crate::player::PlayerState,
+    /// State owned by `allies.rs`.
+    pub ally: crate::allies::AlliesState,
 }
 
 impl World {
@@ -371,6 +377,9 @@ impl World {
             tic: 0,
             loadedgame: false,
             actorindex: 0,
+            act: Default::default(),
+            ply: Default::default(),
+            ally: Default::default(),
         };
         w.init_actor_list();
         w

@@ -3,6 +3,10 @@
 //!
 //! STUB: interface fixed by the simulation skeleton; implementation pending.
 
+/// Module state kept in `World::ply`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PlayerState {}
+
 use crate::world::{ObjId, TicCmd, World};
 
 /// `SpawnPlayer(x, y, dir)` (ghidra 208c:1324); `dir` 0..3 = north, east, south, west (codes 19–22).
