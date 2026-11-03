@@ -837,7 +837,7 @@ impl View3D {
         let mut corners = [(0i32, 0i32); 4];
         for x in 0..64i32 {
             for y in 0..64i32 {
-                if !self.spotvis[(x * 64 + y) as usize] && !(x == ptx && y == pty) {
+                if !(self.spotvis[(x * 64 + y) as usize] || (x == ptx && y == pty)) {
                     continue;
                 }
                 let cx = (x << 16) + 0x8000;
