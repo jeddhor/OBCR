@@ -13,6 +13,8 @@ obc-formats.workspace = true
 obc-sim.workspace = true
 obc-render.workspace = true
 obc-audio.workspace = true
+serde.workspace = true
+toml.workspace = true
 
 [lints]
 workspace = true

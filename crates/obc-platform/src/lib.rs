@@ -4,7 +4,6 @@
 //! into the window at their intended display aspect ratio. Input arrives as an
 //! [`InputState`] keyed by original PC scan codes, plus mouse and gamepad state.
 
-mod input;
 mod scancodes;
 
 use sdl3::audio::{AudioCallback, AudioFormat, AudioSpec, AudioStream, AudioStreamWithCallback};
@@ -15,8 +14,7 @@ use sdl3::rect::Rect;
 use sdl3::render::{ScaleMode, Texture, TextureCreator, WindowCanvas};
 use sdl3::video::WindowContext;
 
-pub use input::{GamepadState, InputState, KeyEvent, pad};
-pub use scancodes::sc;
+pub use obc_core::input::{GamepadState, InputState, KeyEvent, pad, sc};
 
 /// Error from the platform layer.
 #[derive(Debug, thiserror::Error)]

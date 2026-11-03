@@ -4,47 +4,7 @@
 
 use sdl3::keyboard::Scancode as S;
 
-/// PC scan codes used by the game (`sc_*`).
-pub mod sc {
-    pub const ESCAPE: u8 = 0x01;
-    pub const DIGIT_1: u8 = 0x02;
-    pub const BACKSPACE: u8 = 0x0E;
-    pub const TAB: u8 = 0x0F;
-    pub const ENTER: u8 = 0x1C;
-    pub const CONTROL: u8 = 0x1D;
-    pub const LSHIFT: u8 = 0x2A;
-    pub const RSHIFT: u8 = 0x36;
-    pub const ALT: u8 = 0x38;
-    pub const SPACE: u8 = 0x39;
-    pub const CAPSLOCK: u8 = 0x3A;
-    pub const F1: u8 = 0x3B;
-    pub const F9: u8 = 0x43;
-    pub const F10: u8 = 0x44;
-    pub const F11: u8 = 0x57;
-    pub const F12: u8 = 0x58;
-    pub const HOME: u8 = 0x47;
-    pub const UP: u8 = 0x48;
-    pub const PGUP: u8 = 0x49;
-    pub const LEFT: u8 = 0x4B;
-    pub const RIGHT: u8 = 0x4D;
-    pub const END: u8 = 0x4F;
-    pub const DOWN: u8 = 0x50;
-    pub const PGDN: u8 = 0x51;
-    pub const INSERT: u8 = 0x52;
-    pub const DELETE: u8 = 0x53;
-    pub const PAUSE: u8 = 0x7F;
-    pub const A: u8 = 0x1E;
-    pub const D: u8 = 0x20;
-    pub const E: u8 = 0x12;
-    pub const H: u8 = 0x23;
-    pub const I: u8 = 0x17;
-    pub const M: u8 = 0x32;
-    pub const N: u8 = 0x31;
-    pub const Q: u8 = 0x10;
-    pub const S: u8 = 0x1F;
-    pub const W: u8 = 0x11;
-    pub const Y: u8 = 0x15;
-}
+use obc_core::input::sc;
 
 /// Maps an SDL scancode to its PC set-1 code.
 pub fn to_pc(s: S) -> Option<u8> {

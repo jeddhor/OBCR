@@ -2,6 +2,7 @@
 //! OBCR engine (DESIGN §6.5). Nothing here uses floating point at run time.
 
 pub mod fixed;
+pub mod input;
 pub mod rng;
 
 /// Simulation tics per second (`TICRATE`).

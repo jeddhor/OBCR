@@ -74,7 +74,7 @@ const RULES: &[(&str, &[&str])] = &[
     ("obc-audio", &["obc-core", "obc-formats"]),
     ("obc-ui", &["obc-core", "obc-formats", "obc-sim", "obc-render", "obc-audio"]),
     ("obc-net", &["obc-core", "obc-sim"]),
-    ("obc-platform", &[]),
+    ("obc-platform", &["obc-core"]),
 ];
 
 fn lint(root: &Path) -> Result<()> {
