@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::present::{Aspect, Presentation};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
     pub video: VideoSettings,
@@ -49,17 +49,6 @@ pub struct InputSettings {
     pub gamepad_deadzone: f32,
     pub gamepad_turn_speed: f32,
     pub rumble: bool,
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Self {
-            video: VideoSettings::default(),
-            audio: AudioSettings::default(),
-            input: InputSettings::default(),
-            data_dir: None,
-        }
-    }
 }
 
 impl Default for VideoSettings {

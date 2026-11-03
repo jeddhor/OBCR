@@ -18,7 +18,7 @@ Allies (class 5, segment `2634`) belong to another investigation (Q-017). They a
 | `objfreelist` / `lastobj` / `objcount` | `DS:0xA61D` / `DS:0xA61F` / `DS:0x9421` | CONFIRMED | `ghidra 1942:0c1b`–`0c27` |
 | `player` / `new` | `DS:0x86F6` / `DS:0x86F8` | CONFIRMED | `ghidra 1942:0c32`–`0c35` |
 | `statetype` | 16 bytes, same layout as Wolf3D; all records live in DGROUP | CONFIRMED | DoActor `ghidra 1942:119a`–`1272`; relocation entries at record+8 and record+0xC |
-| Enemy/effect state records | `DS:0x12EE`–`DS:0x297E` (163 records); ally records `DS:0x2A26`–`DS:0x2BB6` | CONFIRMED | MZ relocation table + chain walk (§8) |
+| Enemy/effect state records | `DS:0x12EE`–`DS:0x296E` (361 records); ally records `DS:0x2A26`–`DS:0x2BB6` (26) | CONFIRMED | MZ relocation table + chain walk (§11) |
 | `shapenum` | 0-based index into the sprite list (`.local/exports/vswap/sprites/NNN.png`) | CONFIRMED | Every state's frames match the exported images (rats at 64, saucer at 304, fire at 624, …) |
 | `AREATILE` | 0x8C (140); `AMBUSHTILE` 0x8A (138); area numbers 0..21 | CONFIRMED | `ghidra 1e43:019e` (`sub al,-0x74`), `2390:059a`, `1e43:0c7e`–`0c8e` |
 | `ICONARROWS` | 0x5A (90), same as Wolf3D | CONFIRMED | `ghidra 2390:2018` SelectPathDir |
@@ -127,7 +127,7 @@ DoActor deltas (all CONFIRMED, `ghidra 1942:10f5`):
 | 18 | flame / fireball | `2390:0bd5` SpawnFlame; player flamethrower `30d6:0547` | | | |
 | 19 | grenade | player `2f4d:0ff3`; dead enemy code `2390:13fb` | | | |
 | 20 | slime ball | `2390:1508` A_SlimeThrow (swamp creature) | | | |
-| 21 | fire (spreading, 624–639) | `30d6:0161` SpawnFireActor | 282–285 | 100 | |
+| 21 | fire (spreading, 624–639) | `30d6:0161` SpawnFireActor | 282–285 | (100, unreachable) | |
 | 22 | sewer fat man rising from a manhole (504–509 then 510–525) | `ghidra 2390:103a` | 197 | 500 | item 11 |
 | 23 | swamp creature (526–543) | `ghidra 2390:1094` | 215 | 200 | |
 | 24 | explosion (660–667) | `2390:0ae4` (player weapon code, `208c:077a`) | | | |
@@ -300,7 +300,7 @@ Wolf3D's loop, plus: returns at once if `difficulty >= 4`; for class 23 (swamp c
 Wolf3D's structure (inert class 2 moves blindly; CHECKDIAG / CHECKSIDE macros). Deltas, CONFIRMED:
 
 - Class **15** (red-vest brute) takes the CHECKDIAG path on cardinal moves, the role Wolf3D gives to dogs and fakes: it cannot open doors.
-- In every CHECKDIAG and CHECKSIDE (24 sites), class **21** (fire) first tests `IsBurnable(x,y)` (`30d6:0012`: tile empty and either an object pointer in `actorat` or a static with flag 0x02 there); if so it calls `Ignite(x,y)` (`30d6:0089`) and the move fails.
+- In every CHECKDIAG and CHECKSIDE block (20 sites: 4 cardinal × 2 variants + 4 diagonal × 3), class **21** (fire) first tests `IsBurnable(x,y)` (`30d6:0012`: tile empty and either an object pointer in `actorat` or a static with flag 0x02 there); if so it calls `Ignite(x,y)` (`30d6:0089`) and the move fails.
 - In the four cardinal CHECKSIDE blocks, a wall (`actorat < 0x80`) whose `tilemap` value is 13, 29, 49, 65 or 69 calls `ActorBumpWall(ob,x,y)` (`1e43:0cca`), which (except for classes 3, 6, 7, 21) calls `FUN_2f4d_08e8(x,y)`, the special-wall/gate list at `DS:0x46E2` (12-byte entries, count `DS:0xE7A8`); the move still fails. HYPOTHESIS: these are walls that open when an enemy pushes them (other investigation).
 - Bad direction: `QuitNum(302)`.
 - At the end the area number is stored only if `0 <= map0-0x8C < 0x16`.
@@ -315,7 +315,7 @@ Wolf3D's structure (inert class 2 moves blindly; CHECKDIAG / CHECKSIDE macros). 
 
 Order (CONFIRMED):
 1. If BEWITCHED (`DS:0x3306`) is on, toggle it off (`30d6:0456`, only when `DS:0x873C`).
-2. `ob == NULL` → debug print "Kill NULL Actor" (`DS:0x0F32`) and return. Not shootable → skip to step 6.
+2. `ob == NULL` → debug print "Kill NULL Actor" (`DS:0x0F32`) and return. Not shootable → return (nothing else happens).
 3. If `DS:0x0F1C` → `SpawnFlame(ob)`. No writer of `DS:0x0F1C` was found (value 0 in the file): LIKELY dead.
 4. `tilex/tiley = x>>16, y>>16`; per-class `GivePoints` (`208c:0614`), death state, `DropItem` (table `1e43:16e6`; values in §5 and §8). Classes 14 and 15 also copy the player position to `DS:0x8734..0x873A` (Wolf3D `gamestate.killx/killy`, used for the boss death cam in Wolf3D). Class 5 (ally, single player): `DS:0x330A = 1`, `DS:0x330C = 0`, `DS:0x32FC--` (ally count; `30d6:097e`, misnamed `DrawWeapon`, draws it), clear `FL_SHOOTABLE`, drop item 8.
 5. Single player: unless `DS:0x2BC8` (set by ally code while an ally deals damage) or the victim is an ally, `killcount++` (`DS:0x8728`) and redraw; format the remaining-enemies count into `DS:0x874C`. If `killtotal == 0` → `QuitNum(304)`. Kill-percentage trigger: if `DS:0xCD87 <= 0` and `DS:0x2FD2[difficulty] < killcount*100/killtotal` (table {10, 75, 100, 100, 85}) and `DS:0xCD87 != -2`, set `DS:0xCD87 = tics<<4`; if all are dead, `tics<<4 + 1`. No reader of `DS:0xCD87` was found (UNKNOWN). Network: `FUN_358f_18e7(ob,x,y)` instead.
@@ -376,7 +376,7 @@ Wolf3D multipliers for comparison: guard ×3, officer ×5, SS ×4, mutant ×3, d
 
 ### 7.8 CheckLine (`ghidra 1e43:1982`)
 
-Wolf3D's DDA (player position from `DS:0xCD89/0xCD8B`, Wolf3D `plux/pluy`), with two deltas, CONFIRMED:
+Wolf3D's DDA (player position `plux` = `DS:0xCD8B`, `pluy` = `DS:0xCD89`), with two deltas, CONFIRMED:
 - `deltafrac == 0` → `QuitNum(305)` (x pass) / `QuitNum(306)` (y pass).
 - Before the tile test, a cell whose **plane-1** value is 0x69, 0x6A or 0x6B (105, 106, 107) is skipped (see-through). 106 and 107 are the special-wall types 1 and 2 of §6.1.
 
@@ -451,7 +451,7 @@ Non-rotating. Stand `0x1F1E`, chase `0x1F2E` (T_Chase, idle sound on the second 
 - Death `0x256E` is a green splash ending in `A_Remove` (no corpse); sound 0/1; 200 points.
 
 ### 8.13 Fire (class 21)
-Spawned by codes 282–285 or by spreading. Not shootable (flags 0x84). Chase loop `0x138E`–`0x143E` (sprites 624–635, think T_Chase on four frames), speed 25. `T_FireBurnout` (`2390:1620`) on the last frame: if `|US_RndT() - US_RndT()| < 4`, go to the burn-out `0x148E` (638–639, then `A_Remove`) and `SpawnFlame(ob)`. Attack `0x144E`: A_Shoot (sound 71/73), contact damage 100 at distance 0, 5 at distance 1; `FireFlash()` palette effect. Spreads: TryWalk ignition (§7.3) and 1/256 per move (§7.4). 100 points when killed. `0x146E`, `0x147E` are unreachable; `0x137E` is never spawned.
+Spawned by codes 282–285 or by spreading. Not shootable (flags 0x84). Chase loop `0x138E`–`0x143E` (sprites 624–635, think T_Chase on four frames), speed 25. `T_FireBurnout` (`2390:1620`) on the last frame: if `|US_RndT() - US_RndT()| < 4`, go to the burn-out `0x148E` (638–639, then `A_Remove`) and `SpawnFlame(ob)`. Attack `0x144E`: A_Shoot (sound 71/73), contact damage 100 at distance 0, 5 at distance 1; `FireFlash()` palette effect. Spreads: TryWalk ignition (§7.3) and 1/256 per move (§7.4). KillActor has a 100-point case for it, but fire is never shootable, so KillActor returns before scoring (LIKELY unreachable). Fire actors are not added to `killtotal`. `0x146E`, `0x147E` are unreachable; `0x137E` is never spawned.
 
 ---
 
@@ -524,7 +524,7 @@ Classes 21–24 reaching the hit branch would use an uninitialised `dmg`; it can
 | 20 slime ball | `2390:1508` | `0x133E` (481) | 0x2000 | player | |
 | 24 explosion | `2390:0ae4` | `0x283E` (660–667) | 0 | none | one tile in front of the player |
 | 25 sparkle | `30d6:05c4`, `2390:1274` | `0x293E`/`0x294E`/`0x295E`/`0x296E` (random) | 0x5000 | player or actor | debug only (HYPOTHESIS) |
-| 26 face | `2390:10f2` | `0x28BE` (668–675) | 0x300 | none | only if `mapon >= 6`; PlayLoop spawns it when `US_RndT()==0 && US_RndT()%15==0` and `DS:0x95F9 == 0`, once per level unless debug (`DS:0x0AB2`); ends with `A_Remove` |
+| 26 face | `2390:10f2` | `0x28BE` (668–675) | 0x300 | none | only if `mapon >= 6` (`DS:0x86FE`); PlayLoop (`1942:18c1`) spawns it when `US_RndT()==0 && US_RndT()%15==0` and `DS:0x95F9 == 0`, as long as `DS:0x0AB2 == 0` (set to 1 after the first spawn and never cleared: once per program run) or debug mode `DS:0x873C` is on; also two debug key flags in `1942:0a79`/`0aa3`; ends with `A_Remove` |
 
 Dead code (no caller and no far-pointer reference): `2390:096c` (fireball ahead of the player), `2390:13fb` (enemy grenade throw), `2390:166f` (enemy fireball throw), `2390:27ec` (position check), `2390:13df`/`13ed`.
 
