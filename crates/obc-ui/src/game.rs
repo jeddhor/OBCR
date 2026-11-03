@@ -94,6 +94,8 @@ pub struct Game {
     sparkle_frames: u32,
     /// `viewsize` (12–20).
     viewsize: u16,
+    /// `MusicMode` (F2): music on.
+    music: bool,
     /// Enhanced interpolation: player pose and actor positions at the last
     /// frame boundary, and whether it is enabled.
     prev_pose: (i32, i32, i16),
@@ -136,6 +138,7 @@ impl Game {
             in_menu: false,
             sparkle_frames: 0,
             viewsize: 18,
+            music: true,
             prev_pose: (0, 0, 0),
             prev_objs: Vec::new(),
             interpolate: false,
@@ -225,6 +228,9 @@ impl Game {
     /// `StartMusic` (1942:0d2d): one `US_RndT` on maps ≥ 10.
     fn start_music(&mut self, ctx: &Ctx) {
         let song = self.world.level_song();
+        if !self.music {
+            return;
+        }
         match ctx.assets.audio.music(300 + usize::from(song)) {
             Ok(m) => ctx.audio.send(AudioCommand::StartMusic(Arc::from(m))),
             Err(e) => eprintln!("music {song}: {e}"),
@@ -438,6 +444,25 @@ impl Screen for Game {
                     self.paused = true;
                     ctx.audio.send(AudioCommand::PauseMusic(true));
                     return Transition::None;
+                }
+                // F1 / F2 (US_ControlPanel 1618:061a): sound and music toggles.
+                if ui.sound_toggle {
+                    self.sound.enabled = !self.sound.enabled;
+                    if !self.sound.enabled {
+                        self.sound.stop_all(ctx.audio);
+                    }
+                    let m = if self.sound.enabled { "SOUND  ON" } else { "SOUND  OFF" };
+                    self.hud.message(m.into());
+                }
+                if ui.music_toggle {
+                    self.music = !self.music;
+                    if self.music {
+                        // SD_MusicOn resumes the current song.
+                        ctx.audio.send(AudioCommand::PauseMusic(false));
+                    } else {
+                        ctx.audio.send(AudioCommand::PauseMusic(true));
+                    }
+                    self.hud.message(if self.music { "MUSIC ON" } else { "MUSIC OFF" }.into());
                 }
                 if ui.quicksave && self.world.gamestate.difficulty <= 4 {
                     self.quick_save(ctx);

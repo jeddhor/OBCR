@@ -30,6 +30,7 @@ mod key {
     pub const F: u8 = 0x21;
     pub const V: u8 = 0x2F;
     pub const Z: u8 = 0x2C;
+    pub const F2: u8 = 0x3C;
     pub const F5: u8 = 0x3F;
     pub const F6: u8 = 0x40;
     pub const F8: u8 = 0x42;
@@ -45,6 +46,8 @@ pub struct UiKeys {
     pub health_overlay: bool,
     pub crosshair: bool,
     pub quicksave: bool,
+    pub sound_toggle: bool,
+    pub music_toggle: bool,
 }
 
 #[derive(Debug, Default)]
@@ -102,6 +105,8 @@ impl Controls {
         ui.health_overlay |= p(sc::H);
         ui.crosshair |= p(key::C);
         ui.quicksave |= p(sc::F9);
+        ui.sound_toggle |= p(sc::F1);
+        ui.music_toggle |= p(key::F2);
     }
 
     /// Held buttons now, and whether run is active.
