@@ -47,16 +47,24 @@ impl World {
         self.animwalls.iter().position(|a| i32::from(a.x) == x && i32::from(a.y) == y)
     }
 
-    /// `OperateAnimWall(x, y)`: Use on a door-look wall.
+    /// `OperateAnimWall(x, y)` (ghidra 2f4d:08e8, CONFIRMED): Use on a
+    /// door-look wall. The first record on the tile decides: open (0) or
+    /// opening (2) → closing (3) with `actorat = 1`, only if the cell is
+    /// empty; permanently open (4) → nothing; closed (1), closing (3) and
+    /// the looping states (5–7) → opening (2). So a second Use reverses a
+    /// wall that is still moving.
+    #[doc(alias = "OperateAnimWall")]
     pub fn operate_anim_wall(&mut self, x: i32, y: i32) {
         let Some(i) = self.anim_wall_at(x, y) else { return };
         match self.animwalls[i].state {
-            1 => self.animwalls[i].state = 2,
-            0 if self.actorat(x, y).is_empty() => {
-                self.animwalls[i].state = 3;
-                self.set_actorat(x, y, Occ::Mark(1));
+            0 | 2 => {
+                if self.actorat(x, y).is_empty() {
+                    self.animwalls[i].state = 3;
+                    self.set_actorat(x, y, Occ::Mark(1));
+                }
             }
-            _ => {}
+            4 => {}
+            _ => self.animwalls[i].state = 2,
         }
     }
 

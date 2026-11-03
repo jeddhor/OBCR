@@ -356,7 +356,9 @@ fn option_keys_and_map_overlay() {
     assert_eq!(w.ply.map_overlay, -1);
     frame(&mut w, &cmd());
     frame(&mut w, &tab);
-    assert_eq!(w.ply.map_overlay, -1, "stays until the next level");
+    // Tab ignores -1; the refresh (not run by this player-only frame) turns
+    // it into 0 (tests/wall_search.rs).
+    assert_eq!(w.ply.map_overlay, -1);
 }
 
 #[test]

@@ -1,7 +1,8 @@
 //! The gameplay side of `ThreeDRefresh` (ghidra 1b4a:129c): ray pass A fills
-//! `spotvis`, then the first `DrawScaleds` activates seen actors, sets
-//! `FL_VISABLE`/`viewx`/`transx` for the attack code and calls `GetBonus` for
-//! grabbable items (docs/re/RENDERER.md §2, §4.3, §5.1).
+//! `spotvis`, the per-tile pass searches for a shootable wall while fire is
+//! held (`1b4a:1494`), then the first `DrawScaleds` activates seen actors,
+//! sets `FL_VISABLE`/`viewx`/`transx` for the attack code and calls
+//! `GetBonus` for grabbable items (docs/re/RENDERER.md §2, §4.3, §5.1, §9.1).
 //!
 //! The simulation always runs this with the Classic view geometry, so
 //! presentation choices (high resolution, widescreen) never change gameplay.
@@ -10,7 +11,7 @@ use obc_core::fixed::fixed_by_frac;
 use obc_core::trig::{FINEANGLES, radtoint};
 
 use crate::player;
-use crate::world::{TILEGLOBAL, World, fl};
+use crate::world::{MAPSIZE, TILEGLOBAL, World, bt, fl};
 
 const FOCALLENGTH: i32 = 0x5700;
 const MINDIST: i32 = 0x5800;
@@ -80,11 +81,109 @@ struct Ray {
     viewcos: i32,
 }
 
+/// Shootable-wall search: starting best score (DS:0x0D24 = 90, reset to 90
+/// after every hit, so every frame starts from it).
+const WALLSEARCH_BEST: i16 = 90;
+
 impl World {
-    /// Ray pass A plus the bookkeeping half of `DrawScaleds`.
+    /// The gameplay half of `ThreeDRefresh` (ghidra 1b4a:129c), in its order:
+    /// the overhead-map reset (step 2), ray pass A, the per-tile pass's
+    /// shootable-wall search (`1b4a:1494`), then the bookkeeping half of the
+    /// first `DrawScaleds`.
     pub fn visibility_pass(&mut self) {
+        // 1b4a:12ad: a map overlay switched off by Tab (-1) becomes 0 at the
+        // next refresh (2f4d:0d17; both of its branches store 0).
+        if self.ply.map_overlay < 0 {
+            self.ply.map_overlay = 0;
+        }
         let ray = self.trace_spotvis();
+        self.shootable_wall_search(&ray);
         self.scan_scaleds(&ray);
+    }
+
+    /// The target search inside the per-tile floor/ceiling pass (ghidra
+    /// 1b4a:1494 with 1b4a:1b8b, 1b4a:1ccf and 1b4a:1b36; CONFIRMED by
+    /// instruction read, docs/re/RENDERER.md §9.1). Every refresh while
+    /// `buttonstate[bt_attack]` is down and `weapon < 3`, the tiles are
+    /// visited x-major (`x` outer, `y` inner, 0..63); a tile is a candidate
+    /// ([`World::shootable_candidate`]) if its projected centre lies within
+    /// `shootdelta` of `centerx`; the candidate with the smallest
+    /// `|dx|·|dy|/2` (tile distances to the player) below 90 wins, the first
+    /// one on ties. The winner goes to `StartWallHitAt` (208c:1c6a). At most
+    /// one tile per frame; no `US_RndT`.
+    ///
+    /// The projection is `TransformActor` without `ACTORSIZE` and with `nx`
+    /// clamped up to `MINDIST` instead of rejected, so tiles beside or
+    /// behind the player can project near the centre.
+    #[doc(alias = "WallHitSearch")]
+    fn shootable_wall_search(&mut self, ray: &Ray) {
+        // The original tests both per tile; neither changes inside the loop.
+        if !self.buttonstate[bt::ATTACK] || self.gamestate.weapon >= 3 {
+            return;
+        }
+        let p = *self.plr();
+        let (ptx, pty) = (p.tilex as i16, p.tiley as i16);
+        let shootdelta = self.view.shootdelta as i16;
+        let mut best = WALLSEARCH_BEST;
+        let mut hit = None;
+        for x in 0..MAPSIZE as i32 {
+            for y in 0..MAPSIZE as i32 {
+                if !self.shootable_candidate(x, y) {
+                    continue;
+                }
+                // 1b4a:1ccf on a fake object at the tile centre.
+                let gx = ((x << 16) + 0x8000).wrapping_sub(ray.viewx);
+                let gy = ((y << 16) + 0x8000).wrapping_sub(ray.viewy);
+                let mut nx =
+                    fixed_by_frac(gx, ray.viewcos).wrapping_sub(fixed_by_frac(gy, ray.viewsin));
+                let ny =
+                    fixed_by_frac(gy, ray.viewcos).wrapping_add(fixed_by_frac(gx, ray.viewsin));
+                if nx < MINDIST {
+                    nx = MINDIST;
+                }
+                // LXMUL@ (low 32 bits), LDIV@ (signed, truncating); only the
+                // low word is added to centerx (DS:0xC006).
+                let q = ny.wrapping_mul(self.view.scale as i32) / nx;
+                // 1b4a:1529: |viewx - centerx| in 16 bits.
+                if (q as i16).wrapping_abs() >= shootdelta {
+                    continue;
+                }
+                // 1b4a:1b36
+                let ax = (x as i16).wrapping_sub(ptx).wrapping_abs();
+                let ay = (y as i16).wrapping_sub(pty).wrapping_abs();
+                let score = ax.wrapping_mul(ay) / 2;
+                if score < best {
+                    best = score;
+                    hit = Some((x, y));
+                }
+            }
+        }
+        if let Some((x, y)) = hit {
+            player::start_wall_hit_at(self, x, y);
+        }
+    }
+
+    /// *IsShootableTile*(x, y) (ghidra 1b4a:1b8b, CONFIRMED): chip walls
+    /// 0x13, 0x14, 0x16, 0x17, 0x35, 0x36, 0x79, 0x7A, 0x7C, 0x7D qualify
+    /// when one of the four neighbours is in `spotvis`; glass 0x39–0x3B and
+    /// 0x75–0x77 (not the broken 0x3C/0x78) when the tile itself is.
+    ///
+    /// The neighbours are read as `spotvis` byte offsets ±1 and ±64, so
+    /// `y = 0` looks at `[x−1][63]` and `y = 63` at `[x+1][0]`, as here.
+    /// For `x = 0` and `x = 63` the original reads the globals around
+    /// `spotvis` (button state below, unknown BSS above); this port reads
+    /// them as not visible. No shipped map has a chip or glass tile in
+    /// those columns, so the difference cannot show (map scan, RENDERER.md §9.1).
+    pub fn shootable_candidate(&self, x: i32, y: i32) -> bool {
+        let i = World::idx(x, y) as isize;
+        let seen =
+            |j: isize| usize::try_from(j).ok().and_then(|j| self.spotvis.get(j)) == Some(&true);
+        let t = self.tile(x, y);
+        let chip = matches!(t, 0x13 | 0x14 | 0x16 | 0x17 | 0x35 | 0x36 | 0x79 | 0x7A | 0x7C | 0x7D);
+        if chip && (seen(i - 64) || seen(i + 64) || seen(i - 1) || seen(i + 1)) {
+            return true;
+        }
+        seen(i) && matches!(t, 0x39..=0x3B | 0x75..=0x77)
     }
 
     /// Ray pass A: `spotvis` for every cell a column's ray passes through.

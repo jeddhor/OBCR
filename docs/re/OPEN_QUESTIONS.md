@@ -32,7 +32,7 @@ Seeded 2026-11-02 from the initial survey.
 | Q-024 | Timing (`TimeCount`, `MAXTICS`) | M2, M5 | OPEN |
 | Q-025 | Palettes | M1, M3 | PARTIAL (gamepal and picture palette found) |
 | Q-026 | Cheats and debug activation | M10 | OPEN |
-| Q-027 | Map ThermoSensor | M10 | OPEN |
+| Q-027 | Map ThermoSensor | M10 | RESOLVED |
 | Q-028 | Command-line parameter semantics | M10 | OPEN |
 | Q-029 | Other releases and their differences | M0, M15 | OPEN |
 | Q-030 | High-score semantics (`completed`, `episode`) | M10 | OPEN |
@@ -182,7 +182,8 @@ Seeded 2026-11-02 from the initial survey.
 ### Q-027 — What does the Map ThermoSensor do?
 - **Evidence**: pickup string only.
 - **Approach**: find the item's effect flag and its readers; observe in game.
-- **Status**: OPEN
+- **Answer** (CONFIRMED by instruction read, not yet observed): item 10 sets `DS:0x3304` (`GetBonus` `208c:096a`), cleared at every PlayLoop start (`1942:14d1`), so it lasts one level. Its only reader is the Tab overhead map (`2f4d:0d31`): in single player, with the flag (or BOGUS MODE), every running non-ally actor in the 24×24-tile map window is drawn as a colour-1 dot from `actorpos[]`. Details: [RENDERER.md](RENDERER.md) §9.2.
+- **Status**: RESOLVED (2026-11-02, static analysis; run-time check pending)
 
 ### Q-028 — Command-line parameter semantics
 - **Evidence**: D-018.

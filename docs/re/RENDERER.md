@@ -33,7 +33,10 @@ Conventions:
 | `1b4a:0d98` | `DrawScaleds` (two-call variant) | same | CONFIRMED |
 | `1b4a:0d1b` | `CalcRotate` | same | LIKELY |
 | `1b4a:1013` | `DrawPlayerWeapon` (two-part weapon) | same | CONFIRMED |
-| `1b4a:1494` | Per-tile pass: textured ceiling/floor tiles + shootable-tile search | — (OBC) | CONFIRMED (tile drawing), LIKELY (search) |
+| `1b4a:1494` | Per-tile pass: textured ceiling/floor tiles + shootable-wall search | — (OBC) | CONFIRMED |
+| `1b4a:1b8b` | *IsShootableTile*(x, y) → `DS:0x0D22` (§9.1) | — (OBC) | CONFIRMED |
+| `1b4a:1ccf` | Tile-centre projection for the search (TransformActor variant, §9.1) | `TransformActor` | CONFIRMED |
+| `1b4a:1b36` | *ScoreShootableTile*(x, y): keep the best `\|dx\|·\|dy\|/2` (§9.1) | — (OBC) | CONFIRMED |
 | `1b4a:162b` | Project one tile's ceiling quad | — (OBC) | CONFIRMED |
 | `1b4a:19ef` | Floor-code lookup from neighbours | — (OBC) | CONFIRMED |
 | `30d6:1814` | Rasterise one ceiling/floor quad | — (OBC) | CONFIRMED |
@@ -54,6 +57,10 @@ Conventions:
 | `1942:0db5` | `InitRedShifts` | same | LIKELY (decompiler read) |
 | `1942:0fc9` / `1942:10c9` | `UpdatePaletteShifts` / `FinishPaletteShifts` | same | LIKELY (decompiler read) |
 | `2f4d:035e` | Select game palette (normal / dark / picture) | — (OBC) | CONFIRMED |
+| `2f4d:0d17` | Overhead map: −1 → 0 | — (OBC) | CONFIRMED |
+| `2f4d:0d31` | Draw the overhead map and ThermoSensor dots (§9.2) | — (OBC) | CONFIRMED |
+| `1618:1480` | `DrawOutline(x, y, w, h, c1, c2)` (c1 top/left, c2 bottom/right) | `WL_MENU.C DrawOutline` (colours swapped) | CONFIRMED |
+| `2ddf:04f9` | `VL_Plot(x, y, colour)` | `ID_VL.C VL_Plot` | CONFIRMED |
 | `30d6:1b3d` | Find the level's lighting marker tile | — (OBC) | LIKELY |
 | `2ddf:0209` | `VL_SetPalette(pal, keep16)` | `VL_SetPalette` (extra argument) | CONFIRMED |
 
@@ -64,7 +71,7 @@ Conventions:
 Order of operations (CONFIRMED from `asm/0C73C_FUN_1b4a_129c.asm`):
 
 1. `out 3C4h, 2` (select Map Mask); `bufferofs += screenofs` (`DS:0x8D98 += DS:0x8A26`). Wolf3D order.
-2. **Δ** If `DS:0xC3CC < 0` call `2f4d:0d17` (switches the overhead map overlay off; both branches store 0).
+2. **Δ** If `DS:0xC3CC < 0` call `2f4d:0d17` (switches the overhead map overlay off; both branches store 0; §9.2).
 3. **Δ** Background: if `floormode` (`DS:0x33D2`, byte) is 0 call the ramp gradient `1b4a:0bc9`, else the colour gradient `1b4a:0c72` (§3.1). Wolf3D has a solid two-colour `VGAClearScreen`.
 4. Clear `spotvis` (`DS:0x961D`, 64×64 bytes; `rep stosw` of 0x800 words). Wolf3D clears it in `ThreeDRefresh` too.
 5. `WallRefresh` (`1b4a:11b1`): `viewangle`, `midangle = viewangle*10`, `viewsin/viewcos`, `viewx/viewy`, `focaltx/ty`, `viewtx/ty` exactly as Wolf3D.
@@ -72,12 +79,12 @@ Order of operations (CONFIRMED from `asm/0C73C_FUN_1b4a_129c.asm`):
 7. `1b4a:1273`: `xpartialdown = viewx.lo` (`DS:0xC2A8`), `xpartialup = -viewx.lo` (`DS:0xC2AA`), `ypartialdown = viewy.lo` (`DS:0xC2A4`), `ypartialup = -viewy.lo` (`DS:0xC2A6`), `lastside = -1` (`DS:0xC2C2`). Same values as Wolf3D.
 8. **Δ** If `DS:0x099C` (set to 1 by `PlayLoop` on its first frame and after returning from a menu, cleared after every frame) is 0, set `drawwalls` (`DS:0xC282`) = 0.
 9. **Δ** `AsmRefresh` — **pass A**. With `drawwalls = 0` every `Hit*` routine returns immediately, so this pass only marks `spotvis` and counts see-through tiles. (On a frame with `DS:0x099C = 1`, `drawwalls` keeps its previous value, which is 1 after any earlier frame, so pass A also draws; steps 10–11 then overdraw it, so the final image is the same.)
-10. **Δ** `1b4a:1494`: textured ceiling and floor tiles for every `spotvis` tile and the player's tile (§3.2), plus a shootable-tile search used by the attack code (§9).
+10. **Δ** `1b4a:1494`: textured ceiling and floor tiles for every `spotvis` tile and the player's tile (§3.2), plus the shootable-wall search used while fire is held (§9.1).
 11. `drawwalls = 1`; `AsmRefresh` — **pass B** draws solid walls, doors and push walls (§4).
 12. `ScalePost()` (flush the last post) and `DrawScaleds()` (§5).
 13. **Δ** If pass B counted any see-through tile (`DS:0xC3CE > 0`): `lastside = -1`, `DS:0xC3D0 = 1`, `AsmRefresh` — **pass C** (masked walls, §4.4), `ScalePost()`, `DrawScaleds()` again (§5.1).
 14. `DrawPlayerWeapon` (`1b4a:1013`, §6).
-15. **Δ** Overlays, in this order: debug bars if `DS:0xC3CA` (`2f4d:0b2e`: masked-tile count, `tics`, frame rate as 1-pixel bars at screen rows 194/196/198); overhead map if `DS:0xC3CC == 1` (`2f4d:0d31`); on-screen message if `DS:0x46A4 > 0` (`2f4d:124a`: counts down by `tics`; draws the string at `DS:0x46A6` at view-relative (6,6) then (5,5) with font colour `DS:0x9024 = 0`, or once at (5,5) with colour 0xDF when `DS:0x3274` is set; LIKELY); screen splats if `DS:0x0D42` (`30d6:10d5`, §6.2); debug text if `DS:0x0D46 & 1`, debug plot if `DS:0x0D46 & 0x40`; status-bar face/icon redraws (`30d6:0923` if `DS:0x330A`; countdown byte `DS:0x330E` calls `30d6:09ea(99)` when it reaches 1; `30d6:0999` if `DS:0x330F`).
+15. **Δ** Overlays, in this order: debug bars if `DS:0xC3CA` (`2f4d:0b2e`: masked-tile count, `tics`, frame rate as 1-pixel bars at screen rows 194/196/198); overhead map if `DS:0xC3CC == 1` (`2f4d:0d31`, §9.2); on-screen message if `DS:0x46A4 > 0` (`2f4d:124a`: counts down by `tics`; draws the string at `DS:0x46A6` at view-relative (6,6) then (5,5) with font colour `DS:0x9024 = 0`, or once at (5,5) with colour 0xDF when `DS:0x3274` is set; LIKELY); screen splats if `DS:0x0D42` (`30d6:10d5`, §6.2); debug text if `DS:0x0D46 & 1`, debug plot if `DS:0x0D46 & 0x40`; status-bar face/icon redraws (`30d6:0923` if `DS:0x330A`; countdown byte `DS:0x330E` calls `30d6:09ea(99)` when it reaches 1; `30d6:0999` if `DS:0x330F`).
 16. If `fizzlein` (`DS:0x92C5`): `FizzleFade(bufferofs, displayofs+screenofs, viewwidth, viewheight, 20, false)`, clear it, zero `TimeCount` and `DS:0x95C7`. Wolf3D.
 17. `bufferofs -= screenofs`; `displayofs = bufferofs`.
 18. **Δ** Screen shake and page flip (§8.4), then `bufferofs += 0x4100`, wrap to 0 if above 0x8200 (Wolf3D), `frameon++` (`DS:0x95C3`, long), `PM_NextFrame` (`2a1d:1426`).
@@ -445,7 +452,78 @@ A rotation routine exists (`2f4d:0332`: rotate entries 249–254 of the palette 
 - `SetViewSize(w = viewsize·16, h = trunc(w × 0.5))`: `viewwidth = w & ~15`, `viewheight = h & ~1`, `screenofs = ((160 − viewheight)/2)·80 + (320 − viewwidth)/8` (Wolf3D). A height above 160 would select a 320×200 view at offset 0, but `NewViewSize` cannot produce one. So view sizes are `16n × 8n` for n ≤ 20, centred in the top 160 lines: 14 → 224×112 at (48,24), 16 → 256×128 at (32,16), 18 → 288×144 at (16,8), 20 → 320×160 at (0,0). CONFIRMED.
 - The status bar is a 320×40 picture drawn at y = 160 into all three pages (`30d6:01ec` → `StatusDrawPic(0, 160, …)`), after the screen is tiled with 8×8 border pic 3. Pages are at 0, 0x4100, 0x8200 (`DS:0x0D12`). LIKELY (decompiler).
 - **Δ** `SetViewSize` also sets overlay anchors: `DS:0x467A = (320 − vw)/2 + 4`, `DS:0x4678 = (200 − vh)/2 + 4` (overhead map position), `DS:0x4668 = vw − 40`, `DS:0x466A = 5`, `DS:0x4666 = 2`, `DS:0x4664 = vh − 10`, `DS:0x4672 = 25`, `DS:0x4670 = vw − 27`, `DS:0x466E = 0`, `DS:0x466C = vh − 12`, `DS:0x4676 = vw/2`, `DS:0x4674 = vh/2`. Users not analysed.
-- `1b4a:1494` also searches visible tiles for a target when `DS:0x95D9` is set and `weapon < 3`: tiles accepted by `1b4a:1b8b` whose projected centre is within `shootdelta` of `centerx`, the one with the smallest `|dx|·|dy|/2` from the player, are passed to `208c:1c6a` (shootable walls; LIKELY). Pass A exists so that this search and the ceiling tiles see this frame's `spotvis`.
+- `1b4a:1494` also runs the shootable-wall search (§9.1) and `SetViewSize`'s `DS:0x467A`/`0x4678` place the overhead map (§9.2). Pass A exists so that this search and the ceiling tiles see this frame's `spotvis`.
+
+### 9.1 Shootable-wall search (`1b4a:1494`)
+
+Gameplay code inside the renderer: while fire is held, every frame picks at most one damageable wall near the line of sight and starts its break animation. CONFIRMED by instruction read of `1b4a:1494`–`1629`, `1b4a:1b36`–`1cc3` (with the jump table at `1b4a:1cc5`), `1b4a:1ccf`–`1e0d` and `208c:1c6a`–`1cfb`. OBCR runs it in the simulation's visibility pass with the Classic view geometry (`obc-sim` `vis.rs`, `World::shootable_wall_search`), between ray pass A and the `DrawScaleds` bookkeeping, as here.
+
+**When.** Every `ThreeDRefresh`, i.e. every PlayLoop frame, after pass A (so it sees this frame's `spotvis`) and before pass B and `DrawScaleds` (so before `GetBonus`). The condition is tested per tile, but nothing in the loop changes it: `buttonstate[bt_attack]` (`DS:0x95D9`) ≠ 0 and `gamestate.weapon` (`DS:0x8716`) < 3, signed (pistol, Uzi, Galil; also −1 while dying: the death swing of `Died` redraws the view with `weapon = −1` and the last frame's `buttonstate`, so a player killed with fire held can still chip a wall; LIKELY, not reproduced by OBCR's `World::death_turn`). It is **not tied to shots**: holding fire triggers it every frame; `T_Attack` clears `buttonstate[0]` only on the frame an attack cycle ends.
+
+**Loop.** `x = 0..63` outer, `y = 0..63` inner (the floor-tile loop). For each tile:
+
+1. *IsShootableTile*(x, y) (`1b4a:1b8b`, result in `DS:0x0D22`):
+   - **chip walls**: `tilemap[x][y]` ∈ {0x13, 0x14, 0x16, 0x17, 0x35, 0x36, 0x79, 0x7A, 0x7C, 0x7D} (0x15, 0x7B are excluded) and **one of the four neighbours is in `spotvis`** (byte == 1). The neighbours are read at byte offsets −64, +64, −1, +1 from `spotvis + x·64 + y`: for `y = 0` and `y = 63` the north/south reads land on `[x−1][63]` and `[x+1][0]`; for `x = 0` and `x = 63` they land outside `spotvis` (`DS:0x95DD + y`: `buttonstate[2..13]`, `controlx/y`, `buttonheld[]`, `noclip`, `godmode`; and `DS:0xA61D + y`, unknown BSS). No shipped map has a chip or glass tile in column 0 or 63 (scan of all 61 `MAPTEMP` slots: such tiles occur only on rows 0 and 63, in maps 7, 10, 11, 13–18, 20, 21, 24, 26, 30, 32, 58), so OBCR reads out-of-range neighbours as not visible without visible difference.
+   - **glass**: `tilemap` ∈ 0x39–0x3B or 0x75–0x77 (intact and cracked panes; the broken 0x3C/0x78 are excluded) and **its own `spotvis` is set** (pane cells carry see-through plane-1 markers, so pass A marks them).
+2. Projection (`1b4a:1ccf`, a `TransformActor` variant applied to a stack `objtype` whose x, y are the tile centre `(t << 16) + 0x8000`):
+   ```text
+   gx = cx − viewx;  gy = cy − viewy
+   nx = FixedByFrac(gx, viewcos) − FixedByFrac(gy, viewsin)      ; no ACTORSIZE
+   ny = FixedByFrac(gy, viewcos) + FixedByFrac(gx, viewsin)
+   if nx < MINDIST (0x5800): nx = MINDIST                          ; clamped, not rejected
+   viewx = centerx + low16(LDIV@(LXMUL@(ny, scale), nx))          ; also stored in DS:0xC006
+   ```
+   (`nx == 0` would `Quit(0x6AC)`; impossible after the clamp.) Because of the clamp, a tile beside or behind the player with a small `ny` also projects near the centre.
+3. Aim (`1b4a:1529`): keep the tile only if `|DS:0xC006 − centerx| < shootdelta` (`DS:0x8A1E` = `viewwidth/10`), computed in 16 bits (`CWD`/`XOR`/`SUB`).
+4. Score (`1b4a:1b36`): `s = (|x − player.tilex| · |y − player.tiley|) / 2` (16-bit `IMUL`, truncating). If `s < best` (`DS:0x0D24`): `best = s`, target = (x, y) in `DS:0xC2C8`/`DS:0xC2C6`, found flag `DS:0xC2C4 = 1`. Strict `<`: on ties the first tile in loop order wins.
+
+After the loop, if the flag is set: `StartWallHitAt(x, y)` (`208c:1c6a`), flag = 0, `best = 90`.
+
+`best` is initialised data (`DS:0x0D24` = 90) and only drops when a target is found, which always ends in the reset, so **every frame starts at 90**: only tiles with `|dx|·|dy| < 180` qualify. The score is 0 for every tile in the player's row or column, so in practice the choice is "the first tile in x-major order that is in line with the player, else the most nearly in line".
+
+**Effect** (PLAYER.md §3.9). `StartWallHitAt` sets the wall-break state (`DS:0x09DA` = 1, tile `DS:0x9419`/`0x9417`) and a countdown by tile (6: 0x39, 0x75; 4: 0x3A, 0x76; 2: the chip tiles, 0x3B, 0x77; 1: 0x3C, 0x78; unchanged otherwise). PlayLoop's wall-break step then adds 1 to the tile when the countdown is even and decrements it. Since the search restarts the countdown on every frame fire is held, a chip wall advances one stage per frame until it reaches a non-candidate: 0x13 → 0x14 → **0x15**, 0x16 → 0x17 → **0x18**, 0x35 → 0x36 → **0x37**, 0x79 → 0x7A → **0x7B**, 0x7C → 0x7D → **0x7E**; a pane 0x39 becomes 0x3A, 0x3B and **0x3C** on three consecutive frames (sounds at countdown 5 and 1), 0x75 → 0x78 likewise. Follows from the code (search CONFIRMED, the PlayLoop wall-break step LIKELY); not observed in DOSBox-X.
+
+### 9.2 Overhead map and ThermoSensor (`2f4d:0d31`)
+
+CONFIRMED by instruction read of `2f4d:0d17`–`0f7b`, `1618:1480` (`DrawOutline`), `2e72:0607`/`063b` (`VWB_Hlin`/`VWB_Vlin`), `2ddf:04f9` (`VL_Plot`), `1497:111f`–`1140` (`SetViewSize`) and `2f4d:0200`–`02ae` (bitmap build). Nothing here was observed at run time.
+
+**Switching.** `DS:0xC3CC` (`w.ply.map_overlay`): Tab (`buttonstate[12]`, edge-triggered in `2f4d:0bd3` during `T_Player`) steps 0 → 1 and 1 → −1 (−1 ignores Tab). At the start of the next `ThreeDRefresh` (`1b4a:12ad`) a negative value calls `2f4d:0d17`, which stores 0 in both of its branches (`viewsize > 18` or not). `T_Player` runs before the refresh of the same frame, so −1 is never drawn: **Tab toggles the map on and off**. Cleared at every new level (`2f4d:01f4`; not on loading a save). OBCR resets −1 to 0 at the start of `World::visibility_pass`.
+
+**When and where in the frame.** Every refresh with `DS:0xC3CC == 1`, into the back buffer after `DrawPlayerWeapon` and the debug bars, before the message text, the visor splats, the debug overlays and the status-bar icon updates (§2 step 15). Nothing is erased first: pixels the map does not write keep the 3D view. Messages and splats draw over the map. The screen shake (§8.4) moves it with the rest of the screen.
+
+**Coordinates.** `bufferofs −= screenofs` for the duration, so all positions are absolute pixels of the 320×200 page. The origin is set by `SetViewSize`:
+
+```text
+X = DS:0x467A = (320 − viewwidth)/2 + 4
+Y = DS:0x4678 = (200 − viewheight)/2 + 4        ; 200, not 160: 20 rows lower than the view centring
+```
+
+| viewsize | view | view origin | map origin (X, Y) | map box |
+|---|---|---|---|---|
+| 14 | 224×112 | (48, 24) | (52, 48) | x 52–115, y 48–111 |
+| 16 | 256×128 | (32, 16) | (36, 40) | x 36–99, y 40–103 |
+| 18 | 288×144 | (16, 8) | (20, 32) | x 20–83, y 32–95 |
+| 20 | 320×160 | (0, 0) | (4, 24) | x 4–67, y 24–87 |
+
+Scale: **one pixel per tile**; map tile (tx, ty) is pixel (X + tx, Y + ty), east to the right, south down. Nothing is clipped to the view (smaller view sizes than 14 would draw over the border).
+
+**Drawing, in order** (later writes overwrite earlier ones):
+
+1. **Frame**: `DrawOutline(X, Y, 63, 63, 0x0C, 0x0C)`: `VWB_Hlin(X, X+63, Y)`, `VWB_Vlin(Y, Y+63, X)`, `VWB_Hlin(X, X+63, Y+63)`, `VWB_Vlin(Y, Y+63, X+63)`, colour **0x0C**, end points inclusive: a one-pixel 64×64 outline on map rows/columns 0 and 63 (where the border walls are drawn again in the same colour).
+2. **Walls**: a window of the static wall bitmap.
+   - Window: `c0 = player.tilex − 12`, if < 0 → 0, then if `c0 + 24 > 64` → 40; `r0` the same from `tiley`. Rows `r0 … r0+23` are drawn; columns start at **`c0 & ~7`** (whole bitmap bytes), so the columns drawn are `c0a … c0a+23` with `c0a = c0 & ~7` (up to 7 columns left of the intended window, and the same number missing on its right). Each row is drawn at its true place inside the box (screen row `Y + ty`), not at the box's top.
+   - Every set bit writes colour **0x0C** at (X + tx, Y + ty); clear bits write nothing (no background). The write is planar (each bitmap byte → two planar bytes with Map Mask = high nibble, then low nibble); with the bit order below and `X ≡ 0 (mod 4)` for every view size, tile tx lands exactly on pixel X + tx.
+   - With `gamestate+0x16 & 0x20` the window is the whole 64×64 map; nothing sets that bit in OBC-A.
+   - The bitmap (`DS:0xE093`, 512 bytes: row `ty`, byte `tx / 8`, bit mask `DS:0x3258[tx & 7]` = 0x10, 0x20, 0x40, 0x80, 0x01, 0x02, 0x04, 0x08) is built by `PrepareLevel` in every `SetupGameLevel` (also when a save is loaded), **after** the plane-0 pass and `SpawnDoor` and **before** `ScanInfoPlane`. Bit set iff (`tilemap` is a solid wall, 1–0x7F, and the plane-1 word ≠ 107) or (`tilemap` is 0 or a door and plane-1 bit 15 is set). Bit 15 is then cleared. In terms of the map file: **plane-0 1–127 unless plane 1 is 107** (rock openings, pipe mouths), **plus plane-0 143** (unused in the shipped maps). Codes 128–139 (walls 128/129, the doors, the ambush code 138, 139) have bit 7 set in `tilemap` and take the door test, so they are not drawn. The bitmap never changes during the level: destroyed or chipped walls, opened door-look walls and moved push walls keep their level-start look; doors never show.
+3. **ThermoSensor dots** (single player, `difficulty < 4`, and `gamestate.cheatmode` (`DS:0x873C`, BOGUS MODE) or the ThermoSensor flag `DS:0x3304` (item 10; cleared at every PlayLoop start, so it lasts one level)): for i = 0…99, `v = actorpos[i]` (`DS:0x94ED`, words); if `v ≠ 0`: `tx = v >> 8`, `ty = v & 0xFF`; if `c0a ≤ tx < c0a + 24` and `r0 ≤ ty < r0 + 24` (the wall window; 64 wide/high in whole-map mode): `VL_Plot(X + tx, Y + ty, 1)` — colour **1**. `actorpos[i]` is `tilex << 8 | tiley`, written by `DoActor` for list position i in this frame's actor loop, for every object that runs (active, or in an area connected to the player) except allies (class 5) and the player (index 0 is never written): enemies alive or dead, projectiles, fire, explosions, sparkles, the face. It is cleared before the loop, and BEWITCHED-frozen enemies return before writing, so they disappear from the map.
+4. **Allies** (single player): every object after the player with `obclass == 5`: `VL_Plot(X + tilex, Y + tiley, 2)` — colour **2**, **not** limited to the window and shown without the ThermoSensor.
+5. **Player** (all modes): `VL_Plot(X + player.tilex, Y + player.tiley, c)`, blinking: byte `DS:0x3272` (initial 0) is toggled on each draw; when it was 0 the colour is **0xFC** (and it becomes 1), otherwise **0x0F** (and it becomes 0). It is never reset, so the phase carries over when the map is closed and reopened.
+
+Network modes (`difficulty ≥ 4`) skip steps 3 and 4.
+
+`VL_Plot` writes one pixel (Map Mask `DS:0x2FAC[x & 3]`, byte `ylookup[y] + x/4 + bufferofs`) with no clipping. All colours are palette indices of the current game palette (normal or dark, §8.2), unshaded; the red/white shifts (§8.1) leave 1, 2, 0x0C and 0x0F alone (indices 0–15 are restored) but tint 0xFC.
+
+For OBCR: the wall bitmap must be captured at level setup (the simulation clears plane-1 bit 15 and later changes `tilemap` and the planes), for example from the original `MAPTEMP` planes with the rule above.
 
 ---
 
@@ -461,17 +539,19 @@ A rotation routine exists (`2f4d:0332`: rotate entries 249–254 of the palette 
 8. Red shift 4 steps, white shift steps of 10, palette entries 0–15 excluded; dark level palette; no palette cycling (§8).
 9. Tremor screen shake via CRTC start address (§8.4).
 10. `MAXVISABLE` 75; static objects 10 bytes; no in-game view-size change (§5.1, §9).
+11. Gameplay inside the renderer: the shootable-wall search runs every frame fire is held (§9.1).
+12. Tab overhead map: a 64×64-pixel box at one pixel per tile, a 24×24-tile window of a level-start wall bitmap, ThermoSensor actor dots, ally dots and a blinking player dot (§9.2).
 
 ---
 
 ## 11. Open questions
 
 - Q-R1: Confirm by DOSBox-X capture: gradient rows (both modes), ceiling-tile spans, shade values, and the shake offsets. The pixel formulas above are derived from code only.
-- Q-R2: How `1b4a:1b8b` and `208c:1c6a` choose and damage shootable tiles (gameplay, not rendering).
+- ~~Q-R2: How `1b4a:1b8b` and `208c:1c6a` choose and damage shootable tiles (gameplay, not rendering).~~ RESOLVED (2026-11-02): §9.1, CONFIRMED by instruction read; ported in `obc-sim` `vis.rs`.
 - Q-R3: Who sets `DS:0x48E2` (brightness bias): `SETUP.EXE`? Range of values?
 - Q-R4: Exact meaning of plane-1 values 103–107 and 125 for level designers (window, fence, grate?), and of tile values 95/96; to be settled with the map-code investigation (LEVEL_CODES).
 - Q-R5: The two-part weapon sprites: confirm which of sprites 544–623 are left/right halves and the attack frame range, and whether the off-view rows in §6.1 are visible.
-- Q-R6: Overhead map (`2f4d:0d31`), message text (`2f4d:124a`) and the `DS:0x4664`–`0x467A` anchors belong to a HUD document.
+- Q-R6: Message text (`2f4d:124a`) and the anchors `DS:0x4664`–`0x4676` belong to a HUD document. (The overhead map and its anchors `DS:0x467A`/`0x4678` are §9.2.)
 
 ---
 
@@ -488,7 +568,9 @@ Names in `re/symbols/count_exe.csv` that this analysis contradicts (not edited h
 | `2f4d:0405` | `CA_OpenDebug_2f4d_0405` | save `gamepal` to `DS:0xE295` |
 | `1000:0fe3` | `tan_1000_0fe3` | `tan` (LIKELY) starts at `1000:0fe6`, the call target; `0fe1`–`0fe5` is the tail of `sin` |
 | `1d8b:0a47` | `caseD_5` | `SimpleScaleShape` |
-| `1b4a:1ccf` | `TransformActor_1b4a_1ccf` | transform for the target search (§9) |
+| `1b4a:1ccf` | `TransformActor_1b4a_1ccf` | transform for the shootable-wall search (§9.1) |
+| `1b4a:1b8b` | `FUN_1b4a_1b8b` | *IsShootableTile* (§9.1) |
+| `2f4d:0d31` | `FUN_2f4d_0d31` | *DrawOverheadMap* (§9.2) |
 | `DS:0x0D7B` | `weaponscale+0x9` | `mapmasks1` |
 | `DS:0x0D1E` | `mindist` | correct (`MINDIST` = 0x5800, initialized data) |
 

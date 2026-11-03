@@ -62,7 +62,7 @@ Summary of the big differences from Wolf3D:
 | 208c:18dc | *T_Attack* | `WL_AGENT.C:1293` | CONFIRMED | Ghidra hides it inside 208c:1883 |
 | 208c:1b72 | *UseAmmo* | — | CONFIRMED | |
 | 208c:1bfb | *T_Player* | `WL_AGENT.C:1393` | CONFIRMED | |
-| 208c:1c6a | *StartWallHitAt* | — | LIKELY | called from 1b4a:1494 (renderer) |
+| 208c:1c6a | *StartWallHitAt* | — | CONFIRMED | called from the renderer's shootable-wall search 1b4a:1494 (RENDERER.md §9.1) |
 | 208c:1d24 | *Reload* | — | CONFIRMED | |
 | 208c:1e18 | *GiveSupplyCrate* | — | CONFIRMED | §4.2 |
 | 2390:0006 / 0125 | *ProjectileTryMove* / *T_Projectile* | `WOLFSRC/WL_ACT2.C:266`, `:302` | CONFIRMED | §3.10 |
@@ -87,6 +87,10 @@ Summary of the big differences from Wolf3D:
 | 30d6:0fbe / 10c5 / 10d5 | *AddScreenSplat* / *ClearScreenSplats* / *DrawScreenSplats* | — | LIKELY | blood on the "lens" |
 | 30d6:1bc0 | *TryExit* | — | CONFIRMED | half the kills needed |
 | 2f4d:12b5 / 12de / 124a | *GameMessage* / *DebugMessage* / *DrawGameMessage* | — | CONFIRMED | §5.5 |
+| 2f4d:041f | *SetItemFlags* | — | CONFIRMED | `gamestate+0x16 \|= mask`; no callers (§9) |
+| 2f4d:049f | *ClearFloorItems* | — | CONFIRMED | `gamestate+0x16 &= 0xFF80`, carried-item records cleared; every new level |
+| 2f4d:064a / 06c9 | *SpawnHealStation* / *StartHealStation* | — | CONFIRMED | no callers in OBC-A (§9) |
+| 2f4d:06ec | *HealStations* | — | CONFIRMED | per frame after MoveAnimWalls; inert in OBC-A (§9) |
 | 2b79:15b3 | *SD_PlaySound* | `ID_SD.C` `SD_PlaySound` | LIKELY | sound numbers below are its argument |
 | 2ddf:027a | *VL_FadeOut* | `ID_VL.C` `VL_FadeOut` | LIKELY | argument order (start,end,r,g,b,steps) |
 
@@ -111,7 +115,7 @@ Summary of the big differences from Wolf3D:
 | 0x870C | +10 | int | `health`, 0–999 | `starthealth[difficulty]` | §4.3 | CONFIRMED |
 | 0x870E | +12 | int | `ammo`: rounds (or fuel units) left in the loaded magazine, 0–30 | 30 | §3.8 | CONFIRMED |
 | 0x8710 | +14 | int | number of carried-item records at 0x875A (max 3) | 0 | `2f4d:04be` | LIKELY |
-| 0x8712 | +16 | int | item/status flags; bits 0–6 survive level changes, bit 0x10 = healing-station active, 0x40 = turning toward station, 0x20 used by the map overlay | 0 | `2f4d:049f`, `06ec`, `0d31` | LIKELY |
+| 0x8712 | +16 | int | item/status flags (Wolf3D `keys` slot): bits 0–6 are cleared at every new level (*ClearFloorItems* `2f4d:049f`); 0x10 = healing station in use, 0x40 = turning toward a station (§9), 0x20 = overhead map shows the whole map (RENDERER.md §9.2). The only writers that set bits (`2f4d:041f`, `2f4d:04be`) have no callers, so the field stays 0 in OBC-A | 0 | `2f4d:049f`, `06ec`, `0d31` | CONFIRMED |
 | 0x8714 | +18 | int | `bestweapon` | 1 | | CONFIRMED |
 | 0x8716 | +1A | int | `weapon` (−1 while dying hides the hands) | 1 | | CONFIRMED |
 | 0x8718 | +1C | int | `chosenweapon` | 1 | | CONFIRMED |
@@ -130,7 +134,7 @@ Summary of the big differences from Wolf3D:
 | 0x8734 | +38 | long | `killx` | | `1e43:1538` | LIKELY |
 | 0x8738 | +3C | long | `killy` | | | LIKELY |
 | 0x873C | +40 | int | cheat mode ("BOGUS MODE") enabled | 0 | `30d6:0350` | CONFIRMED |
-| 0x873E | +42 | int | index of the healing station being used | | `2f4d:06ec` | LIKELY |
+| 0x873E | +42 | int | index of the healing station being used (set only by the uncalled `2f4d:06c9`) | | `2f4d:06c9`, `06ec` | CONFIRMED |
 | 0x8740 | +44 | int | `maxammo`: 200; +30 per supply crate (max 999); only read by the debug key `I` | 200 | | LIKELY (vestigial) |
 | 0x8742 | +46 | int | `maxhealth`: cap for *HealSelf*; reset to **100** at every level start | 100 | `2f4d:01ac` | CONFIRMED |
 | 0x8744 | +48 | char[8] | score as text (`ltoa`) | | | LIKELY |
@@ -322,7 +326,7 @@ Magazine and clips, all CONFIRMED:
 
 PlayLoop then, while DS:0x09DA is set, increments that tile number when the countdown is even and decrements the countdown each frame, so these walls always end at 0x3C / 0x78; while the tile is in 0x39–0x3C or 0x75–0x78 the info plane is set to 0x69. Sounds: countdown 5 → sound 65 or 66, countdown 1 → 64, 67 or 68; tiles 0x35 and 0x79–0x7C give 69 or 70 on odd tics. LIKELY (decompiler of PlayLoop).
 
-`208c:1c6a` (*StartWallHitAt*), called from the renderer `1b4a:1494` (which reads `buttonstate[0]`; trigger not analyzed), handles more tiles. CONFIRMED (tables `208c:1cfc`, `1d0e`, `1d1a`):
+`208c:1c6a` (*StartWallHitAt*), called once per frame at most by the renderer's shootable-wall search `1b4a:1494` while fire is held with weapon 0–2 (RENDERER.md §9.1: chip walls next to a visible tile and visible glass, projected within `shootdelta` of the view centre, the one with the smallest `|dx|·|dy|/2` first), handles more tiles. CONFIRMED (tables `208c:1cfc`, `1d0e`, `1d1a`):
 
 | Countdown | Tiles |
 |---|---|
@@ -332,7 +336,7 @@ PlayLoop then, while DS:0x09DA is set, increments that tile number when the coun
 | 1 | 0x3C, 0x78 |
 | unchanged (usually 0, which still gives one increment) | 0x15, 0x37, 0x38, 0x7B |
 
-The effect is a chain of damage stages: each hit advances 0x79 → … → 0x7E or 0x13 → … → 0x18 by one tile number, and 0x35 → 0x39 leads into the glass sequence. LIKELY: bullets chip and break walls (belongs to the world/walls topic).
+The effect is a chain of damage stages. Because the search restarts the countdown every frame while fire is held, and the wall-break step increments the tile only on even counts, holding fire advances a chip wall by one stage per frame until it reaches a tile that is no longer a candidate: 0x13 → 0x14 → 0x15, 0x16 → 0x17 → 0x18, 0x35 → 0x36 → 0x37, 0x79 → 0x7A → 0x7B, 0x7C → 0x7D → 0x7E; glass 0x39 breaks to 0x3C in three frames (0x75 → 0x78 likewise). Follows from the code (search CONFIRMED, the PlayLoop step LIKELY); not observed.
 
 States: `s_player` DS:0x0F46 = {rot 0, shape 0, tics 0, think 208c:1bfb}; `s_attack` DS:0x0F56 = {think 208c:18dc}. CONFIRMED (file read).
 
@@ -479,7 +483,7 @@ if !godmode && health <= 35 && US_RndT() % 15 == 0 && difficulty < 4:
 if health <= 0: (network notify); health = 0; playstate = ex_died; killerobj = attacker
 ```
 
-Armor model: armor absorbs half the incoming points, health takes the other half (before the difficulty multiplier). Armor goes down by that half. Armor is never checked against the damage, so it absorbs a full half even when it has less left. *HealSelf* caps health at maxhealth, which is 100 after each level start and is raised only by "Increased Health"; the medic wall (HealSelf 25) and the healing stations (`2f4d:06ec`, HealSelf(tics) per frame from a per-station pool) therefore never heal above 100 unless that item was taken on the level. *HealSelf* itself clamps `health` down to maxhealth, so an unguarded call with health 400 would drop it to 100; the medic wall and the stations only call it while health < maxhealth, but the debug key `I` calls HealSelf(100) unguarded (CONFIRMED, `208c:05f4`, `1adb:0618`).
+Armor model: armor absorbs half the incoming points, health takes the other half (before the difficulty multiplier). Armor goes down by that half. Armor is never checked against the damage, so it absorbs a full half even when it has less left. *HealSelf* caps health at maxhealth, which is 100 after each level start and is raised only by "Increased Health"; the medic wall (HealSelf 25) and the healing stations (`2f4d:06ec`, HealSelf(tics) per frame from a per-station pool; unreachable in OBC-A, §9) therefore never heal above 100 unless that item was taken on the level. *HealSelf* itself clamps `health` down to maxhealth, so an unguarded call with health 400 would drop it to 100; the medic wall and the stations only call it while health < maxhealth, but the debug key `I` calls HealSelf(100) unguarded (CONFIRMED, `208c:05f4`, `1adb:0618`).
 
 ### 4.4 Difficulty and game mode summary
 
@@ -596,7 +600,63 @@ All CONFIRMED in code; their in-game effect is unverified.
 - Meaning of `gamestate` 0x8708 (S/I toggles), 0x871A, 0x8722, 0x872C, 0x8740; who sets 0x8724 and DS:0x95B5.
 - Names of difficulty values 0–6 (menu pictures not checked).
 - `DamageActor` (`1e43:174d`) and `KillActor` (`1e43:1377`) belong to the actor topic; the final damage to enemies depends on them.
-- The barrier system (DS:0x46E2 table, info codes 0x55/0x67/0x6A) and the healing stations (DS:0x4866) need their own write-up.
-- Lighting modes of `2f4d:035e` and the overlays toggled by H, C and Tab.
-- What the renderer path `1b4a:1494` → `208c:1c6a` does for hitscan shots into walls.
+- The barrier system (DS:0x46E2 table, info codes 0x55/0x67/0x6A) is the animated-wall list (LEVEL_CODES.md §4.4). The healing stations are written up in §9 (unreachable in OBC-A).
+- Lighting modes of `2f4d:035e` and the overlays toggled by H and C. (Tab: RENDERER.md §9.2.)
+- ~~What the renderer path `1b4a:1494` → `208c:1c6a` does for hitscan shots into walls.~~ Answered: RENDERER.md §9.1.
 - Run-time confirmation: fire rates, damage numbers and the blackout fade should be checked in DOSBox-X.
+
+---
+
+## 9. Healing stations
+
+`COUNT.EXE` contains a complete healing-station mechanism, but in release OBC-A **nothing can start it**: the per-frame routine runs every frame and returns at once. CONFIRMED by instruction read of `2f4d:041f`–`0846`, plus an exhaustive scan of the load image for references to the entry points: far calls (`9A` with any segment:offset pair that resolves to the target), near calls inside segment `2f4d`, and 4-byte far pointers in data. `2f4d:064a`, `2f4d:06c9`, `2f4d:041f` (the only routine that can set an arbitrary bit of `gamestate+0x16`) and `2f4d:04be` (the carried-item adder, which ORs its mask into the same word) have **no callers and no stored pointers**. `2f4d:06ec` is called once, by PlayLoop (`1942:15f1`). The globals DS:0x873E, 0xDD89, 0xDD8B, 0xDD8D and 0x4862–0x4869 are referenced only by these routines (plus the save/load block copies of `gamestate` and of the 128 bytes at DS:0x4862, GAMEFLOW.md §9.4).
+
+### 9.1 Data
+
+| DS | What | Confidence |
+|---|---|---|
+| 0x4862 + 8·i | station record *i* (16 slots): +0 x, +2 y (tile; written by the spawner, read by nothing), +4 `pool` (health left), +6 `tics << 5`, written every active frame, never read | CONFIRMED |
+| 0xE7B2 | station count; cleared by *PrepareLevel* (`2f4d:0174`) on every `SetupGameLevel`, also when loading a game (the table itself is then restored by `LoadTheGame`, the count is not) | CONFIRMED |
+| 0x8712 (`gamestate+0x16`) | bit 0x40 = turning toward the station, bit 0x10 = healing; cleared with bits 0–6 at every new level (`2f4d:049f`) | CONFIRMED |
+| 0x873E (`gamestate+0x42`) | index of the station in use | CONFIRMED |
+| 0xDD89 | angle to face | CONFIRMED |
+| 0xDD8D / 0xDD8B | x / y of the tile whose animated wall is closed | CONFIRMED |
+| 0x326A | angle by direction 0–3: **270, 180, 90, 0** (file read; the next words are unrelated data) | CONFIRMED |
+
+### 9.2 Routines
+
+- *SetItemFlags*(mask) `2f4d:041f`: `gamestate+0x16 |= mask`. No callers.
+- *SpawnHealStation*(x, y, kind) `2f4d:064a`: if `count + 1 < 16`: `record[count].x, .y = x, y`; `pool` by kind through the jump table `2f4d:06c1`: 0 → **50**, 1 → **100**, 2 → **200**, 3 → **300**; any other kind (unsigned compare) leaves `pool` as it was; `count++`. So at most 15 stations. No callers.
+- *StartHealStation*(dir, station, x, y) `2f4d:06c9`: `DS:0x873E = station`, `DS:0xDD89 = table[dir]` (DS:0x326A, unchecked), `DS:0xDD8D = x`, `DS:0xDD8B = y`. It does **not** set bit 0x40; a caller would have to (with `2f4d:041f`). No callers.
+- *HealStations* `2f4d:06ec`, every frame:
+
+```text
+if !(flags & 0x40) && !(flags & 0x10): return
+station[i].rate = tics << 5                         ; i = DS:0x873E, unchecked
+if flags & 0x40:                                    ; turning
+    if player.angle > target: angle -= tics; if angle < target: angle = target
+    elif player.angle < target: angle += tics; if angle > target: angle = target
+    if angle != target: return                      ; plain signed compare: 350 -> 270 turns down, never wraps
+    flags = (flags & ~0x40) | 0x10
+    switch target: 0 -> wx += 2; 90 -> wy -= 2; 180 -> wx -= 2; 270 -> wy += 2
+    for k in 0 .. animwallcount-1:                  ; DS:0x46E2 list, DS:0xE7A8
+        if wall[k].x == wx && wall[k].y == wy && wall[k].state == 0 (open):
+            OperateAnimWall(wx, wy)                 ; 2f4d:08e8: closes it if the cell is empty
+    return                                          ; no healing on this frame
+if station[i].pool > 0 && health < maxhealth:       ; healing
+    HealSelf(tics); station[i].pool -= tics         ; the pool may end below 0
+else:
+    flags &= ~0x10
+```
+
+There is no `US_RndT` call. CONFIRMED.
+
+Position in the frame (`1942:15d7`–`15f6`, CONFIRMED): `madenoise = 0`; `30d6:000d` (an empty routine); `MoveDoors` (`2281:0c97`); `MovePWalls` (`2281:0e58`); `MoveAnimWalls` (`2f4d:0978`); **`HealStations`**; the network hook `358f:0eea` when `difficulty ≥ 4`; then `memset(actorpos)` and the actor loop.
+
+### 9.3 Interpretation
+
+HYPOTHESIS: a walk-in healing booth. Whatever starts it (a Use case or a trigger tile; no plane-1 or tile code in `ScanInfoPlane` or `Cmd_Use` refers to it) would place the player, call *StartHealStation* with the booth's direction and set bit 0x40. The player then turns at 1°/tic to face the station, the animated wall two tiles ahead in that direction (the booth door) closes if it is open, and health flows at 1 point per tic (70 per second) up to `maxhealth` or until the pool is empty. The reachable "Medic Pack" is unrelated: the Use case on wall tile 0x58 (§3.6).
+
+### 9.4 Port
+
+`obc-sim` `player/stations.rs`: `heal_stations` runs in `World::frame` right after `move_anim_walls`; `spawn_heal_station` and `start_heal_station` are ported but, as in the original, nothing calls them. `gamestate.itemflags` holds `gamestate+0x16` and is cleared to bits 7–15 at every new level; the station table is part of the OBCR save. Not reproduced: OBCR's loader does not re-run `SetupGameLevel`, so a loaded game keeps the station count instead of resetting it to 0; this cannot matter while no station can be spawned.

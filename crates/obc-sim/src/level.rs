@@ -135,6 +135,9 @@ impl World {
 
     /// `PrepareLevel` (ghidra 2f4d:0167): per-level resets.
     fn prepare_level(&mut self) {
+        // DS:0xE7A8 (animated walls) is cleared by setup_game_level; DS:0xE7B2
+        // is the healing-station count.
+        self.ply.stations.count = 0;
         self.actorpos = [0; crate::world::MAXACTORS];
         player::setup_level_player_state(self);
         // The automap wall bitmap is derived on demand by the UI; clear bit 15 as the original does.
