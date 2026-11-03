@@ -395,8 +395,8 @@ Free-disk check first (`No room on disk to save` box). Then, with no checksum (W
 | … | 2,250 | DS:0x7E2C (`statobjlist`) | LIKELY |
 | … | 128 | `doorposition[64]` | CONFIRMED |
 | … | 640 | DS:0x7BAA `doorobjlist[64]` (10 bytes each) | LIKELY |
-| … | 384 | DS:0x46E2 | UNKNOWN |
-| … | 128 | DS:0x4862 | UNKNOWN |
+| … | 384 | DS:0x46E2: animated-wall list, 32 × 12 bytes (LEVEL_CODES.md §4.4) | LIKELY |
+| … | 128 | DS:0x4862: healing-station table, 16 × 8 bytes (PLAYER.md §9) | LIKELY |
 | … | 62 | DS:0x46A4 (message timer + message text) | LIKELY |
 | … | 2 × 5 | DS:0x4916, 0x48E8, 0x48E6, 0x48E4, 0x4998 | UNKNOWN |
 | … | 26 | DS:0x467E (warp-carried player state, §5.6) | LIKELY |

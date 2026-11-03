@@ -200,6 +200,11 @@ pub struct GameState {
     pub score: i32,
     pub options: u16,
     pub weapons: u8,
+    /// Item/status flags (`gamestate + 0x16`, DS:0x8712, Wolf3D's `keys`
+    /// slot); bits 0–6 are cleared at every level start. 0x10 healing
+    /// station in use, 0x40 turning toward one, 0x20 whole-map overlay
+    /// (docs/re/PLAYER.md §2.1, §9). Nothing in OBC-A sets a bit.
+    pub itemflags: u16,
     pub health: i16,
     pub ammo: i16,
     pub bestweapon: i16,
@@ -219,6 +224,8 @@ pub struct GameState {
     pub killx: i32,
     pub killy: i32,
     pub cheatmode: bool,
+    /// Healing station in use (`gamestate + 0x42`, DS:0x873E).
+    pub station: i16,
     pub maxammo: i16,
     pub maxhealth: i16,
     pub armor: i16,

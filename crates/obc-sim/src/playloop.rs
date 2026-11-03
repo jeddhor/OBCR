@@ -19,9 +19,12 @@ impl World {
         player::apply_controls(self, cmd);
         player::pre_actors(self);
 
+        // 1942:15dd–15f1: an empty routine (30d6:000d), MoveDoors, MovePWalls,
+        // MoveAnimWalls, then the healing stations.
         self.move_doors();
         self.move_pwalls();
         self.move_anim_walls();
+        player::heal_stations(self);
 
         // Actors in list order, starting with the player.
         self.actorpos = [0; crate::world::MAXACTORS];

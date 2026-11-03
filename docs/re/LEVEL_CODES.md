@@ -89,7 +89,7 @@ CONFIRMED (disassembly `1823:0919–0bfc`). Differences from `WOLFSRC/WL_GAME.C:
 `PrepareLevel` (`2f4d:0167`), CONFIRMED:
 - Clears the animated-wall list (`DS:0xE7A8 = 0`), `DS:0xE7B2 = 0`, and 200 bytes at `DS:0x94ED`.
 - If not `loadedgame`: `sprintf(DS:0x8756, "%d", mapon+1)` (floor number for the status bar), `DS:0x872C = DS:0x8742 = 100`, **health (`DS:0x870C`) = min(health, maxhealth[gametype])** with `maxhealth` at `DS:0x32EC` = {400, 400, 400, 400, 800, 800}; resets `DS:0x871C`, `DS:0x8724`, folds `DS:0x8778`/`0x877E` into running long totals, clears `DS:0xC3CC` and `DS:0xCD87`.
-- Builds a 64×64 bit map at `DS:0xE093` (512 bytes, bit masks at `DS:0x3258`): a bit is set for every solid wall whose plane-1 value is not 107, and for every open or door cell whose plane-1 word has bit 15 set; bit 15 is then cleared. This is the wall layer of the automap (Map ThermoSensor, [ACTORS.md](ACTORS.md) §4 and Q-027): LIKELY.
+- Builds a 64×64 bit map at `DS:0xE093` (512 bytes, bit masks at `DS:0x3258`): a bit is set for every solid wall whose plane-1 value is not 107, and for every open or door cell whose plane-1 word has bit 15 set; bit 15 is then cleared. This is the wall layer of the Tab overhead map ([RENDERER.md](RENDERER.md) §9.2): CONFIRMED. "Solid" means `tilemap` 1–0x7F: plane-0 codes 128–139 (including ambush 138) have bit 7 set and take the door test, so they are not drawn.
 
 ---
 
@@ -348,7 +348,7 @@ Weapon numbering and exact amounts belong to [PLAYER.md](PLAYER.md); the table a
 | 103, 124 | 6 | 69 (508), 29, 49, 65, 13, door cells 132/133, ladder 113 | **Openable door-look wall**, closed; drawn thin with transparency; opaque to `CheckLine`. 124 is unused. |
 | 107 | 2 | 4, 88, 80 | Always open and passable, drawn thin: openings with transparent centres (page 3 pipe mouth, page 87 rock hole, page 79); transparent to `CheckLine`; excluded from the automap. |
 
-States (`MoveAnimWalls` `2f4d:0978`): 1 closed → Use → 2 opening (frame 0: `ConnectAnimWallAreas(open)` unless the tile is 85; `tilemap++` each frame to frame 3; then state 0 and `actorat = 0`); 0 open → Use → if `actorat` is empty, state 3 and `actorat = 1` → closing (`tilemap--` each frame; at frame 0 state 1, `ConnectAnimWallAreas(close)`). State 4 ignores Use. Animation advances one frame per call (per refresh, not per tic): LIKELY, timing to confirm. Unlike Wolf3D doors they **never close by themselves**. CONFIRMED.
+States (`MoveAnimWalls` `2f4d:0978`): 1 closed → Use → 2 opening (frame 0: `ConnectAnimWallAreas(open)` unless the tile is 85; `tilemap++` each frame to frame 3; then state 0 and `actorat = 0`); 0 open → Use → if `actorat` is empty, state 3 and `actorat = 1` → closing (`tilemap--` each frame; at frame 0 state 1, `ConnectAnimWallAreas(close)`). State 4 ignores Use. The full rule of `OperateAnimWall` (`2f4d:08e8`, CONFIRMED): the first record on the tile decides; state 0 or 2 → state 3 and `actorat = 1` if `actorat` is empty (an opening wall still holds its wall marker, so in practice only state 0 closes); state 4 → nothing; every other state (1, 3, 5–7) → state 2, so a second Use reopens a closing wall. Animation advances one frame per call (per refresh, not per tic): LIKELY, timing to confirm. Unlike Wolf3D doors they **never close by themselves**. CONFIRMED.
 
 `ConnectAnimWallAreas` (`2f4d:054a`) picks the two neighbours across the wall (east/west if both are open in `tilemap`, otherwise north/south), subtracts 140, checks 0–21 (`Quit(701/702)`), adjusts `areaconnect[a][b]` and `[b][a]` by ±1 and calls `ConnectAreas`. CONFIRMED.
 

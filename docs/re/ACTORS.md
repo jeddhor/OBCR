@@ -96,7 +96,7 @@ DoActor deltas (all CONFIRMED, `ghidra 1942:10f5`):
 1. **BEWITCHED freeze.** If `DS:0x3306` (cheat toggle, messages `BEWITCHED` / `BEWITCHED OFF` at `DS:0x341D`/`0x340F`, toggled by `ghidra 30d6:0456`) is set, a jump table on `obclass-1` (`1942:12e1`) returns immediately for classes 2–4, 6–17, 22, 23 (all enemies). Player, ally, flame, grenade, slime ball, fire, explosion, sparkle and face (classes 1, 5, 18–21, 24–26) keep running. KillActor turns BEWITCHED off when it is on (`1e43:1382`).
 2. `actorpos[i] = 0` (`DS:0x94ED`, 100 words) before the usual `if (!active && !areabyplayer[area]) return`.
 3. If `difficulty >= 4`, `FUN_358f_19fd(i, ob)` (network sync) after clearing `actorat`.
-4. If `obclass != 5 && ob != player`: `actorpos[i] = tilex<<8 | tiley`. The automap/radar (`ghidra 2f4d:0e53`) draws these when `DS:0x873C` (debug) or `DS:0x3304` is set; this is probably the Map ThermoSensor (Q-027, HYPOTHESIS). Note: it includes projectiles, fires and corpses.
+4. If `obclass != 5 && ob != player`: `actorpos[i] = tilex<<8 | tiley`. The Tab overhead map (`ghidra 2f4d:0d31`, dots at `2f4d:0e53`) draws these in colour 1 when `DS:0x873C` (BOGUS MODE) or `DS:0x3304` (the Map ThermoSensor item) is set, in single player only (CONFIRMED, [RENDERER.md](RENDERER.md) §9.2; Q-027). Note: it includes projectiles, fires and corpses.
 5. The think/action/next loop is identical to Wolf3D.
 
 ---

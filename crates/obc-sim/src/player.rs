@@ -14,11 +14,13 @@
 //!
 //! 1. `PollControls` → [`apply_controls`].
 //! 2. Walk bob and knock-back, `madenoise = 0` → [`pre_actors`].
-//! 3. `MoveDoors`, `MovePWalls`, `MoveAnimWalls`, healing stations.
+//! 3. `MoveDoors`, `MovePWalls`, `MoveAnimWalls`, healing stations
+//!    ([`heal_stations`], 2f4d:06ec).
 //! 4. `DoActor` for every object (the player's think is [`t_player`] /
 //!    [`t_attack`]).
-//! 5. Palette shifts, `ThreeDRefresh` (the visibility pass sets `FL_VISABLE`,
-//!    `viewx`, `transx` and calls [`get_bonus`] for touched items).
+//! 5. Palette shifts, `ThreeDRefresh` (the visibility pass calls
+//!    [`start_wall_hit_at`] while fire is held, sets `FL_VISABLE`, `viewx`,
+//!    `transx` and calls [`get_bonus`] for touched items).
 //! 6. `TimeCount += tics`, sound updates, the quake counter (DS:0x09D8, one
 //!    `US_RndT` when it runs out).
 //! 7. Wall-break animation and the health cap → [`post_actors`].
@@ -31,11 +33,16 @@
 mod interact;
 mod items;
 mod movement;
+mod stations;
 mod weapons;
 
 pub use items::{
     add_screen_splat, clear_screen_splats, get_bonus, give_points, heal_self, start_bonus_flash,
     start_damage_flash, take_damage,
+};
+pub use stations::{
+    HEALING, HealStation, MAXSTATIONS, STATION_ANGLE, STATION_POOL, Stations, TURNING,
+    heal_stations, spawn_heal_station, start_heal_station,
 };
 pub use weapons::{give_clip, give_weapon, start_wall_hit_at, t_attack};
 
@@ -126,7 +133,9 @@ pub struct PlayerState {
     pub gunhit: bool,
     /// `exitkind` (DS:0x0922): 0 ladder/stairs (`F3`), 1 elevator (`F4`).
     pub exitkind: i16,
-    /// Tab map overlay (DS:0xC3CC): 0 off, then 1, then -1 (stays until the next level).
+    /// Tab map overlay (DS:0xC3CC): Tab steps 0 → 1 (drawn) → -1; the next
+    /// `ThreeDRefresh` turns -1 into 0 ([`World::visibility_pass`]), so Tab
+    /// toggles the map on and off.
     pub map_overlay: i16,
     /// `TREMORS` option (DS:0x0D44, default 1).
     pub tremors: bool,
@@ -145,6 +154,8 @@ pub struct PlayerState {
     /// [`TicCmd`] has no raw keys, so these come from the sign of `controly`.
     pub key_forward: bool,
     pub key_backward: bool,
+    /// Healing stations (2f4d:064a–0846; unreachable in OBC-A).
+    pub stations: Stations,
 }
 
 impl Default for PlayerState {
@@ -173,6 +184,7 @@ impl Default for PlayerState {
             cmd: TicCmd::default(),
             key_forward: false,
             key_backward: false,
+            stations: Stations::default(),
         };
         // Default `viewsize` 16 (CONFIG.DAT default, docs/re/GAMEFLOW.md §10):
         // 256×128 as in Wolf3D's `NewViewSize`; the presentation layer sets
@@ -574,6 +586,9 @@ pub fn setup_level_player_state(w: &mut World) {
         return;
     }
     let gs = &mut w.gamestate;
+    // *ClearFloorItems* (2f4d:049f): item flags bits 0-6 (the carried-item
+    // records DS:0x875A and their count are not modelled).
+    gs.itemflags &= 0xFF80;
     gs.fuel_cap = 100;
     gs.maxhealth = 100;
     let start = starthealth(gs.difficulty);
