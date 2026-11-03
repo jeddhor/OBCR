@@ -22,6 +22,9 @@ pub struct GameSettings {
     pub gametype: i16,
     /// VIEW SIZE: 12, 14, 16, 18 or 20.
     pub viewsize: u16,
+    /// The `nsr250` parameter: Alt+LShift+B enables bogus mode in game.
+    #[serde(skip)]
+    pub nsr250: bool,
     /// `quicksaveslot` (DS:0x420): the slot last saved from the menu, for F9.
     pub quicksave_slot: Option<u8>,
     /// The high-score table (the original keeps it in `CONFIG.DAT`); empty
@@ -39,7 +42,7 @@ pub struct Score {
 
 impl Default for GameSettings {
     fn default() -> Self {
-        Self { gametype: 1, viewsize: 18, quicksave_slot: None, scores: Vec::new() }
+        Self { gametype: 1, viewsize: 18, nsr250: false, quicksave_slot: None, scores: Vec::new() }
     }
 }
 

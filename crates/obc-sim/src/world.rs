@@ -282,6 +282,23 @@ pub struct TicCmd {
     pub turn: i16,
     /// W: wipe the visor (`ClearScreenSplats`).
     pub wipe_visor: bool,
+    /// Bogus-mode keys (GAMEFLOW §11.1), edge-triggered.
+    pub cheat: Cheat,
+}
+
+/// The bogus-mode keys (`nsr250` parameter): Alt+LShift+B turns bogus mode
+/// on; then Alt+R/I/H/B/W.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum Cheat {
+    #[default]
+    None,
+    Bogus,
+    Restock,
+    Invincible,
+    HealthHelp,
+    Bewitched,
+    /// Warp to floor `n` (1–40 or 51–60).
+    Warp(u8),
 }
 
 /// The whole simulated world. Saved games serialize it (crate::save); the

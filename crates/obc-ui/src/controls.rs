@@ -17,7 +17,7 @@
 //!   Y ally mode, D-pad down wipe, Back map, LT/L3 run.
 
 use obc_core::input::{InputState, pad, sc};
-use obc_sim::world::{NUMBUTTONS, TicCmd, World, bt};
+use obc_sim::world::{Cheat, NUMBUTTONS, TicCmd, World, bt};
 
 use crate::settings::InputSettings;
 
@@ -26,7 +26,9 @@ const RUNMOVE: i32 = 70;
 
 /// Scan codes not in `obc_core::input::sc`.
 mod key {
+    pub const B: u8 = 0x30;
     pub const C: u8 = 0x2E;
+    pub const R: u8 = 0x13;
     pub const F: u8 = 0x21;
     pub const V: u8 = 0x2F;
     pub const Z: u8 = 0x2C;
@@ -48,6 +50,8 @@ pub struct UiKeys {
     pub quicksave: bool,
     pub sound_toggle: bool,
     pub music_toggle: bool,
+    /// Alt+W in bogus mode: open the ` FLOOR: ` prompt.
+    pub warp: bool,
 }
 
 #[derive(Debug, Default)]
@@ -61,12 +65,14 @@ pub struct Controls {
     tremors: bool,
     wipe: bool,
     weapon_step: i8,
+    cheat: Cheat,
     ui: UiKeys,
 }
 
 impl Controls {
     /// Call every tic with that tic's input.
-    pub fn accumulate(&mut self, input: &InputState, s: &InputSettings) {
+    /// `nsr250`: the cheat parameter was given (Alt+LShift+B allowed).
+    pub fn accumulate(&mut self, input: &InputState, s: &InputSettings, nsr250: bool) {
         let modern = s.profile != "original";
         self.mouse_dx += input.mouse_dx;
         let (now, _) = self.buttons(input, s);
@@ -75,6 +81,26 @@ impl Controls {
         }
         let p = |c| input.pressed(c);
         let pp = |b| input.pad_pressed(b);
+        // Alt combinations are the bogus-mode keys (GAMEFLOW §11.1); while Alt
+        // is down the plain letter keys do nothing else.
+        if input.down(sc::ALT) {
+            if input.down(sc::LSHIFT) {
+                if p(key::B) && nsr250 {
+                    self.cheat = Cheat::Bogus;
+                }
+            } else if p(key::R) {
+                self.cheat = Cheat::Restock;
+            } else if p(sc::I) {
+                self.cheat = Cheat::Invincible;
+            } else if p(sc::H) {
+                self.cheat = Cheat::HealthHelp;
+            } else if p(key::B) {
+                self.cheat = Cheat::Bewitched;
+            } else if p(sc::W) {
+                self.ui.warp = true;
+            }
+            return;
+        }
         if modern {
             self.ally_switch |= p(sc::Q) || pp(pad::WEST);
             self.ally_stay |= p(key::Z) || pp(pad::EAST);
@@ -233,6 +259,7 @@ impl Controls {
         cmd.ally_mode = self.ally_mode;
         cmd.toggle_tremors = self.tremors;
         cmd.wipe_visor = self.wipe;
+        cmd.cheat = self.cheat;
         if self.weapon_step != 0
             && let Some(next) = cycle_weapon(w, self.weapon_step)
         {

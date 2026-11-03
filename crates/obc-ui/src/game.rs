@@ -98,6 +98,9 @@ pub struct Game {
     music: bool,
     /// Overhead-map player blink (DS:0x3272), toggled each drawn frame.
     map_blink: bool,
+    /// The bogus-mode warp prompt being typed, and the warp it produced.
+    warp_prompt: Option<String>,
+    pending_cheat: obc_sim::world::Cheat,
     /// Enhanced interpolation: player pose and actor positions at the last
     /// frame boundary, and whether it is enabled.
     prev_pose: (i32, i32, i16),
@@ -142,6 +145,8 @@ impl Game {
             viewsize: 18,
             music: true,
             map_blink: false,
+            warp_prompt: None,
+            pending_cheat: obc_sim::world::Cheat::None,
             prev_pose: (0, 0, 0),
             prev_objs: Vec::new(),
             interpolate: false,
@@ -365,6 +370,11 @@ impl Game {
                 self.world.quake = 0;
                 self.phase = Phase::Victory(0);
             }
+            ex::WARPED => {
+                // The warp keeps the player's state (GAMEFLOW §5.6); no sequence.
+                ctx.audio.send(AudioCommand::StopMusic);
+                self.start_level(ctx);
+            }
             ex::COMPLETED => {
                 ctx.audio.send(AudioCommand::StopMusic);
                 // AutoSave before `mapon` advances (GAMEFLOW §9.3).
@@ -420,13 +430,38 @@ impl Screen for Game {
             self.sound.set_channels(ctx.settings.audio.channels);
             self.start_music(ctx);
         }
-        self.controls.accumulate(ctx.input, &ctx.settings.input);
+        if let Some(text) = &mut self.warp_prompt {
+            // ` FLOOR: ` (1942:0b4a): two digits, Enter to warp, Esc to cancel.
+            let input = ctx.input;
+            for c in input.text.chars().filter(char::is_ascii_digit) {
+                if text.len() < 2 {
+                    text.push(c);
+                }
+            }
+            if input.pressed(obc_core::input::sc::BACKSPACE) {
+                text.pop();
+            }
+            if input.pressed(obc_core::input::sc::ENTER) {
+                let n = text.parse::<u8>().unwrap_or(0);
+                self.warp_prompt = None;
+                ctx.requests.text_input = Some(false);
+                self.pending_cheat = obc_sim::world::Cheat::Warp(n);
+            } else if input.pressed(obc_core::input::sc::ESCAPE) {
+                self.warp_prompt = None;
+                ctx.requests.text_input = Some(false);
+            }
+            return Transition::None;
+        }
+        self.controls.accumulate(ctx.input, &ctx.settings.input, ctx.settings.game.nsr250);
         self.odd_tic = !self.odd_tic;
         if self.odd_tic {
             return Transition::None;
         }
-        let (cmd, ui) =
+        let (mut cmd, ui) =
             self.controls.build(ctx.input, &ctx.settings.input, &self.world, FRAME_TICS);
+        if self.pending_cheat != obc_sim::world::Cheat::None {
+            cmd.cheat = std::mem::take(&mut self.pending_cheat);
+        }
         self.interpolate = ctx.settings.video.interpolate;
         self.capture_prev();
 
@@ -472,6 +507,11 @@ impl Screen for Game {
                         ctx.audio.send(AudioCommand::PauseMusic(true));
                     }
                     self.hud.message(if self.music { "MUSIC ON" } else { "MUSIC OFF" }.into());
+                }
+                if ui.warp && self.world.gamestate.cheatmode {
+                    self.warp_prompt = Some(String::new());
+                    ctx.requests.text_input = Some(true);
+                    return Transition::None;
                 }
                 if ui.quicksave && self.world.gamestate.difficulty <= 4 {
                     self.quick_save(ctx);
@@ -637,6 +677,9 @@ impl Screen for Game {
         }
         if self.paused {
             draw_box(out.layer, a, "PAUSE");
+        }
+        if let Some(t) = &self.warp_prompt {
+            draw_box(out.layer, a, &format!(" FLOOR: {t}_"));
         }
 
         let pal = self.view_palette(a);

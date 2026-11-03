@@ -57,9 +57,11 @@ Append one line per completed task or notable event: `YYYY-MM-DD — <task> — 
 - 2026-11-02 — M1–M11 — Engine, renderer, audio, simulation (player, enemies, allies), front end and persistence implemented; three parallel agents merged (player 6bfe0cb, allies 09344bb, actors 8faa675) — `cargo xtask ci` and `cargo xtask test-data` pass.
 - 2026-11-02 — M12 — Soak test plays maps 0–22 at game types 0–3 for 2,500 frames each without panics or faults; every first-episode exit is reachable; save/load continues bit-identically; UI flow tests cover floor change, load and death. Fixed: the player was not objlist[0] (maps with an actor before the start lost the player's think).
 
+- 2026-11-02 — M7/M8/M10 — Healing stations, shootable-wall search and overhead map (agent 6f10c71); grenade tremors fixed (actors had a private DS:0x09D8); enemies operate door-look walls; Tab map; bogus-mode cheats; F1/F2 toggles; victory screen; Enhanced smooth motion — 33 test suites pass.
+
 ## Known gaps (first episode)
 
-- Healing stations, the shootable-wall search in the floor pass, and the Tab overhead map / ThermoSensor overlay: RE and port in progress (agent task).
-- Cheats and debug keys (bogus mode, Alt keys) not wired to the tic command yet.
 - No DOSBox-X trace comparison yet: behaviour follows the disassembly, unverified against the original at run time.
 - Not shipped by the original release: sequences F1, F5, F7 (skipped, as the original does).
+- Debug keys (`vfr750hondarc45`, Backspace) not ported; the bogus-mode cheats are (`--nsr250`).
+- Healing stations are ported but, as in OBC-A, nothing can start them (PLAYER.md §9).

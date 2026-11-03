@@ -197,3 +197,30 @@ fn every_first_episode_exit_is_reachable() {
     }
     assert!(unreachable.is_empty(), "no reachable exit on maps {unreachable:?}");
 }
+
+/// The bogus-mode keys do nothing until bogus mode is on (GAMEFLOW §11.1).
+#[test]
+fn bogus_mode_keys() {
+    use obc_sim::world::Cheat;
+    let Some((data, trig, maps)) = load() else {
+        eprintln!("skipped: OBC_DATA_DIR not set");
+        return;
+    };
+    let map = maps.map(0).unwrap().unwrap();
+    let mut w = World::new(data, trig);
+    player::new_game(&mut w, 1);
+    w.setup_game_level(&map, 0);
+    w.start_play_loop();
+    let cmd = |cheat| TicCmd { cheat, ..TicCmd::default() };
+    w.frame(&cmd(Cheat::Restock), 2);
+    assert_eq!(w.gamestate.clips, [2, 0, 0, 0], "no restock without bogus mode");
+    w.frame(&cmd(Cheat::Bogus), 2);
+    assert!(w.gamestate.cheatmode && w.thermosensor);
+    w.frame(&cmd(Cheat::Restock), 2);
+    assert_eq!(w.gamestate.clips, [19; 4]);
+    assert_eq!(w.gamestate.weapons & 0x1E, 0x1E);
+    w.frame(&cmd(Cheat::Invincible), 2);
+    assert!(w.godmode);
+    w.frame(&cmd(Cheat::Warp(7)), 2);
+    assert_eq!((w.playstate, w.gamestate.mapon), (ex::WARPED, 6));
+}

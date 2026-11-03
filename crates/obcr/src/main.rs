@@ -47,6 +47,9 @@ struct Cli {
     /// Developer: start a new game directly on this map (0-based).
     #[arg(long)]
     play: Option<i16>,
+    /// The original's cheat parameter: Alt+LShift+B in game turns on bogus mode.
+    #[arg(long)]
+    nsr250: bool,
     /// Game type for `--play`: 0–2 difficulty, 3 Random.
     #[arg(long, default_value_t = 1)]
     difficulty: i16,
@@ -105,6 +108,7 @@ fn run() -> Result<()> {
     let cfg_path = config_path(&cli);
     let saves = save_dir(&cli);
     let mut settings = Settings::load(&cfg_path);
+    settings.game.nsr250 = cli.nsr250;
     if cli.classic {
         settings.video.mode = "classic".into();
     }

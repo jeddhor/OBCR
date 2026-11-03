@@ -49,7 +49,9 @@ pub use weapons::{give_clip, give_weapon, start_wall_hit_at, t_attack};
 use crate::allies;
 use crate::data::S_PLAYER;
 use crate::events::SimEvent;
-use crate::world::{AREATILE, NUMAREAS, NUMBUTTONS, ObjId, TicCmd, World, bt, class, ex, fl};
+use crate::world::{
+    AREATILE, Cheat, NUMAREAS, NUMBUTTONS, ObjId, TicCmd, World, bt, class, ex, fl,
+};
 
 /// Rounds in one magazine (`gamestate.ammo` after a reload).
 pub const MAGAZINE: i16 = 30;
@@ -487,8 +489,8 @@ pub fn post_actors(w: &mut World) {
 /// F8 toggles `TREMORS`; the ally keys go to [`allies::handle_keys`]. Like the
 /// original's else-if chain, one key is handled per frame.
 ///
-/// TODO(M7): debug keys and the bogus-mode cheats (`RESTOCK`, `INVINCIBLE`,
-/// `HEALTH HELP`, `BEWITCHED`, warp) need tic-command fields first.
+/// The bogus-mode keys arrive as [`TicCmd::cheat`]. The debug keys
+/// (Backspace, `vfr750hondarc45`) are not ported.
 #[doc(alias = "CheckKeys")]
 pub fn check_keys(w: &mut World) {
     // DELTA-UNCHECKED: only the F8 and ally branches of 1942:04ea were read;
@@ -511,7 +513,54 @@ pub fn check_keys(w: &mut World) {
     }
     if cmd.wipe_visor {
         clear_screen_splats(w);
+        return;
     }
+    cheat_keys(w, cmd.cheat);
+}
+
+/// Bogus mode and its keys (GAMEFLOW §11.1; 30d6:0350, 30d6:038c, 30d6:03e3,
+/// 30d6:041c, 30d6:0456, warp 1942:0b4a). Single player only.
+fn cheat_keys(w: &mut World, cheat: Cheat) {
+    if cheat == Cheat::None || w.gamestate.difficulty >= 4 {
+        return;
+    }
+    if cheat == Cheat::Bogus {
+        w.gamestate.cheatmode = true;
+        w.thermosensor = true;
+        message(w, "BOGUS MODE");
+        return;
+    }
+    if !w.gamestate.cheatmode {
+        return;
+    }
+    match cheat {
+        Cheat::Restock => {
+            for weapon in 1..=4 {
+                give_weapon(w, weapon);
+            }
+            w.gamestate.clips = [MAXCLIPS; 4];
+            message(w, "RESTOCK");
+        }
+        Cheat::Invincible => {
+            w.godmode = !w.godmode;
+            message(w, if w.godmode { "INVINCIBLE" } else { "VULNERABLE" });
+        }
+        Cheat::HealthHelp => {
+            let cap = starthealth(w.gamestate.difficulty);
+            w.gamestate.health = (w.gamestate.health + 10).min(cap);
+            message(w, "HEALTH HELP");
+        }
+        Cheat::Bewitched => {
+            w.bewitched = !w.bewitched;
+            message(w, if w.bewitched { "BEWITCHED" } else { "BEWITCHED OFF" });
+        }
+        Cheat::Warp(n) if (1..=40).contains(&n) || (51..=60).contains(&n) => {
+            w.gamestate.mapon = i16::from(n) - 1;
+            w.playstate = ex::WARPED;
+        }
+        _ => {}
+    }
+    hud(w);
 }
 
 /// The player resets at the start of `PlayLoop` (ghidra 1942:1315–151e,
