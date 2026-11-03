@@ -1,0 +1,38 @@
+# Build output
+/target/
+**/*.rs.bk
+
+# Machine-local workspace: Ghidra project, DOSBox-X runtime dirs, captures, traces, exports, test output
+/.local/
+
+# Original game data must never be committed (ADR-005)
+*.BC
+*.bc
+*.WL1
+*.WL6
+*.SOD
+*.SAV
+*.sav
+COUNT.EXE
+count.exe
+CONFIG.DAT
+config.dat
+BC.LOG
+bc.log
+DEBUG.TXT
+
+# Ghidra artifacts outside .local (Cargo.lock must stay tracked)
+*.gpr
+*.rep/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Editors and OS
+.vs/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
