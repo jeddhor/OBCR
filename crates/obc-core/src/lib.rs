@@ -4,6 +4,7 @@
 pub mod fixed;
 pub mod input;
 pub mod rng;
+pub mod trig;
 
 /// Simulation tics per second (`TICRATE`).
 pub const TICRATE: u32 = 70;

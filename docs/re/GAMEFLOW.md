@@ -157,8 +157,8 @@ All parameters are matched case-insensitively after skipping leading non-letters
 3. If `nopics`: set DS:0x29A and go to step 9.
 4. `introshown = 1`; `PlaySequence("F1")` (`F1.BC` is not shipped, so nothing plays); memory housekeeping.
 5. `SetPaletteMode(3)`; fade out; `CA_CacheScreen(4)` = **pic 1** (story text over soldiers); fade in over **65 steps**; `IN_UserInput(275)` (≈3.9 s, a key skips).
-6. Fade out; `CA_CacheScreen(5)` = **pic 2** (title logo); fade in in 1 step; `SD_PlaySound(86)` (3.9 s digitized burst); `IN_UserInput(100)`.
-7. `TitleSplats` (1497:15ca): draws pic 20 (16×16 red splat) nine times at random positions (four screen quadrants, `x = rnd % 125` or `300 − rnd % 125`, `y = rnd % 60` or `180 − rnd % 60`), with random pauses of `rnd % 10`, `% 20` or `% 30` tics between some of them. Uses 18–22 `US_RndT` calls (they advance the shared RNG index).
+6. Fade out; `CA_CacheScreen(5)` = **pic 2** (title logo); fade in in 1 step; `SD_PlaySound(86)` (a 3.9 s digitized sound, presumably the gunfire that goes with the splats); `IN_UserInput(100)`.
+7. `TitleSplats` (1497:15ca): draws pic 20 (16×16 red splat) nine times at random positions (four screen quadrants, `x = rnd % 125` or `300 − rnd % 125`, `y = rnd % 60` or `180 − rnd % 60`), with random pauses of `rnd % 10`, `% 20` or `% 30` tics after splats 1, 2, 3, 5, 6 and 7. That is 24 `US_RndT` calls (x then y per splat, plus six pauses); they advance the shared RNG index.
 8. `IN_UserInput(210)` (3 s); fade out.
 9. Loop forever: fade out, `US_ControlPanel(0)`; when it returns with `startgame` or `loadedgame` set, run `GameLoop`, then fade out.
 
@@ -215,7 +215,7 @@ Item info (DS:0x3D2): `amount = 10`, current position at DS:0x3D4. The last sele
 - Up/Down: move to the previous/next **active** item, wrapping at both ends; `SD_PlaySound(85)` and `TicDelay(20)` per step.
 - Typing a letter jumps to the next active item with that hotkey (searching forward, then from the top).
 - Select: Space, Enter, or button 0 (Alt is cleared). Back: Esc or button 1 → returns −1.
-- `H` (Keyboard[0x23]) in the main menu returns 0x65: **help screen** = `CA_CacheScreen(6)` (**pic 3**, default keys) shown with `FizzleFade` (5 frames per step), wait for a key, redraw the menu. CONFIRMED that pic 3 is shown this way; the guard is an `_fmemcmp` against the main-menu table (LIKELY: only in the main menu).
+- `H` (Keyboard[0x23]) in the main menu returns 0x65: **help screen** = `CA_CacheScreen(6)` (**pic 3**, default keys) shown with `FizzleFade` over 5 frames, wait for a key, redraw the menu. CONFIRMED that pic 3 is shown this way; the guard is an `_fmemcmp` against the main-menu table (LIKELY: only in the main menu).
 - With the `vfr750hondarc45` parameter, holding Tab+P calls 1adb:06f5, an empty function.
 
 ### 4.4 Sub-screens
@@ -236,7 +236,7 @@ Item info (DS:0x3D2): `amount = 10`, current position at DS:0x3D4. The last sele
 
 **EXIT TO DOS** (1618:13cb): `Confirm("BACK TO DOS ")`; Yes: network shutdown (game type ≥ 4), stop sounds and music, silence AdLib, `Quit(NULL)`.
 
-`Quit(NULL)` (1497:121d), LIKELY: unless `nopics`, fade out, `CA_CacheScreen(8)` = **pic 5** (city with lightning), palette mode 3, fade in (50 steps), wait 70 tics, then `CA_CacheScreen(9)` = **pic 6** (credits) via `FizzleFade` (25 frames per step), wait 70 tics, fade out; `WriteConfig`; print `BC Done.`; exit code 0. `Quit(message)` (an error): if in game, **AutoSave first**; print `BC exited on its own.`, `Game Saved in AutoSave Slot.` (only if in game) and `Report written to "BC.LOG".`; append `\nBC ERROR: ` + message to `bc.log`; exit code 1. If `playstate == ex_victorious` at that moment, it exits with code 200 without writing anything.
+`Quit(NULL)` (1497:121d), LIKELY: unless `nopics`, fade out, `CA_CacheScreen(8)` = **pic 5** (city with lightning), palette mode 3, fade in (50 steps), wait 70 tics, then `CA_CacheScreen(9)` = **pic 6** (credits) via `FizzleFade` over 25 frames, wait 70 tics, fade out; `WriteConfig`; print `BC Done.`; exit code 0. `Quit(message)` (an error): if in game, **AutoSave first**; print `BC exited on its own.`, `Game Saved in AutoSave Slot.` (only if in game) and `Report written to "BC.LOG".`; append `\nBC ERROR: ` + message to `bc.log`; exit code 1. If `playstate == ex_victorious` at that moment, it exits with code 200 without writing anything.
 
 **LOAD GAME / SAVE GAME**: §9.
 
@@ -278,7 +278,7 @@ In single player, `TryExitFloor` (30d6:1bc0, LIKELY) applies two rules before se
 
 In network games the stairs tiles set `ex_completed` directly.
 
-Other `Cmd_Use` tiles: 0x5F/0x60 generator switch (`GENERATORS OFF` + palette 2 / `GENERATORS ON` + palette 1, sound 84; the tile toggles between the two values); 0x58 medic station (heals 25 if health is below DS:0x8742, message `Medic Pack`); 0x62 push wall (2281:0ce2); 0x0D/0x10, 0x1D/0x20, 0x31/0x34, 0x41/0x44/0x45/0x48 play sounds 81, 80, 78, 79 and clear the info-plane value at that tile; tile values with bit 7 are doors (2281:07f3).
+Other `Cmd_Use` tiles: 0x5F/0x60 generator switch (`GENERATORS OFF` + palette 2 / `GENERATORS ON` + palette 1, sound 84; the tile toggles between the two values); 0x58 medic station (heals 25 if health is below DS:0x8742, message `Medic Pack`); 0x62 push wall (2281:0ce2); 0x0D/0x10, 0x1D/0x20, 0x31/0x34, 0x41/0x44/0x45/0x48 play sounds 81, 80, 78, 79 and then clear the second map plane's value at that tile unless it is 0x67 or 0x6A (those call another routine instead); `tilemap` values with bit 7 set are doors (2281:07f3). Before the tile switch, `Cmd_Use` also runs a network gate (358f:198d, DS:0x95FF) whose meaning is UNKNOWN.
 
 ### 5.3 `ex_completed` (and `ex_secretlevel` 9) — CONFIRMED
 
@@ -286,7 +286,7 @@ Other `Cmd_Use` tiles: 0x5F/0x60 generator switch (`GENERATORS OFF` + palette 2 
 2. If game type < 4: **`AutoSave()`** (§9.3), *before* `mapon` advances.
 3. `VL_FadeOut(…, 100)`.
 4. Sequence: `mapon` 0–4 (sewers) → `F2`; `mapon` 22 (UN BLDG1 TOP) → `F5`; otherwise, in single player only, `exitkind` 0 → `F3`, 1 → `F4`.
-5. `VL_FadeOut(…, 2)`; single player: `SetPaletteMode(3)` and `ClearFloorItems` (2f4d:049f: clears the low 7 bits of DS:0x8712, which are probably keys/cards, and 30 bytes at DS:0x875A); network: 358f:1720.
+5. `VL_FadeOut(…, 2)`; single player: `SetPaletteMode(3)` and `ClearFloorItems` (2f4d:049f: clears the low 7 bits of DS:0x8712 = `gamestate + 0x16`, Wolf3D's `keys` offset, so LIKELY the key cards; and 30 bytes at DS:0x875A, UNKNOWN); network: 358f:1720.
 6. `mapon++`; **health += 35** with no cap here (only the per-frame cap of 999, so health can exceed the game type's maximum; the sample `SVGM0.SAV` has health 488 with maximum 400).
 7. Back to `restart`.
 
@@ -304,7 +304,7 @@ Network: 358f:0d7b, 358f:1796, `playstate = 0`, back to `restart` (respawn).
 
 The only writer of `playstate = 6` is `T_Victory` (2390:28d1), the think function of the last state in a death chain: states DS:0x1F8E → … → 0x1FFE, sprites 432–439, 15 tics each, the first state with action 2390:0c59 (death scream), the last (sprite 439, 0 tics, looping) setting `ex_victorious`. `KillActor` (1e43:1377 region) enters this chain with `GivePoints(1500)`. Sprite 432 shows a blond man in a long dark coat, matching Victor in `F6` (LIKELY Victor).
 
-`GameLoop` then: clears DS:0xD40 and DS:0x9D8; `IN_UserInput(1000)` (≈14 s or a key); `StopMusic`; `VictoryScreen` (2390:2877: wait for digitized sound, `CA_CacheScreen(10)` = **pic 7** (logo over a pipe) with `FizzleFade` (35 frames per step), `IN_UserInput(350)`, fade out 35 steps); `PlaySequence("F7")` (not shipped); fade; palette mode 3; `DrawHighScores(1)`; `IN_ClearKeysDown`; `IN_UserInput(1000)`; `playstate = 0`; return to the control panel. No credits roll here (the credits pic 6 appears on exit to DOS).
+`GameLoop` then: clears DS:0xD40 and DS:0x9D8; `IN_UserInput(1000)` (≈14 s or a key); `StopMusic`; `VictoryScreen` (2390:2877: wait for digitized sound, `CA_CacheScreen(10)` = **pic 7** (logo over a pipe) with `FizzleFade` over 35 frames, `IN_UserInput(350)`, fade out 35 steps); `PlaySequence("F7")` (not shipped); fade; palette mode 3; `DrawHighScores(1)`; `IN_ClearKeysDown`; `IN_UserInput(1000)`; `playstate = 0`; return to the control panel. No credits roll here (the credits pic 6 appears on exit to DOS).
 
 ### 5.6 Other exits
 
@@ -487,7 +487,7 @@ With `debugmode`, plain keys in `CheckKeys`:
 
 ### 11.3 Ordinary in-game keys handled by `CheckKeys` (for reference)
 
-Esc → control panel (the level music restarts from the beginning afterwards); F1/F2 sound/music toggles; F5 roof/floor on (DS:0x33D2 = 0); F6 off (= 2); F8 tremors toggle (`TREMORS ON/OFF`); F9 QuickSave; F10 quit prompt; H exact-health display toggle (DS:0xD46 bit 0); C crosshair toggle (DS:0xD46 bit 6); F change ally focus; A switch to ally (`SWITCH` or `NO ALLIES!`); S switch and stay (`STAYPUT & SWITCH`); W wipe visor; Pause shows `PAUSE` and stops the music until a key. Matches pic 3.
+Esc → control panel (ignored while DS:0xD40 and the tremors option DS:0xD44 are both set, presumably during a tremor; the level music restarts from the beginning afterwards); F1/F2 sound/music toggles; F5 roof/floor on (DS:0x33D2 = 0); F6 off (= 2); F8 tremors toggle (`TREMORS ON/OFF`); F9 QuickSave; F10 quit prompt; H exact-health display toggle (DS:0xD46 bit 0); C crosshair toggle (DS:0xD46 bit 6); F change ally focus; A switch to ally (`SWITCH` or `NO ALLIES!`); S switch and stay (`STAYPUT & SWITCH`); W wipe visor; Pause shows `PAUSE` and stops the music until a key. Matches pic 3.
 
 `president` is not a cheat (§1.3).
 

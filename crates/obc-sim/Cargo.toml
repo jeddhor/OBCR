@@ -13,3 +13,6 @@ obc-formats.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+obc-testdata.workspace = true
