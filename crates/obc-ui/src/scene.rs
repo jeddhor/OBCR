@@ -4,6 +4,9 @@ use obc_render::view3d::{DoorView, FloorParams, SpriteRef, WeaponView};
 use obc_sim::data::LevelTables;
 use obc_sim::world::{World, class, dir};
 
+/// Actor positions at the previous frame boundary, by object id.
+pub type PrevPositions = [Option<(i32, i32)>];
+
 /// Per-frame buffers the scene borrows.
 #[derive(Default)]
 pub struct SceneBuffers {
@@ -16,7 +19,7 @@ impl SceneBuffers {
     /// in list order after the player (the original's `vislist` order).
     /// `lerp`: previous actor positions by object id and the blend factor, to
     /// interpolate moving actors (Enhanced).
-    pub fn fill(&mut self, w: &World, lerp: Option<(&[Option<(i32, i32)>], f32)>) {
+    pub fn fill(&mut self, w: &World, lerp: Option<(&PrevPositions, f32)>) {
         self.doors.clear();
         self.doors.extend(w.doors.iter().map(|d| DoorView { position: d.position, page: d.kind }));
         self.sprites.clear();
