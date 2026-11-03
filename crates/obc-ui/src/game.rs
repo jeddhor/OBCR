@@ -47,6 +47,8 @@ enum After {
     NextLevel,
     /// Death or victory: the high-score check, then the menu.
     Scores,
+    /// After the victory picture: F7, then the scores.
+    Victory,
     Menu,
 }
 
@@ -462,7 +464,6 @@ impl Screen for Game {
                     return Transition::None;
                 }
                 let wait = wait + FRAME_TICS as u32;
-                self.sound.advance(1);
                 self.phase = if wait >= SCREAM_WAIT || !self.sound.digi_playing() {
                     // FinishPaletteShifts, lighting mode 1.
                     self.damagecount = 0;
@@ -499,6 +500,7 @@ impl Screen for Game {
                 Transition::None
             }
             Phase::Sequence(After::Menu) => Transition::Reset(crate::menu::main_menu(ctx.assets)),
+            Phase::Sequence(After::Victory) => self.push_sequence(ctx, "F7", After::Scores),
             Phase::Sequence(After::Scores) => {
                 // DrawHighScores(1): name entry if the score qualifies (not in bogus mode).
                 let g = &self.world.gamestate;
@@ -509,8 +511,10 @@ impl Screen for Game {
                 let t = t + FRAME_TICS as u32;
                 if t >= 1000 || ui.menu || cmd.buttons.iter().any(|&b| b) {
                     ctx.audio.send(AudioCommand::StopMusic);
-                    // F7 is not shipped; the victory picture follows (GAMEFLOW §5.5).
-                    return self.push_sequence(ctx, "F7", After::Scores);
+                    // VictoryScreen, then F7 (not shipped), then the scores (GAMEFLOW §5.5).
+                    self.sound.stop_all(ctx.audio);
+                    self.phase = Phase::Sequence(After::Victory);
+                    return Transition::Push(Box::new(crate::menu::VictoryPic::default()));
                 }
                 self.phase = Phase::Victory(t);
                 Transition::None

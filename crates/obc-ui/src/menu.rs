@@ -27,6 +27,7 @@ mod pic {
     pub const MENU: usize = 4;
     pub const CITY: usize = 5;
     pub const CREDITS: usize = 6;
+    pub const VICTORY: usize = 7;
     pub const CITY_BLUE: usize = 8;
     pub const SPLAT: usize = 20;
     pub const CURSOR_OFF: usize = 22;
@@ -249,7 +250,9 @@ enum Mode {
     ViewSize,
     GameType,
     Confirm(usize),
+    /// Pic 3 (the original keys), then OBCR's bindings for the current profile.
     Help(u32),
+    Keys(bool),
     FadeIn(u32),
 }
 
@@ -470,10 +473,15 @@ impl Menu {
                 }
             }
             Mode::Help(t) => {
-                if t > 5 && any_key(input) {
-                    self.mode = Mode::Items;
+                self.mode = if t > 5 && any_key(input) {
+                    Mode::Keys(ctx.settings.input.profile != "original")
                 } else {
-                    self.mode = Mode::Help(t + 1);
+                    Mode::Help(t + 1)
+                };
+            }
+            Mode::Keys(_) => {
+                if any_key(input) {
+                    self.mode = Mode::Items;
                 }
             }
         }
@@ -482,6 +490,10 @@ impl Menu {
 
     fn draw_menu(&mut self, a: &Assets, out: &mut Frame) {
         let pal = a.picpal;
+        if let Mode::Keys(modern) = self.mode {
+            draw_keys(out, a, modern);
+            return;
+        }
         if let Mode::Help(t) = self.mode {
             show_pic(out, a, pic::MENU);
             if let Some(h) = a.pics.get(pic::HELP) {
@@ -541,6 +553,59 @@ impl Menu {
             _ => pal,
         };
     }
+}
+
+/// The second help page: OBCR's bindings (keyboard profile and gamepad).
+fn draw_keys(out: &mut Frame, a: &Assets, modern: bool) {
+    out.frame.clear(0);
+    out.layer.clear(0);
+    out.layer_key = None;
+    let pal = a.gamepal;
+    out.layer.bar(4, 2, 312, 196, nearest(&pal, [16, 16, 56]));
+    let Some(font) = a.fonts.first() else { return };
+    let (hi, fg) = (nearest(&pal, [255, 220, 0]), nearest(&pal, [255, 255, 255]));
+    let title: &[u8] = if modern { b"MODERN CONTROLS" } else { b"ORIGINAL CONTROLS" };
+    draw_text(out.layer, font, title, 160 - text_width(font, title) / 2, 5, hi);
+    let rows: &[(&str, &str, &str)] = if modern {
+        &[
+            ("MOVE", "W S  ARROWS", "LEFT STICK"),
+            ("TURN", "MOUSE  ARROWS", "RIGHT STICK"),
+            ("STRAFE", "A D", "LEFT STICK"),
+            ("FIRE", "LMB  CTRL", "R TRIGGER"),
+            ("USE", "SPACE E RMB", "A"),
+            ("RUN", "SHIFT", "L TRIGGER"),
+            ("WEAPON", "1-5  WHEEL", "LB RB"),
+            ("ALLY SWITCH", "Q", "X"),
+            ("STAY+SWITCH", "Z", "B"),
+            ("ALLY MODE", "F", "Y"),
+            ("WIPE VISOR", "V", "DPAD DOWN"),
+            ("MAP", "TAB", "BACK"),
+            ("MENU", "ESC", "START"),
+        ]
+    } else {
+        &[
+            ("MOVE", "UP DOWN", "LEFT STICK"),
+            ("TURN", "LEFT RIGHT MOUSE", "RIGHT STICK"),
+            ("STRAFE", "ALT", "LEFT STICK"),
+            ("FIRE", "CTRL  LMB", "R TRIGGER"),
+            ("USE", "SPACE  MMB", "A"),
+            ("RUN", "SHIFT  RMB", "L TRIGGER"),
+            ("WEAPON", "1-5", "LB RB"),
+            ("ALLY SWITCH", "A", "X"),
+            ("STAY+SWITCH", "S", "B"),
+            ("ALLY MODE", "F", "Y"),
+            ("WIPE VISOR", "W", "DPAD DOWN"),
+            ("MAP", "TAB", "BACK"),
+            ("MENU", "ESC", "START"),
+        ]
+    };
+    for (i, (what, keys, pad)) in rows.iter().enumerate() {
+        let y = 22 + 13 * i as i32;
+        draw_text(out.layer, font, what.as_bytes(), 10, y, hi);
+        draw_text(out.layer, font, keys.as_bytes(), 110, y, fg);
+        draw_text(out.layer, font, pad.as_bytes(), 226, y, fg);
+    }
+    out.palette = pal;
 }
 
 // ---------------------------------------------------------------- load / save
@@ -851,6 +916,54 @@ impl Screen for HighScores {
             draw_text(out.layer, font, score.as_bytes(), 300 - w, y, c2);
         }
         out.palette = pal;
+    }
+}
+
+// ---------------------------------------------------------------- victory
+
+/// `VictoryScreen` (2390:2877): pic 7 by FizzleFade over 35 frames, held up
+/// to 350 tics (a key ends it), then a 35-step fade out.
+#[derive(Default)]
+pub struct VictoryPic {
+    t: u32,
+    fading: Option<u32>,
+}
+
+impl Screen for VictoryPic {
+    fn name(&self) -> &'static str {
+        "victory"
+    }
+
+    fn tick(&mut self, ctx: &mut Ctx) -> Transition {
+        self.t += 1;
+        if let Some(f) = &mut self.fading {
+            *f += 1;
+            return if *f >= 35 { Transition::Pop } else { Transition::None };
+        }
+        if self.t >= 70 + 350 || (self.t > 70 && any_key(ctx.input)) {
+            self.fading = Some(0);
+        }
+        Transition::None
+    }
+
+    fn draw(&mut self, a: &Assets, out: &mut Frame) {
+        out.frame.clear(0);
+        out.layer.clear(0);
+        out.layer_key = None;
+        if let Some(p) = a.pics.get(pic::VICTORY) {
+            let shown = (self.t / 2).min(35);
+            for y in 0..200 {
+                for x in 0..320 {
+                    if fizzle(x, y) % 35 < shown {
+                        out.layer.pixels[y * 320 + x] = p.pixels[y * 320 + x];
+                    }
+                }
+            }
+        }
+        out.palette = match self.fading {
+            Some(f) => faded(&a.picpal, f as i32, 35, [0, 0, 0]),
+            None => a.picpal,
+        };
     }
 }
 

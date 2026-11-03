@@ -10,8 +10,8 @@
 //!   mouse turns (`mx·10/(13−5)`), left fires, right runs (and walks forward,
 //!   as the original's mouse code does), middle uses.
 //! - **modern**: W/S move, A/D strafe while turning, mouse look, LMB fire,
-//!   RMB/Space/E use, Shift run (inverted by "always run"), Q/Z/F ally keys,
-//!   V wipe.
+//!   RMB/Space/E use, Shift run (inverted by "always run"), wheel or 1–5
+//!   weapons, Q/Z/F ally keys, V wipe.
 //! - **gamepad** (always on): left stick move/strafe, right stick turn, RT
 //!   fire, A use, LB/RB weapon cycle, X ally switch, B stay & switch,
 //!   Y ally mode, D-pad down wipe, Back map, LT/L3 run.
@@ -89,6 +89,10 @@ impl Controls {
         }
         if pp(pad::LEFT_SHOULDER) {
             self.weapon_step = -1;
+        }
+        // Mouse wheel: away from you selects the next weapon.
+        if input.wheel != 0 {
+            self.weapon_step = if input.wheel > 0 { 1 } else { -1 };
         }
         let ui = &mut self.ui;
         ui.menu |= p(sc::ESCAPE) || pp(pad::START);

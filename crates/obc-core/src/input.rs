@@ -102,6 +102,8 @@ pub struct InputState {
     pub mouse_dy: f32,
     /// Held mouse buttons: bit 0 left, bit 1 middle, bit 2 right.
     pub mouse_buttons: u8,
+    /// Wheel notches since the last frame (positive = away from the user).
+    pub wheel: i32,
     /// Gamepad state at the last pump.
     pub pad: GamepadState,
     /// Gamepad buttons at the previous frame (for edge detection).
@@ -117,6 +119,7 @@ impl Default for InputState {
             mouse_dx: 0.0,
             mouse_dy: 0.0,
             mouse_buttons: 0,
+            wheel: 0,
             pad: GamepadState::default(),
             pad_prev: 0,
         }
@@ -171,6 +174,7 @@ impl InputState {
         self.text.clear();
         self.mouse_dx = 0.0;
         self.mouse_dy = 0.0;
+        self.wheel = 0;
         self.pad_prev = self.pad.buttons;
     }
 }

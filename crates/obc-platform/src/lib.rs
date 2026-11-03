@@ -222,6 +222,10 @@ impl Platform {
                     input.mouse_dx += xrel;
                     input.mouse_dy += yrel;
                 }
+                Event::MouseWheel { integer_y, direction, .. } => {
+                    let flip = matches!(direction, sdl3::mouse::MouseWheelDirection::Flipped);
+                    input.wheel += if flip { -integer_y } else { integer_y };
+                }
                 Event::MouseButtonDown { mouse_btn, .. } => {
                     input.mouse_button(mouse_btn as u8, true)
                 }
