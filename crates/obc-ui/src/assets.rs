@@ -5,13 +5,19 @@ use obc_formats::exe::MzExe;
 use obc_formats::maps::{Compression, MapArchive};
 use obc_formats::release::{self, Identification};
 use obc_formats::vgagraph::{Font, GraphArchive, Pic, deplanarize};
+use std::sync::Arc;
+
+use obc_core::trig::Tables;
 use obc_formats::vswap::{DigiSound, PageFile, Shape};
 use obc_formats::{DataDir, FormatError, Result};
 use obc_render::palette::Palette;
 use obc_render::view3d::Textures;
+use obc_sim::data::GameData;
 
 /// File offset of the full-screen picture palette in `COUNT.EXE` (docs/re/DATA_FORMATS.md §9).
 const PICTURE_PALETTE: usize = 0x2E3B0;
+/// File offset of the dark palette (lighting mode 2).
+const DARK_PALETTE: usize = 0x2E0B0;
 /// First VGAGRAPH chunk holding a picture.
 const STARTPICS: usize = 3;
 
@@ -33,6 +39,12 @@ pub struct Assets {
     pub digi: Vec<Vec<u8>>,
     /// `GFXTILES.BC` digitized sounds.
     pub vswap_digi: Vec<DigiSound>,
+    /// Behavior tables read from `COUNT.EXE`.
+    pub game: Arc<GameData>,
+    /// Trig tables shared by simulation and renderer.
+    pub trig: Arc<Tables>,
+    /// Dark palette (generators off), `COUNT.EXE` file 0x2E0B0.
+    pub darkpal: Palette,
 }
 
 impl Assets {
@@ -84,6 +96,8 @@ impl Assets {
         )?;
         let audio = AudioArchive::parse(&data.read("AUDIOHED.BC")?, data.read("AUDIOT.BC")?)?;
         let digi = parse_audiomus(&data.read("AUDIOMUS.BC")?)?;
+        let game = Arc::new(GameData::load(&exe)?);
+        let darkpal = exe.palette(DARK_PALETTE)?;
         Ok(Self {
             data,
             release,
@@ -98,6 +112,9 @@ impl Assets {
             audio,
             digi,
             vswap_digi,
+            game,
+            trig: Arc::new(Tables::build()),
+            darkpal,
         })
     }
 }

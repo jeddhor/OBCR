@@ -511,7 +511,6 @@ dependencies = [
  "obc-core",
  "obc-formats",
  "obc-sim",
- "png",
 ]
 
 [[package]]

@@ -2,6 +2,7 @@
 
 pub mod assets;
 pub mod present;
+pub mod scene;
 pub mod screen;
 pub mod settings;
 pub mod viewer;
