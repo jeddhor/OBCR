@@ -331,6 +331,7 @@ pub fn apply_controls(w: &mut World, cmd: &TicCmd) {
     } else if w.controly < min {
         w.controly = min;
     }
+    w.controlx = w.controlx.saturating_add(cmd.turn);
     w.ply.cmd = *cmd;
 }
 
@@ -494,6 +495,10 @@ pub fn check_keys(w: &mut World) {
     }
     if cmd.ally_mode || cmd.ally_switch || cmd.ally_stay {
         allies::handle_keys(w, &cmd);
+        return;
+    }
+    if cmd.wipe_visor {
+        clear_screen_splats(w);
     }
 }
 

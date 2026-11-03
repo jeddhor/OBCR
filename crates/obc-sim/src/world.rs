@@ -270,6 +270,11 @@ pub struct TicCmd {
     /// `controlx` units (positive = right). The original profiles leave it 0
     /// and strafe through `buttons[bt::STRAFE]`.
     pub strafe: i16,
+    /// Modern controls: turning in `controlx` units added after PollControls'
+    /// ±100·tics clamp, so fast mouse turns are not limited.
+    pub turn: i16,
+    /// W: wipe the visor (`ClearScreenSplats`).
+    pub wipe_visor: bool,
 }
 
 /// The whole simulated world.

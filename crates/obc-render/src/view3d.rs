@@ -1210,36 +1210,80 @@ impl View3D {
         for (shape, off) in [(wv.left, off1), (wv.right, off1 + off2)] {
             let Some(sh) = tex.sprite(shape) else { continue };
             let (dy, dx) = decompose(off);
-            let (ox, oy) = (x0 + dx * k, y0 + dy * k);
-            let mut slinex = xcenter;
-            let mut srcx = 32i32;
-            loop {
-                srcx -= 1;
-                if srcx < i32::from(sh.left) {
-                    break;
-                }
-                let w = sc.width[srcx as usize];
-                if w == 0 {
-                    continue;
-                }
-                slinex -= w;
-                weapon_line(fb, ox, oy, slinex, w, sh, srcx as usize, &sc);
-            }
-            let mut slinex = xcenter;
-            let mut srcx = if sh.left < 31 { 31 } else { i32::from(sh.left) - 1 };
-            loop {
-                srcx += 1;
-                if srcx > i32::from(sh.right) {
-                    break;
-                }
-                let w = sc.width[srcx as usize];
-                if w == 0 {
-                    continue;
-                }
-                weapon_line(fb, ox, oy, slinex, w, sh, srcx as usize, &sc);
-                slinex += w;
-            }
+            simple_scale_shape(fb, x0 + dx * k, y0 + dy * k, xcenter, sh, &sc);
         }
+    }
+
+    /// Screen splats (`DrawScreenSplats` 30d6:10d5, RENDERER.md §6.2), drawn
+    /// with `SimpleScaleShape` (no ×1.1) centred on the view.
+    pub fn draw_splats(
+        &self,
+        fb: &mut Framebuffer,
+        x0: i32,
+        y0: i32,
+        splats: &[SplatView],
+        tex: &dyn Textures,
+    ) {
+        let k = self.k();
+        let base_w = i32::from(self.cfg.viewsize) * 16;
+        let vh0 = i32::from(self.cfg.viewsize) * 8;
+        for s in splats {
+            let Some(sh) = tex.sprite(s.shape) else { continue };
+            if s.height <= 0 {
+                continue;
+            }
+            let sc = Scaler::build(s.height * k, vh0 * k);
+            let xcenter = s.x * k + (self.w as i32 - base_w * k) / 2;
+            simple_scale_shape(fb, x0, y0, xcenter, sh, &sc);
+        }
+    }
+}
+
+/// One splat to draw: sprite, view-relative centre x and `SimpleScaleShape`
+/// height, both in original pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SplatView {
+    pub shape: u16,
+    pub x: i32,
+    pub height: i32,
+}
+
+/// `SimpleScaleShape`: columns 31→left and 32→right from `xcenter`, shade 0.
+fn simple_scale_shape(
+    fb: &mut Framebuffer,
+    ox: i32,
+    oy: i32,
+    xcenter: i32,
+    sh: &Shape,
+    sc: &Scaler,
+) {
+    let mut slinex = xcenter;
+    let mut srcx = 32i32;
+    loop {
+        srcx -= 1;
+        if srcx < i32::from(sh.left) {
+            break;
+        }
+        let w = sc.width[srcx as usize];
+        if w == 0 {
+            continue;
+        }
+        slinex -= w;
+        weapon_line(fb, ox, oy, slinex, w, sh, srcx as usize, sc);
+    }
+    let mut slinex = xcenter;
+    let mut srcx = if sh.left < 31 { 31 } else { i32::from(sh.left) - 1 };
+    loop {
+        srcx += 1;
+        if srcx > i32::from(sh.right) {
+            break;
+        }
+        let w = sc.width[srcx as usize];
+        if w == 0 {
+            continue;
+        }
+        weapon_line(fb, ox, oy, slinex, w, sh, srcx as usize, sc);
+        slinex += w;
     }
 }
 

@@ -10,7 +10,24 @@ pub struct Settings {
     pub video: VideoSettings,
     pub audio: AudioSettings,
     pub input: InputSettings,
+    pub game: GameSettings,
     pub data_dir: Option<String>,
+}
+
+/// Options the original kept in `CONFIG.DAT` (GAMEFLOW §10).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GameSettings {
+    /// GAME TYPE: 0–2 difficulty 1–3, 3 Random.
+    pub gametype: i16,
+    /// VIEW SIZE: 12, 14, 16, 18 or 20.
+    pub viewsize: u16,
+}
+
+impl Default for GameSettings {
+    fn default() -> Self {
+        Self { gametype: 1, viewsize: 18 }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -36,6 +53,9 @@ pub struct AudioSettings {
     pub master: f32,
     pub sfx: f32,
     pub music: f32,
+    /// Digitized voices: 1 as the original (one Sound Blaster voice with
+    /// priorities), up to 4 mixed.
+    pub channels: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -69,7 +89,7 @@ impl Default for VideoSettings {
 
 impl Default for AudioSettings {
     fn default() -> Self {
-        Self { master: 0.8, sfx: 1.0, music: 0.7 }
+        Self { master: 0.8, sfx: 1.0, music: 0.7, channels: 4 }
     }
 }
 

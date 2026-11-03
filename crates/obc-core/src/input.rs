@@ -36,6 +36,7 @@ pub mod sc {
     pub const I: u8 = 0x17;
     pub const M: u8 = 0x32;
     pub const N: u8 = 0x31;
+    pub const O: u8 = 0x18;
     pub const Q: u8 = 0x10;
     pub const S: u8 = 0x1F;
     pub const W: u8 = 0x11;

@@ -34,7 +34,10 @@ impl World {
                 let x = self.random_near(tilex as i16, 24);
                 let y = self.random_near(tiley as i16, 24);
                 if self.actorat(x as i32, y as i32).is_empty() {
-                    if let Some(si) = self.static_at(x as u8, y as u8) {
+                    // The original scans every slot, removed statics included.
+                    if let Some(si) =
+                        self.statics.iter().position(|s| s.tilex == x as u8 && s.tiley == y as u8)
+                    {
                         // A static occupies the spot; a fire ignites bonus items.
                         if state == S_FIRE_STAND && self.statics[si].flags & fl::BONUS != 0 {
                             actors::ignite(self, tilex as i32, tiley as i32);

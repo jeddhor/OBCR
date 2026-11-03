@@ -76,6 +76,9 @@ pub enum AudioCommand {
     /// Starts looping IMF music.
     StartMusic(Arc<[ImfCommand]>),
     StopMusic,
+    /// `SD_MusicOff` / `SD_MusicOn` for Pause: silences the OPL and holds the
+    /// song position; resuming continues from there.
+    PauseMusic(bool),
     SetVolumes(Volumes),
     SetRates(Rates),
 }

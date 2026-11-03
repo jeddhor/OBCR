@@ -6,9 +6,7 @@ use obc_formats::maps::Map;
 use crate::actors;
 use crate::allies;
 use crate::player;
-use crate::world::{
-    AMBUSHTILE, AREATILE, Door, DoorAction, MAPSIZE, NUMAREAS, Occ, World, ex,
-};
+use crate::world::{AMBUSHTILE, AREATILE, Door, DoorAction, MAPSIZE, NUMAREAS, Occ, World, ex};
 
 /// Plane-0 door codes (130–137) and the per-lock door page (`DOORWALL` = 128).
 pub const DOOR_FIRST: u16 = 130;
@@ -75,7 +73,11 @@ impl World {
         }
 
         self.prepare_level();
+        // `ingame` (DS:0x8CBC) is clear while the map is scanned, so fires placed
+        // on the map make no sound and draw no random number.
+        self.act.ingame = false;
         self.scan_info_plane();
+        self.act.ingame = true;
 
         // Ambush cells (138) become floor with a neighbouring area code.
         for y in 0..MAPSIZE as i32 {

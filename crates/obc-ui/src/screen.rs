@@ -16,6 +16,8 @@ pub enum Transition {
     Push(Box<dyn Screen>),
     Pop,
     Replace(Box<dyn Screen>),
+    /// Clears the whole stack, then pushes this screen.
+    Reset(Box<dyn Screen>),
     Quit,
 }
 
@@ -49,6 +51,9 @@ pub struct Frame<'a> {
     /// Layer color treated as transparent when compositing, if any.
     pub layer_key: Option<u8>,
     pub palette: Palette,
+    /// Lines (original pixels) the finished frame scrolls up by: the tremor
+    /// shake moves the CRTC start address, status bar included.
+    pub scroll: usize,
 }
 
 pub trait Screen {

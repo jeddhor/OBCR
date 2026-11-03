@@ -86,13 +86,12 @@ pub fn heal_self(w: &mut World, points: i16) {
 }
 
 /// `GivePoints(points)` (ghidra 208c:0614, CONFIRMED; `WOLFSRC/WL_AGENT.C:523`):
-/// score capped at 1,000,000; no extra lives; nothing in network games.
-///
-/// TODO(M9): the original also skips points while DS:0x2BC8 is set (an ally
-/// is dealing the damage); that flag belongs to `allies.rs`.
+/// score capped at 1,000,000; no extra lives; nothing in network games or
+/// while an ally is dealing the damage (DS:0x2BC8).
 #[doc(alias = "GivePoints")]
 pub fn give_points(w: &mut World, points: i32) {
-    if w.gamestate.difficulty >= 4 {
+    // Network games and kills by allies (`allyfiring`, ALLIES.md §4) score nothing.
+    if w.gamestate.difficulty >= 4 || w.ally.allyfiring {
         return;
     }
     let gs = &mut w.gamestate;

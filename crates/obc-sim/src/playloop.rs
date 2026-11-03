@@ -103,11 +103,8 @@ impl World {
         let counter = (a - target).rem_euclid(360);
         let step = 4 * tics;
         let p = self.player;
-        let angle = if clockwise < counter {
-            a + step.min(clockwise)
-        } else {
-            a - step.min(counter)
-        };
+        let angle =
+            if clockwise < counter { a + step.min(clockwise) } else { a - step.min(counter) };
         self.obj_mut(p).angle = angle.rem_euclid(360);
         self.obj(p).angle == target
     }

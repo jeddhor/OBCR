@@ -86,13 +86,13 @@ const WEAPON_RIGHT: [u16; 5] = [584, 592, 600, 608, 616];
 const BOBX: [i32; 16] = [0, 1, 2, 3, 4, 3, 2, 1, 0, -1, -2, -3, -4, -3, -2, -1];
 const BOBFRAME: [u16; 16] = [7, 7, 6, 5, 4, 5, 6, 7, 7, 7, 6, 5, 4, 5, 6, 7];
 
-/// The weapon to draw (`DrawPlayerWeapon` 1b4a:1013), given the walk counter.
-pub fn weapon_view(w: &World, walkcount: u16) -> Option<WeaponView> {
+/// The weapon to draw (`DrawPlayerWeapon` 1b4a:1013), bobbing by *walkcount*.
+pub fn weapon_view(w: &World) -> Option<WeaponView> {
     let g = &w.gamestate;
     if !(0..5).contains(&g.weapon) {
         return None;
     }
-    let b = usize::from(walkcount & 15);
+    let b = (w.ply.walkcount & 15) as usize;
     let idle = !w.buttonheld[0] && g.attackframe == 0;
     let frame = if idle { BOBFRAME[b] } else { g.weaponframe.max(0) as u16 };
     let i = g.weapon as usize;

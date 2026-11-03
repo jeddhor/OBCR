@@ -4,8 +4,9 @@
 
 use crate::world::{Occ, Static, World, fl};
 
-/// `MAXSTATS`. DELTA-UNCHECKED (Wolf3D value).
-pub const MAXSTATS: usize = 400;
+/// `MAXSTATS`: OBC's `statobjlist` (DS:0x7E2C) holds 225 entries (Wolf3D 400),
+/// from the actors port's read of the explosion code. LIKELY.
+pub const MAXSTATS: usize = 225;
 
 /// `statinfo` kinds: 0 dressing, 1 blocking, others are pickup item numbers.
 pub const KIND_DRESSING: i16 = 0;

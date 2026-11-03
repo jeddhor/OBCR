@@ -11,7 +11,7 @@
 //! Follow mode runs the shared enemy `T_Chase` (ghidra `2390:1d2d`), and the
 //! ally's own direction choosers call the shared `TryWalk` and `MoveObj`
 //! (ghidra `1e43:01c3`, `1e43:10b1`). Those belong to `actors.rs`; this module
-//! carries minimal local equivalents marked `SHARED-AI` for the integrator to
+//! originally carried local equivalents marked `SHARED-AI` for the integrator to
 //! replace.
 //!
 //! Every claim below comes from static disassembly (CONFIRMED = read
@@ -21,7 +21,7 @@ use crate::actors;
 use crate::data::{Func, StateId};
 use crate::events::SimEvent;
 use crate::world::{
-    DoorAction, MAPSIZE, MINACTORDIST, Obj, ObjId, Occ, TILEGLOBAL, TicCmd, World, class, dir, fl,
+    DoorAction, MAPSIZE, Obj, ObjId, Occ, TILEGLOBAL, TicCmd, World, class, dir, fl,
 };
 
 // ---------------------------------------------------------------------------
@@ -62,8 +62,6 @@ const ALLYFIRESNDS: [u16; 3] = [47, 45, 46];
 /// Ally death screams (DS:0x29A0), chosen by `US_RndT() % 5` in the class-5
 /// case of `A_DeathScream` (ghidra 2390:0d74, in `actors.rs`). CONFIRMED (data).
 pub const ALLYDEATHSNDS: [u16; 5] = [22, 23, 24, 25, 26];
-/// Sighting sounds of classes 4 and 8–12 (DS:0x0F22), `US_RndT() % 6`. CONFIRMED (data).
-const SIGHTSNDS: [u16; 6] = [54, 55, 56, 53, 53, 51];
 
 /// Speed at spawn and after a switch (ghidra 2634:011b, 2634:1049).
 const SPEED_SLOW: i32 = 0x400;
@@ -81,8 +79,6 @@ const OBJSIZE: u16 = 0x42;
 const DS_0004: u16 = 0x6F42;
 /// `ICONARROWS` (plane-1 path arrows 90–97).
 const ICONARROWS: u16 = 0x5A;
-/// `AREATILE`.
-const AREATILE: i16 = 0x8C;
 /// Plane-1 codes `CheckLine` treats as see-through (ACTORS.md §7.8).
 const SEE_THROUGH: [u16; 3] = [0x69, 0x6B, 0x6A];
 
@@ -1097,344 +1093,34 @@ fn quit(w: &mut World, code: u16, what: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// SHARED-AI: local equivalents of shared enemy routines (actors.rs)
+// Shared enemy routines (actors.rs). Allies run the same code as enemies.
 // ---------------------------------------------------------------------------
 
-/// Follow mode: the shared `T_Chase` as it runs for class 5.
-///
-/// SHARED-AI: replace with `actors::call(w, id, Func::TChase)` (or the
-/// actors `t_chase`) when merged.
-///
-/// Local port of `T_Chase` (ghidra 2390:1d2d; class-5 path CONFIRMED,
-/// ALLIES.md §3.2). The class-5 attack entry (2390:1fc9) is a bare return, and
-/// classes 5 and 6 never dodge, so only the attack roll and the chase remain.
-#[doc(alias = "T_Chase")]
+/// Follow mode: `T_Chase` (ghidra 2390:1d2d) as it runs for class 5, whose
+/// attack entry is a bare return (ALLIES.md §3.2).
 fn t_chase(w: &mut World, id: ObjId) {
-    if w.gamestate.difficulty >= 4 {
-        return;
-    }
-    if actors::check_line(w, id) {
-        let p = *w.plr();
-        let ob = *w.obj(id);
-        let dist = tile_dist(&ob, &p);
-        let chance = attack_chance(w, &ob, dist);
-        // US_RndT: T_Chase attack roll (2390:1db7)
-        if w.rnd() < chance {
-            return; // class 5: the attack case does nothing
-        }
-        // dodge = 1 here; class 5 ignores it.
-    }
-    if w.obj(id).dir == dir::NODIR {
-        select_chase_dir(w, id);
-        if w.obj(id).dir == dir::NODIR {
-            return;
-        }
-    }
-    let mut mv = w.obj(id).speed.wrapping_mul(i32::from(w.tics as u16));
-    while mv != 0 {
-        if !wait_for_door(w, id) {
-            return;
-        }
-        let distance = w.obj(id).distance;
-        if distance > mv {
-            move_obj(w, id, mv);
-            return;
-        }
-        snap_to_tile_centre(w.obj_mut(id));
-        mv = mv.wrapping_sub(distance);
-        select_chase_dir(w, id);
-        if w.obj(id).dir == dir::NODIR {
-            return;
-        }
-    }
+    actors::t_chase(w, id);
 }
 
-/// SHARED-AI: replace with the actors `SelectChaseDir` when merged.
-///
-/// Local port of `SelectChaseDir` (`WOLFSRC/WL_STATE.C`; OBC ghidra 1e43:0e75,
-/// no delta, CONFIRMED asm): greedy step toward the player's tile.
-#[doc(alias = "SelectChaseDir")]
-fn select_chase_dir(w: &mut World, id: ObjId) {
-    let ob = *w.obj(id);
-    let p = *w.plr();
-    let olddir = ob.dir;
-    let turnaround = opposite(olddir);
-    let deltax = (p.tilex as i16).wrapping_sub(ob.tilex as i16);
-    let deltay = (p.tiley as i16).wrapping_sub(ob.tiley as i16);
-    let mut d1 = dir::NODIR;
-    let mut d2 = dir::NODIR;
-    if deltax > 0 {
-        d1 = dir::EAST;
-    } else if deltax < 0 {
-        d1 = dir::WEST;
-    }
-    if deltay > 0 {
-        d2 = dir::SOUTH;
-    } else if deltay < 0 {
-        d2 = dir::NORTH;
-    }
-    if deltay.wrapping_abs() > deltax.wrapping_abs() {
-        std::mem::swap(&mut d1, &mut d2);
-    }
-    if d1 == turnaround {
-        d1 = dir::NODIR;
-    }
-    if d2 == turnaround {
-        d2 = dir::NODIR;
-    }
-    if d1 != dir::NODIR && walk(w, id, d1) {
-        return;
-    }
-    if d2 != dir::NODIR && walk(w, id, d2) {
-        return;
-    }
-    if olddir != dir::NODIR && walk(w, id, olddir) {
-        return;
-    }
-    // US_RndT: SelectChaseDir search order (shared, 1e43:0e75)
-    if w.rnd() > 128 {
-        for tdir in dir::NORTH..=dir::WEST {
-            if tdir != turnaround && walk(w, id, tdir) {
-                return;
-            }
-        }
-    } else {
-        for tdir in (dir::NORTH..=dir::WEST).rev() {
-            if tdir != turnaround && walk(w, id, tdir) {
-                return;
-            }
-        }
-    }
-    if turnaround != dir::NODIR && walk(w, id, turnaround) {
-        return;
-    }
-    w.obj_mut(id).dir = dir::NODIR;
-}
-
-/// SHARED-AI: replace with the actors `TryWalk` when merged.
-///
-/// Local port of `TryWalk` (`WOLFSRC/WL_STATE.C`; OBC ghidra 1e43:01c3, ACTORS.md
-/// §7.3) for class 5 only: CHECKSIDE on cardinal moves (walls block, doors are
-/// opened, shootable actors block), CHECKDIAG on diagonals; area number stored
-/// only for valid areas. Not modelled: `ActorBumpWall` (1e43:0cca), which for
-/// class 5 calls `FUN_2f4d_08e8(x, y)` (special walls/gates) when the blocking
-/// wall's tile is 13, 29, 49, 65 or 69.
-#[doc(alias = "TryWalk")]
 fn try_walk(w: &mut World, id: ObjId) -> bool {
-    let ob = *w.obj(id);
-    let (tx, ty) = (tile_i32(ob.tilex), tile_i32(ob.tiley));
-    let mut doornum: i16 = -1;
-    let (nx, ny) = match ob.dir {
-        dir::NORTH => {
-            if !check_side(w, tx, ty - 1, &mut doornum) {
-                return false;
-            }
-            (tx, ty - 1)
-        }
-        dir::NORTHEAST => {
-            if !check_diag(w, tx + 1, ty - 1)
-                || !check_diag(w, tx + 1, ty)
-                || !check_diag(w, tx, ty - 1)
-            {
-                return false;
-            }
-            (tx + 1, ty - 1)
-        }
-        dir::EAST => {
-            if !check_side(w, tx + 1, ty, &mut doornum) {
-                return false;
-            }
-            (tx + 1, ty)
-        }
-        dir::SOUTHEAST => {
-            if !check_diag(w, tx + 1, ty + 1)
-                || !check_diag(w, tx + 1, ty)
-                || !check_diag(w, tx, ty + 1)
-            {
-                return false;
-            }
-            (tx + 1, ty + 1)
-        }
-        dir::SOUTH => {
-            if !check_side(w, tx, ty + 1, &mut doornum) {
-                return false;
-            }
-            (tx, ty + 1)
-        }
-        dir::SOUTHWEST => {
-            if !check_diag(w, tx - 1, ty + 1)
-                || !check_diag(w, tx - 1, ty)
-                || !check_diag(w, tx, ty + 1)
-            {
-                return false;
-            }
-            (tx - 1, ty + 1)
-        }
-        dir::WEST => {
-            if !check_side(w, tx - 1, ty, &mut doornum) {
-                return false;
-            }
-            (tx - 1, ty)
-        }
-        dir::NORTHWEST => {
-            if !check_diag(w, tx - 1, ty - 1)
-                || !check_diag(w, tx - 1, ty)
-                || !check_diag(w, tx, ty - 1)
-            {
-                return false;
-            }
-            (tx - 1, ty - 1)
-        }
-        dir::NODIR => return false,
-        _ => {
-            quit(w, 302, "TryWalk: bad dir");
-            return false;
-        }
-    };
-    {
-        let o = w.obj_mut(id);
-        o.tilex = nx as u16;
-        o.tiley = ny as u16;
-    }
-    if doornum != -1 {
-        w.open_door(doornum as usize);
-        w.obj_mut(id).distance = -i32::from(doornum) - 1;
-        return true;
-    }
-    let area = (w.mapspot(nx, ny, 0) as i16).wrapping_sub(AREATILE);
-    let o = w.obj_mut(id);
-    if (0..0x16).contains(&area) {
-        o.areanumber = area as u8;
-    }
-    o.distance = TILEGLOBAL;
-    true
+    actors::try_walk(w, id)
 }
 
-/// `CHECKSIDE(x, y)` of `TryWalk`: false when blocked.
-fn check_side(w: &World, x: i32, y: i32, doornum: &mut i16) -> bool {
-    let occ = w.actorat(x, y);
-    let temp = actorat_word(occ);
-    if temp == 0 {
-        return true;
-    }
-    if temp < 0x80 {
-        // SHARED-AI: ActorBumpWall(ob, x, y) goes here for tiles 13/29/49/65/69.
-        return false;
-    }
-    if temp < 0x100 {
-        *doornum = (temp & 0x3F) as i16;
-        return true;
-    }
-    !matches!(occ, Occ::Obj(o) if w.obj(o).flags & fl::SHOOTABLE != 0)
-}
-
-/// `CHECKDIAG(x, y)` of `TryWalk`: false when blocked.
-fn check_diag(w: &World, x: i32, y: i32) -> bool {
-    let occ = w.actorat(x, y);
-    let temp = actorat_word(occ);
-    if temp == 0 {
-        return true;
-    }
-    if temp < 0x100 {
-        return false;
-    }
-    !matches!(occ, Occ::Obj(o) if w.obj(o).flags & fl::SHOOTABLE != 0)
-}
-
-/// SHARED-AI: replace with the actors `MoveObj` when merged.
-///
-/// Local port of `MoveObj` (`WOLFSRC/WL_ACT2.C`; OBC ghidra 1e43:10b1,
-/// ACTORS.md §7.4, CONFIRMED asm): moves along `dir`, backs up when the result
-/// lies within `MINACTORDIST` of the player on both axes (OBC: in every area,
-/// no ghost damage). The class-21 fire spread after the move does not apply to
-/// allies.
-#[doc(alias = "MoveObj")]
 fn move_obj(w: &mut World, id: ObjId, mv: i32) {
-    let d = w.obj(id).dir;
-    if d == dir::NODIR {
-        return;
-    }
-    if d > dir::SOUTHEAST {
-        quit(w, 303, "MoveObj: bad dir");
-        return;
-    }
-    step(w.obj_mut(id), d, mv);
-    let p = *w.plr();
-    let o = *w.obj(id);
-    let dx = o.x.wrapping_sub(p.x);
-    let dy = o.y.wrapping_sub(p.y);
-    let near = -MINACTORDIST..=MINACTORDIST;
-    if near.contains(&dx) && near.contains(&dy) {
-        // Back up: never on top of the player.
-        step(w.obj_mut(id), d, mv.wrapping_neg());
-        return;
-    }
-    let o = w.obj_mut(id);
-    o.distance = o.distance.wrapping_sub(mv);
+    actors::move_obj(w, id, mv);
 }
 
-/// Adds `mv` along an 8-way direction (`MoveObj`'s switch).
-fn step(o: &mut Obj, d: u16, mv: i32) {
-    let (sx, sy) = match d {
-        dir::EAST => (1, 0),
-        dir::NORTHEAST => (1, -1),
-        dir::NORTH => (0, -1),
-        dir::NORTHWEST => (-1, -1),
-        dir::WEST => (-1, 0),
-        dir::SOUTHWEST => (-1, 1),
-        dir::SOUTH => (0, 1),
-        dir::SOUTHEAST => (1, 1),
-        _ => (0, 0),
-    };
-    o.x = o.x.wrapping_add(mv.wrapping_mul(sx));
-    o.y = o.y.wrapping_add(mv.wrapping_mul(sy));
-}
-
-/// SHARED-AI: `HalveSpeed` (ghidra 2390:2a15): `speed >>= 1` (arithmetic).
-#[doc(alias = "HalveSpeed")]
 fn halve_speed(w: &mut World, id: ObjId) {
-    let o = w.obj_mut(id);
-    o.speed >>= 1;
+    actors::halve_speed(w, id);
 }
 
-/// SHARED-AI: `DoubleSpeed` (ghidra 2390:2a2f): `speed <<= 1`. With
-/// [`halve_speed`] it clears bit 0 of `speed`.
-#[doc(alias = "DoubleSpeed")]
 fn double_speed(w: &mut World, id: ObjId) {
-    let o = w.obj_mut(id);
-    o.speed = o.speed.wrapping_shl(1);
+    actors::double_speed(w, id);
 }
 
-/// SHARED-AI: replace with the actors `FirstSighting` when merged.
-///
-/// Local port of the class 8–11 cases of `FirstSighting` (ghidra 1e43:1e38,
-/// cases 2082/20cd/2118/2163 and tail 228f; CONFIRMED asm), the only classes
-/// `T_AllyShoot` wakes: sighting sound, stand-up state, speed ×4, then the
-/// common tail.
-#[doc(alias = "FirstSighting")]
+/// `FirstSighting` (ghidra 1e43:1e38): `T_AllyShoot` wakes classes 8–11.
 fn first_sighting(w: &mut World, t: ObjId) {
-    if w.gamestate.difficulty >= 4 {
-        return;
-    }
-    let state: StateId = match w.obj(t).obclass {
-        8 => 0x197E,
-        9 => 0x19CE,
-        10 => 0x1A1E,
-        11 => 0x1A6E,
-        _ => return,
-    };
-    let (x, y) = (w.obj(t).x, w.obj(t).y);
-    // US_RndT: FirstSighting sound (1e43:208e)
-    let snd = SIGHTSNDS[(w.rnd() % 6) as usize];
-    w.play_sound_at(snd, x, y);
-    w.new_state(t, state);
-    let o = w.obj_mut(t);
-    o.speed = o.speed.wrapping_mul(4);
-    if o.distance < 0 {
-        o.distance = 0;
-    }
-    o.flags |= fl::ATTACKMODE | fl::FIRSTATTACK;
-    o.active = 1;
+    actors::first_sighting(w, t);
 }
 
 #[cfg(test)]

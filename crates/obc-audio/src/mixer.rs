@@ -39,6 +39,7 @@ pub struct Mixer {
     pc: Option<PcSfx>,
     pc_phase: f64,
     music: Option<ImfPlayer>,
+    music_paused: bool,
     sfx_clock: f64,
     music_clock: f64,
     digi: [Option<DigiVoice>; DIGI_CHANNELS],
@@ -60,6 +61,7 @@ impl Mixer {
             pc: None,
             pc_phase: 0.0,
             music: None,
+            music_paused: false,
             sfx_clock: 0.0,
             music_clock: 0.0,
             digi: Default::default(),
@@ -99,11 +101,19 @@ impl Mixer {
             }
             AudioCommand::StartMusic(commands) => {
                 ImfPlayer::silence(&mut self.opl);
+                self.music_paused = false;
                 self.music = Some(ImfPlayer::new(commands));
             }
             AudioCommand::StopMusic => {
                 ImfPlayer::silence(&mut self.opl);
                 self.music = None;
+                self.music_paused = false;
+            }
+            AudioCommand::PauseMusic(on) => {
+                if on {
+                    ImfPlayer::silence(&mut self.opl);
+                }
+                self.music_paused = on;
             }
             AudioCommand::SetVolumes(v) => self.volumes = v,
             AudioCommand::SetRates(r) => self.rates = r,
@@ -140,7 +150,9 @@ impl Mixer {
             self.music_clock += dt * self.rates.imf_hz;
             while self.music_clock >= 1.0 {
                 self.music_clock -= 1.0;
-                if let Some(m) = &mut self.music {
+                if let Some(m) = &mut self.music
+                    && !self.music_paused
+                {
                     m.tick(&mut self.opl);
                 }
             }

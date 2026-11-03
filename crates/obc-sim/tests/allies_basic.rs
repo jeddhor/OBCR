@@ -458,6 +458,8 @@ fn ally_shot_miss_consumes_two_randoms() {
     let mut w = world();
     let a = spawn(&mut w, 10, 10, 0);
     let e = enemy(&mut w, class::SOLDIER, 11, 10);
+    // Already alerted, so the real DamageActor adds no FirstSighting draws.
+    w.obj_mut(e).flags |= fl::ATTACKMODE;
     w.ally.allytarget = Some(e);
     w.rng = Rng::seeded(2);
     assert!(RNDTABLE[4] >= 128);
@@ -482,6 +484,8 @@ fn ally_shot_wakes_disguised_soldiers_first() {
     let a = spawn(&mut w, 10, 10, 0);
     let e = enemy(&mut w, class::STOOL, 11, 10);
     w.obj_mut(e).speed = 0x100;
+    // Survives the shot, so the woken state is not replaced by a death state.
+    w.obj_mut(e).hitpoints = 30000;
     w.ally.allytarget = Some(e);
     allies::call(&mut w, a, Func::AAlly);
     let o = w.obj(e);

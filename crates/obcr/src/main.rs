@@ -44,6 +44,12 @@ struct Cli {
     /// Developer map viewer starting at this map slot.
     #[arg(long)]
     viewer: Option<usize>,
+    /// Developer: start a new game directly on this map (0-based).
+    #[arg(long)]
+    play: Option<i16>,
+    /// Game type for `--play`: 0–2 difficulty, 3 Random.
+    #[arg(long, default_value_t = 1)]
+    difficulty: i16,
     /// Headless: run this many tics, write the frame to `--shot-out`, exit.
     #[arg(long)]
     shot: Option<u32>,
@@ -112,9 +118,10 @@ fn run() -> Result<()> {
     )?;
     let assets = Assets::load(DataDir::open(&dir)?).context("loading game data")?;
 
-    let first: Box<dyn Screen> = match cli.viewer {
-        Some(slot) => Box::new(obc_ui::viewer::Viewer::new(&assets, slot)),
-        None => obc_ui::start(&assets),
+    let first: Box<dyn Screen> = match (cli.viewer, cli.play) {
+        (Some(slot), _) => Box::new(obc_ui::viewer::Viewer::new(&assets, slot)),
+        (None, Some(mapon)) => Box::new(obc_ui::game::Boot { difficulty: cli.difficulty, mapon }),
+        (None, None) => obc_ui::start(&assets),
     };
     let mut stack: Vec<Box<dyn Screen>> = vec![first];
 
@@ -210,6 +217,10 @@ fn tick(stack: &mut Vec<Box<dyn Screen>>, ctx: &mut Ctx) -> bool {
             stack.pop();
             stack.push(s);
         }
+        Transition::Reset(s) => {
+            stack.clear();
+            stack.push(s);
+        }
         Transition::Quit => return false,
     }
     !stack.is_empty()
@@ -226,13 +237,23 @@ fn compose(
     let (fw, fh) = p.frame_size();
     frame.resize(fw, fh);
     let mut palette = assets.gamepal;
+    let mut scroll = 0;
     let first_visible = stack.iter().rposition(|s| s.opaque()).unwrap_or(0);
     for screen in &mut stack[first_visible..] {
-        let mut out = Frame { presentation: p, frame, layer, layer_key: None, palette };
+        let mut out = Frame { presentation: p, frame, layer, layer_key: None, palette, scroll: 0 };
         screen.draw(assets, &mut out);
         palette = out.palette;
+        scroll = out.scroll;
         let key = out.layer_key;
         blit_layer(frame, layer, p, key);
+    }
+    // Scroll up; the lines past the page show black.
+    let rows = (scroll * p.scale).min(frame.height);
+    if rows > 0 {
+        let w = frame.width;
+        frame.pixels.copy_within(rows * w.., 0);
+        let n = frame.pixels.len();
+        frame.pixels[n - rows * w..].fill(0);
     }
     palette
 }

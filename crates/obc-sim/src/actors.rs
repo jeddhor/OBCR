@@ -36,9 +36,6 @@ pub struct ActorsState {
     /// `US_RndT`) only while it is set. The level loader should clear it while
     /// `ScanInfoPlane` runs. Default `true`.
     pub ingame: bool,
-    /// `allyfiring` (`DS:0x2BC8`): set by the ally module while an ally's shot
-    /// is inside [`damage_actor`]; `KillActor` then counts no kill.
-    pub ally_firing: bool,
     /// Kill-percentage timer (`DS:0xCD87`), written by `KillActor`. No reader
     /// was found (UNKNOWN, Q-ACT-4); kept for parity. Cleared per level.
     pub kill_timer: i16,
@@ -63,7 +60,6 @@ impl Default for ActorsState {
     fn default() -> Self {
         Self {
             ingame: true,
-            ally_firing: false,
             kill_timer: 0,
             sb_pro_mixer: false,
             debug_sparkle: false,
@@ -1623,7 +1619,7 @@ pub fn kill_actor(w: &mut World, id: ObjId) {
     }
 
     if !network {
-        if !w.act.ally_firing && o.obclass != class::ALLY {
+        if !w.ally.allyfiring && o.obclass != class::ALLY {
             w.gamestate.killcount = w.gamestate.killcount.wrapping_add(1);
             w.emit(SimEvent::Hud);
         }
