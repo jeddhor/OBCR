@@ -159,7 +159,7 @@ impl Screen for Viewer {
             self.view = Some((l, View3D::new(l.cfg)));
         }
         tile_background(out.frame, assets, p.scale);
-        self.buffers.fill(&self.world);
+        self.buffers.fill(&self.world, None);
         let table = build_shade_table(self.world.dark);
         let scene = Scene {
             tiles: &self.world.tilemap,
@@ -173,6 +173,7 @@ impl Screen for Viewer {
             player_x: (self.x * 65536.0) as i32,
             player_y: (self.y * 65536.0) as i32,
             player_angle: self.angle as i32,
+            player_fine_angle: Some((self.angle * 10.0) as i32),
             sprites: &self.buffers.sprites,
             weapon: None,
         };

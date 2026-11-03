@@ -92,6 +92,11 @@ pub struct Game {
     sparkle_frames: u32,
     /// `viewsize` (12–20).
     viewsize: u16,
+    /// Enhanced interpolation: player pose and actor positions at the last
+    /// frame boundary, and whether it is enabled.
+    prev_pose: (i32, i32, i16),
+    prev_objs: Vec<Option<(i32, i32)>>,
+    interpolate: bool,
 }
 
 impl Game {
@@ -129,6 +134,9 @@ impl Game {
             in_menu: false,
             sparkle_frames: 0,
             viewsize: 18,
+            prev_pose: (0, 0, 0),
+            prev_objs: Vec::new(),
+            interpolate: false,
         };
         g.start_level(ctx);
         g
@@ -145,6 +153,7 @@ impl Game {
         g.start_music(ctx);
         g.world.start_play_loop();
         g.hud = Hud::default();
+        g.capture_prev();
         g.phase = Phase::FadeIn(0);
         g.drain_events(ctx);
         g
@@ -194,6 +203,7 @@ impl Game {
         self.start_music(ctx);
         self.lighting = self.world.start_play_loop();
         self.hud.event = Default::default();
+        self.capture_prev();
         self.damagecount = 0;
         self.bonuscount = 0;
         self.phase = Phase::FadeIn(0);
@@ -217,6 +227,14 @@ impl Game {
             Ok(m) => ctx.audio.send(AudioCommand::StartMusic(Arc::from(m))),
             Err(e) => eprintln!("music {song}: {e}"),
         }
+    }
+
+    /// Records the pose and actor positions at a frame boundary.
+    fn capture_prev(&mut self) {
+        let p = self.world.plr();
+        self.prev_pose = (p.x, p.y, p.angle);
+        self.prev_objs.clear();
+        self.prev_objs.extend(self.world.objs.iter().map(|o| (o.state != 0).then_some((o.x, o.y))));
     }
 
     fn listener(&self) -> Listener {
@@ -392,6 +410,8 @@ impl Screen for Game {
         }
         let (cmd, ui) =
             self.controls.build(ctx.input, &ctx.settings.input, &self.world, FRAME_TICS);
+        self.interpolate = ctx.settings.video.interpolate;
+        self.capture_prev();
 
         match self.phase {
             Phase::FadeIn(t) => {
@@ -514,8 +534,21 @@ impl Screen for Game {
         }
         tile_background(out.frame, a, p.scale);
         let w = &self.world;
-        self.buffers.fill(w);
+        // Time since the last frame boundary, in frames (Enhanced only).
+        let lerp = (self.interpolate && !p.is_classic())
+            .then(|| ((f32::from(u8::from(self.odd_tic)) + out.alpha) / 2.0).clamp(0.0, 1.0));
+        self.buffers.fill(w, lerp.map(|t| (self.prev_objs.as_slice(), t)));
         let plr = w.plr();
+        let (px, py, fine) = match lerp {
+            Some(t) => {
+                let (x0, y0, a0) = self.prev_pose;
+                let blend = |a: i32, b: i32| a + ((b - a) as f32 * t) as i32;
+                let da = (i32::from(plr.angle) - i32::from(a0) + 540).rem_euclid(360) - 180;
+                let fine = (i32::from(a0) * 10 + (da as f32 * 10.0 * t) as i32).rem_euclid(3600);
+                (blend(x0, plr.x), blend(y0, plr.y), Some(fine))
+            }
+            None => (plr.x, plr.y, None),
+        };
         let scene = Scene {
             tiles: &w.tilemap,
             info: &w.plane1,
@@ -525,9 +558,10 @@ impl Screen for Game {
             floor: floor_params(&a.game.levels, w, self.floor_mode),
             shade_table: &self.shade[usize::from(w.dark)],
             shade_bias: 2 * i32::from(w.ply.lightbits),
-            player_x: plr.x,
-            player_y: plr.y,
-            player_angle: i32::from(plr.angle),
+            player_x: px,
+            player_y: py,
+            player_angle: fine.map_or(i32::from(plr.angle), |f| f / 10),
+            player_fine_angle: fine,
             sprites: &self.buffers.sprites,
             weapon: weapon_view(w),
         };

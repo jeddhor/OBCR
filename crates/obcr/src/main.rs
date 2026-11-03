@@ -200,7 +200,8 @@ fn run() -> Result<()> {
         }
 
         let p = presentation(&settings);
-        let palette = compose(&mut stack, &assets, p, &mut frame, &mut layer);
+        let alpha = (acc.as_secs_f32() / TIC.as_secs_f32()).clamp(0.0, 1.0);
+        let palette = compose(&mut stack, &assets, p, &mut frame, &mut layer, alpha);
         let (fw, fh) = (frame.width, frame.height);
         to_rgba(&frame.pixels, &palette, &mut rgba);
         platform
@@ -245,6 +246,7 @@ fn compose(
     p: Presentation,
     frame: &mut Framebuffer,
     layer: &mut Framebuffer,
+    alpha: f32,
 ) -> obc_render::palette::Palette {
     let (fw, fh) = p.frame_size();
     frame.resize(fw, fh);
@@ -252,7 +254,8 @@ fn compose(
     let mut scroll = 0;
     let first_visible = stack.iter().rposition(|s| s.opaque()).unwrap_or(0);
     for screen in &mut stack[first_visible..] {
-        let mut out = Frame { presentation: p, frame, layer, layer_key: None, palette, scroll: 0 };
+        let mut out =
+            Frame { presentation: p, frame, layer, layer_key: None, palette, scroll: 0, alpha };
         screen.draw(assets, &mut out);
         palette = out.palette;
         scroll = out.scroll;
@@ -303,7 +306,7 @@ fn headless_shot(
     let p = presentation(settings);
     let mut frame = Framebuffer::new(320, 200);
     let mut layer = Framebuffer::new(320, 200);
-    let palette = compose(stack, assets, p, &mut frame, &mut layer);
+    let palette = compose(stack, assets, p, &mut frame, &mut layer, 0.0);
     let mut rgba = Vec::new();
     to_rgba(&frame.pixels, &palette, &mut rgba);
     let file = std::io::BufWriter::new(std::fs::File::create(&cli.shot_out)?);

@@ -97,6 +97,9 @@ pub struct Scene<'a> {
     pub player_x: i32,
     pub player_y: i32,
     pub player_angle: i32,
+    /// Enhanced interpolation: the view angle in `FINEANGLES` units (0..3600).
+    /// `None` (Classic) uses `player_angle` and the original tables exactly.
+    pub player_fine_angle: Option<i32>,
     pub sprites: &'a [SpriteRef],
     pub weapon: Option<WeaponView>,
 }
@@ -388,9 +391,16 @@ impl View3D {
     }
 
     fn view_ray(&self, scene: &Scene) -> Ray {
-        let viewangle = scene.player_angle.rem_euclid(360) as usize;
-        let viewsin = self.tables.sin(viewangle);
-        let viewcos = self.tables.cos(viewangle);
+        let (viewsin, viewcos) = match scene.player_fine_angle {
+            Some(f) if f.rem_euclid(FINEANGLES / 360) != 0 => {
+                let r = f64::from(f) * std::f64::consts::TAU / f64::from(FINEANGLES);
+                (sign_magnitude(r.sin()), sign_magnitude(r.cos()))
+            }
+            _ => {
+                let viewangle = scene.player_angle.rem_euclid(360) as usize;
+                (self.tables.sin(viewangle), self.tables.cos(viewangle))
+            }
+        };
         Ray {
             viewx: scene.player_x - fixed_by_frac(FOCALLENGTH, viewcos),
             viewy: scene.player_y + fixed_by_frac(FOCALLENGTH, viewsin),
@@ -514,8 +524,10 @@ impl View3D {
         ray: &Ray,
         pass: Pass,
     ) {
-        let viewangle = scene.player_angle.rem_euclid(360);
-        let midangle = viewangle * (FINEANGLES / 360);
+        let midangle = match scene.player_fine_angle {
+            Some(f) => f.rem_euclid(FINEANGLES),
+            None => scene.player_angle.rem_euclid(360) * (FINEANGLES / 360),
+        };
         let focaltx = ray.viewx >> 16;
         let focalty = ray.viewy >> 16;
         let xpd = (ray.viewx & 0xFFFF) as u16;
@@ -1287,6 +1299,12 @@ fn simple_scale_shape(
     }
 }
 
+/// A sine or cosine as the tables store it: 16-bit magnitude, sign in bit 31.
+fn sign_magnitude(v: f64) -> i32 {
+    let m = ((v.abs() * 65536.0).round() as i32).min(0xFFFF);
+    if v < 0.0 && m != 0 { (m as u32 | 0x8000_0000) as i32 } else { m }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn weapon_line(
     fb: &mut Framebuffer,
@@ -1412,6 +1430,7 @@ mod tests {
                     player_x: 32 << 16,
                     player_y: 32 << 16,
                     player_angle: angle,
+                    player_fine_angle: None,
                     sprites: &[],
                     weapon: Some(WeaponView { left: 544, right: 584, bob: 0 }),
                 };

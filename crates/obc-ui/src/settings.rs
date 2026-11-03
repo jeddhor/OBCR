@@ -56,6 +56,8 @@ pub struct VideoSettings {
     pub vsync: bool,
     pub smooth: bool,
     pub integer_scale: bool,
+    /// Enhanced: interpolate the view and actors between 35 Hz game frames.
+    pub interpolate: bool,
     pub window_width: u32,
     pub window_height: u32,
 }
@@ -94,6 +96,7 @@ impl Default for VideoSettings {
             vsync: true,
             smooth: false,
             integer_scale: false,
+            interpolate: true,
             window_width: 1280,
             window_height: 720,
         }

@@ -56,6 +56,9 @@ pub struct Frame<'a> {
     /// Lines (original pixels) the finished frame scrolls up by: the tremor
     /// shake moves the CRTC start address, status bar included.
     pub scroll: usize,
+    /// How far into the current 70 Hz tic this draw happens (0..1), for
+    /// Enhanced interpolation.
+    pub alpha: f32,
 }
 
 pub trait Screen {

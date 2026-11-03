@@ -911,6 +911,7 @@ enum Opt {
     Fullscreen,
     Smooth,
     IntegerScale,
+    Interpolate,
     Controls,
     AlwaysRun,
     Mouse,
@@ -922,13 +923,14 @@ enum Opt {
     Channels,
 }
 
-const OPTS: [Opt; 15] = [
+const OPTS: [Opt; 16] = [
     Opt::Display,
     Opt::Scale,
     Opt::Aspect,
     Opt::Fullscreen,
     Opt::Smooth,
     Opt::IntegerScale,
+    Opt::Interpolate,
     Opt::Controls,
     Opt::AlwaysRun,
     Opt::Mouse,
@@ -949,7 +951,7 @@ pub struct Options {
 
 impl Options {
     pub fn new(audio_first: bool) -> Self {
-        Self { cur: if audio_first { 11 } else { 0 }, shown: Default::default() }
+        Self { cur: if audio_first { 12 } else { 0 }, shown: Default::default() }
     }
 
     fn label(o: Opt) -> &'static str {
@@ -960,6 +962,7 @@ impl Options {
             Opt::Fullscreen => "FULLSCREEN",
             Opt::Smooth => "SMOOTH FILTER",
             Opt::IntegerScale => "INTEGER SCALING",
+            Opt::Interpolate => "SMOOTH MOTION",
             Opt::Controls => "CONTROLS",
             Opt::AlwaysRun => "ALWAYS RUN",
             Opt::Mouse => "MOUSE SPEED",
@@ -983,6 +986,7 @@ impl Options {
             Opt::Fullscreen => on(s.video.fullscreen),
             Opt::Smooth => on(s.video.smooth),
             Opt::IntegerScale => on(s.video.integer_scale),
+            Opt::Interpolate => on(s.video.interpolate),
             Opt::Controls => s.input.profile.to_uppercase(),
             Opt::AlwaysRun => on(s.input.always_run),
             Opt::Mouse => pct(s.input.mouse_sensitivity),
@@ -1031,6 +1035,7 @@ impl Options {
                 s.video.integer_scale = !s.video.integer_scale;
                 ctx.requests.apply_video = true;
             }
+            Opt::Interpolate => s.video.interpolate = !s.video.interpolate,
             Opt::Controls => {
                 s.input.profile =
                     if s.input.profile == "modern" { "original" } else { "modern" }.into();
@@ -1109,7 +1114,7 @@ impl Screen for Options {
         let Some(font) = a.fonts.first() else { return };
         draw_text(out.layer, font, b"OPTIONS", 136, 7, hi);
         for (i, &o) in OPTS.iter().enumerate() {
-            let y = 22 + i as i32 * 11;
+            let y = 20 + i as i32 * 11;
             let c = if i == self.cur { hi } else { fg };
             draw_text(out.layer, font, Self::label(o).as_bytes(), 20, y, c);
             let v = Self::value(o, &self.shown);

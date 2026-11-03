@@ -14,7 +14,9 @@ pub struct SceneBuffers {
 impl SceneBuffers {
     /// Fills doors and sprites from the world. Statics come first, then actors
     /// in list order after the player (the original's `vislist` order).
-    pub fn fill(&mut self, w: &World) {
+    /// `lerp`: previous actor positions by object id and the blend factor, to
+    /// interpolate moving actors (Enhanced).
+    pub fn fill(&mut self, w: &World, lerp: Option<(&[Option<(i32, i32)>], f32)>) {
         self.doors.clear();
         self.doors.extend(w.doors.iter().map(|d| DoorView { position: d.position, page: d.kind }));
         self.sprites.clear();
@@ -42,14 +44,23 @@ impl SceneBuffers {
                 continue;
             }
             let shape = if st.shape == -1 { o.temp1 } else { st.shape };
+            let (mut x, mut y) = (o.x, o.y);
+            if let Some((prev, t)) = lerp
+                && let Some(Some((px, py))) = prev.get(id as usize).copied()
+                && (o.x - px).abs() <= 0x10000
+                && (o.y - py).abs() <= 0x10000
+            {
+                x = px + ((o.x - px) as f32 * t) as i32;
+                y = py + ((o.y - py) as f32 * t) as i32;
+            }
             let facing = if o.obclass == class::GRENADE {
                 i32::from(o.angle)
             } else {
                 dir::DIRANGLE[usize::from(o.dir.min(8))]
             };
             self.sprites.push(SpriteRef {
-                x: o.x,
-                y: o.y,
+                x,
+                y,
                 tile_x: o.tilex as u8,
                 tile_y: o.tiley as u8,
                 shape: shape as u16,
