@@ -39,9 +39,11 @@ Licensing, missing data only they can supply (CD or Steam release), behavior tha
 |---|---|
 | `..\OBC\` | Original game (read-only) |
 | `..\wolf3d\WOLFSRC\` | Wolf3D source, `WOLF3D.EXE` (Turbo Debugger symbols) and `WOLF3D.MAP` |
+| `..\EC7Wolf\` | The owner's Corridor 7 port: best reference for Capstone engine changes OBC inherited (concepts and leads; OBC's numbers come from `COUNT.EXE`) |
 | `..\ECWolf\` | ECWolf source (reference only; never port from `src\mame\`) |
 | `..\dosbox-x\` | DOSBox-X with debugger, JSON-RPC agent (`docs\rpc-agent-usage.md`, `client\python`) |
 | `C:\Users\jason\Desktop\ghidra_12.2_PUBLIC\` | Ghidra (`support\analyzeHeadless.bat`) |
+| `..\ghidra\` | Ghidra project `OBC`; named text exports in `.local\ghidra\export\` (`decomp/`, `asm/`, `functions.tsv`, `strings.tsv`) |
 | `.local\` | Git-ignored workspace: Ghidra project, DOSBox runtime dirs, captures, traces, exports |
 
 ## Commands
@@ -59,3 +61,5 @@ Commands appear as milestone M0 lands; if one is missing, building it is a task.
 - `COUNT.EXE`: Borland C++ 16-bit real mode, not packed. Header 0x3400 bytes: image offset = file offset − 0x3400. DGROUP is image paragraph 0x3218 (file 0x35580); DS offset = file offset − 0x35580. At the DOSBox-X entry stop, CS is the load segment.
 - Data files use the `.BC` extension; `GFXTILES.BC` is the VSWAP page file; `MAPTEMP.BC` maps are RLEW-only (no Carmack); 61 map slots.
 - OBC's `rndtable` is byte-identical to Wolf3D's.
+- `gamepal` is at `COUNT.EXE` file 0x2DDB0; full-screen pictures use the palette at 0x2E3B0.
+- `AUDIOMUS.BC` holds 99 digitized sounds (Corridor 7 layout), not music.

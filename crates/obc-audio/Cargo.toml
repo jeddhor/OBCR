@@ -1,0 +1,15 @@
+[package]
+name = "obc-audio"
+description = "Sound and music synthesis for OBCR"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+obc-core.workspace = true
+obc-formats.workspace = true
+
+[lints]
+workspace = true

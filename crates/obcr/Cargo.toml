@@ -1,0 +1,16 @@
+[package]
+name = "obcr"
+description = "OBCR: a modern source port of Operation Body Count"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+obc-formats.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,19 @@
+[package]
+name = "obc-formats"
+description = "Parsers for Operation Body Count's original data files"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+obc-testdata.workspace = true
+proptest.workspace = true
+
+[lints]
+workspace = true

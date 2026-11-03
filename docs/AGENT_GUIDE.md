@@ -33,7 +33,9 @@ This guide is the operating manual. [CLAUDE.md](../CLAUDE.md) at the repository 
 | `P:\msdos\OBC\OBCR\` | **This repository** | Read/write |
 | `P:\msdos\OBC\OBC\` | Original game (pristine reference copy) | **Read-only.** Copy before running. |
 | `P:\msdos\OBC\wolf3d\WOLFSRC\` | Wolf3D source, `WOLF3D.EXE` (with Turbo Debugger symbols), `WOLF3D.MAP` | Read-only |
+| `P:\msdos\OBC\EC7Wolf\` | The owner's Corridor 7 port (ECWolf fork): best reference for Capstone engine changes OBC inherited | Read-only |
 | `P:\msdos\OBC\ECWolf\` | ECWolf source | Read-only |
+| `P:\msdos\OBC\ghidra\` | Ghidra project `OBC` (programs `count.exe`, `WOLF3D.EXE`). Outside `.local` because Ghidra rejects dot-folders in project paths. | Read/write, one writer at a time |
 | `P:\msdos\OBC\dosbox-x\` | DOSBox-X source with debugger, JSON-RPC agent and control server | Build in place; source changes only on local branch `obc-tools` (§6.8) |
 | `C:\Users\jason\Desktop\ghidra_12.2_PUBLIC\` | Ghidra 12.2 (`support\analyzeHeadless.bat`, `support\pyghidraRun.bat`) | Read-only install |
 | `OBCR\.local\` | Machine-local, git-ignored: Ghidra project, DOSBox runtime dirs, captures, traces from the original, exports | Read/write |
@@ -154,7 +156,7 @@ Always store the image-linear offset (tool-independent) in `re/symbols/count_exe
 
 ### 5.1 Project setup (M0.12)
 
-- Project directory `OBCR\.local\ghidra\`, project `OBC`. Program `count.exe` imported with the MZ loader, language `x86:LE:16:Real Mode`.
+- Project directory `P:\msdos\OBC\ghidra\`, project `OBC` (not under `.local`: Ghidra rejects project paths containing a folder that starts with a dot). Program `count.exe` imported with the MZ loader, language `x86:LE:16:Real Mode`.
 - Immediately after import: set the **DS register** to DGROUP (`G + 0x3218`) over every code range (*Select All → Set Register Values → DS*, or the `SetDgroup` script). Without this, data references resolve wrongly.
 - In the Borland medium/small data model, **SS = DS** after startup (stack lives in DGROUP). Pointers to locals passed as near pointers are DS-relative.
 - Re-run auto-analysis after setting DS.
@@ -166,14 +168,20 @@ The Ghidra project is a **cache**. The source of truth is the text state in `re/
 
 ```powershell
 $G = 'C:\Users\jason\Desktop\ghidra_12.2_PUBLIC\support'
-# Fresh import plus setup scripts (loader and processor names: verify on first run, then record the working command in tools/ghidra/README.md)
-& "$G\analyzeHeadless.bat" P:\msdos\OBC\OBCR\.local\ghidra OBC `
+# Fresh import (verified 2026-11-02): DS/SS set before analysis, then names and export
+& "$G\analyzeHeadless.bat" P:\msdos\OBC\ghidra OBC `
     -import P:\msdos\OBC\OBC\count.exe -loader MzLoader -processor "x86:LE:16:Real Mode" `
+    -scriptPath P:\msdos\OBC\OBCR\tools\ghidra -preScript SetDgroup.java `
+    -postScript ApplySymbols.java P:\msdos\OBC\OBCR -postScript ExportAll.java P:\msdos\OBC\OBCR\.local\ghidra\export
+# Re-apply symbols and re-export without re-analysis
+& "$G\analyzeHeadless.bat" P:\msdos\OBC\ghidra OBC -process count.exe -noanalysis `
     -scriptPath P:\msdos\OBC\OBCR\tools\ghidra `
-    -postScript SetDgroup.java -postScript ApplySymbols.java -postScript ExportAll.java
-# Re-run scripts on the existing program without re-analysis
-& "$G\analyzeHeadless.bat" P:\msdos\OBC\OBCR\.local\ghidra OBC -process count.exe -noanalysis `
-    -scriptPath P:\msdos\OBC\OBCR\tools\ghidra -postScript ExportAll.java
+    -postScript ApplySymbols.java P:\msdos\OBC\OBCR -postScript ExportAll.java P:\msdos\OBC\OBCR\.local\ghidra\export
+# Wolf3D reference program, named from its linker map (DGROUP paragraph 3A39)
+& "$G\analyzeHeadless.bat" P:\msdos\OBC\ghidra OBC `
+    -import P:\msdos\OBC\wolf3d\WOLFSRC\WOLF3D.EXE -loader MzLoader -processor "x86:LE:16:Real Mode" `
+    -scriptPath P:\msdos\OBC\OBCR\tools\ghidra -preScript ApplyWolfMap.java P:\msdos\OBC\wolf3d\WOLFSRC\WOLF3D.MAP 3A39 `
+    -postScript ExportAll.java P:\msdos\OBC\OBCR\.local\ghidra\export-wolf
 ```
 
 - Prefer **Java GhidraScripts** for headless reliability. PyGhidra (`pyghidraRun.bat`) is available for Python 3 scripts; confirm the exact headless invocation once and record it.
@@ -186,7 +194,7 @@ $G = 'C:\Users\jason\Desktop\ghidra_12.2_PUBLIC\support'
 1. Import `WOLFSRC\WOLF3D.EXE` into the same Ghidra project.
 2. Apply names from `WOLFSRC\WOLF3D.MAP` ("Publics by Value", about 1,500 lines starting at line 2099). Map addresses are `segment:offset` relative to image segment 0; add Ghidra's base `G`. The segment table at the top of the MAP lists each module's `_TEXT` segment, which is how you attribute segments to modules.
 3. The EXE also carries Turbo Debugger symbol data (`FB 52` at file offset 311232) with locals and types. Parsing it is optional extra credit.
-4. Transfer names into `COUNT.EXE` with Function ID (build a FID database from the named Wolf3D program), BSim, or Version Tracking. Expect good matches for the Borland RTL and the `ID_*` libraries, partial matches for `WL_*` modules.
+4. Transfer names into `COUNT.EXE`: `python -I tools/ghidra/match_functions.py` compares normalized instruction sequences of every function pair and writes `re/symbols/count_exe.csv` (279 of 937 functions matched on 2026-11-02, mostly the RTL and `ID_*` libraries). Then `python -I tools/ghidra/match_globals.py` aligns the matched pairs to transfer DGROUP variable names into `re/symbols/count_exe_data.csv` (273 offsets). `ApplySymbols.java` applies both; ambiguous matches get a `maybe_` prefix.
 5. Every transferred name enters the CSV as `LIKELY`, source `wolf3d-match`. It becomes `CONFIRMED` only after someone reads the function.
 
 ### 5.4 Finding things
@@ -211,6 +219,7 @@ $G = 'C:\Users\jason\Desktop\ghidra_12.2_PUBLIC\support'
 - **Jump tables.** Switches via `jmp cs:[bx+table]` may need manual table definition.
 - **Sign-magnitude fixed point.** `FixedByFrac` and similar helpers use sign-magnitude fractions, not two's complement.
 - **Overlapping segments.** Borland segments overlap in paragraph space; a far pointer can name the same byte with different segment:offset pairs. Normalize to image-linear offsets in notes.
+- **Segment constants shown as strings.** Ghidra often renders a pushed segment value as a pointer into a DGROUP string; for example `(char *)s_Communicating_on_IPX_socket__X_4218_3a90 + 0xb` is really the segment `0x3A9B`. Read the disassembly for far-pointer arguments.
 - **Wolf3D bias.** When a decompiled function "looks like" its Wolf3D counterpart, read it anyway, line by line. OBC changes are often single constants or one extra branch.
 
 ### 5.6 Recording RE results

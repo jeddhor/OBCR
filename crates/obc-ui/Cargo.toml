@@ -1,0 +1,18 @@
+[package]
+name = "obc-ui"
+description = "Front end: screens, menus, HUD and game flow for OBCR"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+obc-core.workspace = true
+obc-formats.workspace = true
+obc-sim.workspace = true
+obc-render.workspace = true
+obc-audio.workspace = true
+
+[lints]
+workspace = true

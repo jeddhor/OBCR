@@ -1,0 +1,15 @@
+[package]
+name = "obc-sim"
+description = "Deterministic Operation Body Count game simulation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+obc-core.workspace = true
+obc-formats.workspace = true
+
+[lints]
+workspace = true

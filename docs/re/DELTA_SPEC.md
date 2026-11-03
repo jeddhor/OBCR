@@ -53,8 +53,8 @@ Entry template and rules: AGENT_GUIDE §5.6. Status values: `OPEN` (known, not i
 ### D-007 — Audio set
 - **Area**: audio  **Status**: OPEN
 - **Wolf3D**: `NUMSOUNDS = 87` (WL6), IMF music, digitized sounds via VSWAP.
-- **OBC**: probably `NUMSOUNDS = 100`, 9–10 IMF tracks, new PCM background music file (`AUDIOMUS.BC`), Red Book CD music via MSCDEX (`cdmusic` parameter), Sound Blaster Pro mixer volumes (master, effects, music).
-- **Evidence**: AUDIOHED chunk sizes; AUDIOMUS statistics; strings (STRINGS.md "Menus, sound, mixer", "CD audio").  **Confidence**: LIKELY (counts), CONFIRMED (features exist)
+- **OBC**: probably `NUMSOUNDS = 100`, 9–10 IMF tracks, a second digitized-sound archive (`AUDIOMUS.BC`, 99 sounds, Corridor 7 layout), Red Book CD music via MSCDEX (`cdmusic` parameter), Sound Blaster Pro mixer volumes (master, effects, music).
+- **Evidence**: AUDIOHED chunk sizes; AUDIOMUS directory parse; strings (STRINGS.md "Menus, sound, mixer", "CD audio").  **Confidence**: LIKELY (counts), CONFIRMED (features exist)
 - **Port impact**: `obc-audio` music sources and mixer (DESIGN §7.4); Q-004, Q-006, Q-007, Q-016.
 
 ### D-008 — Random number table: no delta
@@ -165,9 +165,9 @@ Entry template and rules: AGENT_GUIDE §5.6. Status values: `OPEN` (known, not i
 ### D-023 — Palette
 - **Area**: rendering  **Status**: OPEN
 - **Wolf3D**: `gamepal` linked from `OBJ/GAMEPAL.OBJ`.
-- **OBC**: custom palette data in `COUNT.EXE` (two 768-byte candidates).
-- **Evidence**: 6-bit data runs at file ≈0x2DDB0 and ≈0x2E0B0.  **Confidence**: LIKELY
-- **Port impact**: `obc-formats::exe` palette reader; Q-025.
+- **OBC**: `gamepal` at file 0x2DDB0 for the 3D view, sprites and HUD; a separate picture palette at file 0x2E3B0 for full-screen pictures; a third palette at 0x2E0B0 (role open).
+- **Evidence**: `VL_FadeIn` call with far pointer 3A9B:0000; exported images.  **Confidence**: CONFIRMED (gamepal, picture palette)
+- **Port impact**: `obc-formats::exe` palette reader; screens must switch palettes like the original; Q-025.
 
 ### D-024 — Help screen
 - **Area**: UI  **Status**: OPEN
