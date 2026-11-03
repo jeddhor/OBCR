@@ -140,7 +140,22 @@ impl World {
         self.ply.stations.count = 0;
         self.actorpos = [0; crate::world::MAXACTORS];
         player::setup_level_player_state(self);
-        // The automap wall bitmap is derived on demand by the UI; clear bit 15 as the original does.
+        // The overhead-map wall bitmap (DS:0xE093, 2f4d:0200; RENDERER.md §9.2):
+        // a solid wall 1–0x7F unless plane 1 is 107, or an open/door cell whose
+        // plane-1 bit 15 is set (plane-0 code 143). Then bit 15 is cleared.
+        for y in 0..MAPSIZE as i32 {
+            let mut row = 0u64;
+            for x in 0..MAPSIZE as i32 {
+                let t = self.tile(x, y);
+                let info = self.mapspot(x, y, 1);
+                let wall = (1..=0x7F).contains(&t) && info != 107;
+                let marked = (t == 0 || t & 0x80 != 0) && info & 0x8000 != 0;
+                if wall || marked {
+                    row |= 1 << x;
+                }
+            }
+            self.automap[y as usize] = row;
+        }
         for v in &mut self.plane1 {
             *v &= 0x7FFF;
         }

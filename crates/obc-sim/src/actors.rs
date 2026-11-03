@@ -48,9 +48,6 @@ pub struct ActorsState {
     /// `DS:0x3268 && DS:0x3308` (lighting mode "generators off" and a debug
     /// key flag): enables `A_DebugSparkle`. Default `false`.
     pub debug_sparkle: bool,
-    /// Tremor frames (`DS:0x09D8`), set to 10 by the explosion tile effects.
-    /// PlayLoop (another module) counts it down.
-    pub tremor: i16,
     /// `DS:0xDD87`, set to 12 by `SpawnGrenade`. Meaning UNKNOWN.
     pub grenade_timer: i16,
     /// Damage `T_ShootAlly` applies on a miss. The original uses an
@@ -67,7 +64,6 @@ impl Default for ActorsState {
             kill_timer: 0,
             sb_pro_mixer: false,
             debug_sparkle: false,
-            tremor: 0,
             grenade_timer: 0,
             shoot_ally_damage: 0,
         }
@@ -926,15 +922,13 @@ fn check_cardinal(w: &mut World, id: ObjId, x: i32, y: i32, doornum: &mut i16) -
 
 /// `ActorBumpWall(ob, x, y)` (ghidra 1e43:0cca): an actor walked into a wall
 /// whose tile is 13, 29, 49, 65 or 69. Except for classes 3, 6, 7 and 21 it
-/// calls `FUN_2f4d_08e8(x, y)`, the special-wall/gate list (`DS:0x46E2`).
+/// calls `OperateAnimWall(x, y)` (2f4d:08e8): enemies open door-look walls.
 #[doc(alias = "ActorBumpWall")]
 fn actor_bump_wall(w: &mut World, id: ObjId, x: i32, y: i32) {
     if matches!(w.obj(id).obclass, class::RAT | class::SAUCER | class::GIANT_RAT | class::FIRE) {
         return;
     }
-    // TODO(Q-ACT-6): call the special-wall handler `FUN_2f4d_08e8(x, y)` once
-    // the special-wall list (DS:0x46E2, owned by the map/doors module) exists.
-    let _ = (x, y);
+    w.operate_anim_wall(x, y);
 }
 
 /// `TryWalk` (ghidra 1e43:01c3).
@@ -2560,8 +2554,11 @@ pub fn explosion_tile_effects(w: &mut World, hitx: u8, hity: u8, ob: ObjId) {
                 continue;
             }
             if hx == x && hy == y {
-                // The blocking wall. TODO(Q-ACT-6): remove its entry from the
-                // special-wall list (DS:0x46E2, count DS:0xE7A8) when that list exists.
+                // The blocking wall: its animated-wall record (DS:0x46E2, count
+                // DS:0xE7A8) goes too.
+                if let Some(i) = w.anim_wall_at(x, y) {
+                    w.animwalls.remove(i);
+                }
                 if info == 0x7D {
                     w.tilemap[idx] = 0x4D;
                     w.set_actorat(x, y, Occ::Mark(0x4D));
@@ -2576,8 +2573,10 @@ pub fn explosion_tile_effects(w: &mut World, hitx: u8, hity: u8, ob: ObjId) {
                     spawn_fire_actor(w, x as u16, y as u16);
                 }
             } else {
-                // TODO(Q-ACT-6): walls listed in the special-wall list
-                // (DS:0x46E2) are left untouched; that list does not exist yet.
+                // Animated walls (DS:0x46E2) nearby are left untouched.
+                if w.anim_wall_at(x, y).is_some() {
+                    continue;
+                }
                 match info {
                     0x56 | 0x57 | 0x58 | 0x62 => {
                         w.tilemap[idx] = 0;
@@ -2595,8 +2594,10 @@ pub fn explosion_tile_effects(w: &mut World, hitx: u8, hity: u8, ob: ObjId) {
             }
         }
     }
+    // A tremor (RENDERER.md §8.4): shake counter DS:0x0D40 = 8, quake DS:0x09D8 = 10.
+    w.shake = 8;
+    w.quake = 10;
     w.emit(SimEvent::Shake(8));
-    w.act.tremor = 10;
 }
 
 /// `SpawnStaticAt(index, x, y)` (ghidra 2281:02a3): a static from `statinfo`

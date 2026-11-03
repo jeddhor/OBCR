@@ -407,7 +407,7 @@ fn grenade_blasts_wall() {
     assert_eq!(w.tile(9, 8), 1, "info 0x7D protects");
     assert!(w.statics.iter().any(|s| (s.tilex, s.tiley) == (10, 8) && s.shape != -1));
     assert!(w.events.contains(&SimEvent::Shake(8)));
-    assert_eq!(w.act.tremor, 10);
+    assert_eq!((w.quake, w.shake), (10, 8));
 }
 
 #[test]

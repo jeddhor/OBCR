@@ -344,6 +344,8 @@ pub struct World {
     pub actorpos: [u16; MAXACTORS],
     #[serde(skip)]
     pub events: Vec<SimEvent>,
+    /// Overhead-map walls as built at level start, bit `x` of row `y`.
+    pub automap: Vec<u64>,
     /// Palette mode (`SetPaletteMode`, DS:0x8F0C): 1 normal, 2 dark
     /// (generators off). Follows the `Lighting` events.
     pub lighting: u8,
@@ -425,6 +427,7 @@ impl World {
             thermosensor: false,
             actorpos: [0; MAXACTORS],
             events: Vec::new(),
+            automap: vec![0; MAPSIZE],
             lighting: 1,
             tic: 0,
             loadedgame: false,

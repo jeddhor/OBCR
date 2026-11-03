@@ -96,6 +96,8 @@ pub struct Game {
     viewsize: u16,
     /// `MusicMode` (F2): music on.
     music: bool,
+    /// Overhead-map player blink (DS:0x3272), toggled each drawn frame.
+    map_blink: bool,
     /// Enhanced interpolation: player pose and actor positions at the last
     /// frame boundary, and whether it is enabled.
     prev_pose: (i32, i32, i16),
@@ -139,6 +141,7 @@ impl Game {
             sparkle_frames: 0,
             viewsize: 18,
             music: true,
+            map_blink: false,
             prev_pose: (0, 0, 0),
             prev_objs: Vec::new(),
             interpolate: false,
@@ -270,7 +273,10 @@ impl Game {
                 SimEvent::Message(m) => self.hud.message(m),
                 SimEvent::ItemIcon(i) => self.hud.show_item(i),
                 SimEvent::AllyDied => self.hud.ally_died(),
-                SimEvent::Shake(n) => self.world.shake = self.world.shake.max(n),
+                SimEvent::Shake(n) => {
+                    let s = (f32::from(n) / 8.0).clamp(0.3, 1.0);
+                    ctx.requests.rumble = Some((s, s, 400));
+                }
                 SimEvent::Rumble(n) => {
                     let s = f32::from(n) / 100.0;
                     ctx.requests.rumble = Some((s, s, 250));
@@ -290,6 +296,9 @@ impl Game {
         self.sound.update(ctx.audio, self.listener());
         self.hud.frame(FRAME_TICS);
         self.palette_shifts(FRAME_TICS);
+        if self.world.ply.map_overlay == 1 {
+            self.map_blink = !self.map_blink;
+        }
         self.sparkle_frames += 1;
         if self.sparkle_frames > 300 || (self.world.objlistfull && !was_full) {
             self.sparkle_frames = 0;
@@ -613,6 +622,9 @@ impl Screen for Game {
 
         out.layer.clear(0xFF);
         out.layer_key = Some(0xFF);
+        if w.ply.map_overlay == 1 {
+            draw_overhead_map(out.layer, w, self.viewsize, self.map_blink);
+        }
         self.hud.draw(out.layer, a, w);
         let (vx, vy) = (i32::from(160 - self.viewsize * 8), i32::from(80 - self.viewsize * 4));
         self.hud.draw_message(out.layer, a, vx, vy);
@@ -661,6 +673,53 @@ impl Screen for Boot {
         out.frame.clear(0);
         out.layer.clear(0);
     }
+}
+
+/// The Tab overhead map (`2f4d:0d31`, RENDERER.md §9.2), one pixel per tile
+/// at absolute page coordinates, drawn over the view without a background.
+fn draw_overhead_map(fb: &mut Framebuffer, w: &World, viewsize: u16, blink: bool) {
+    let (vw, vh) = (i32::from(viewsize) * 16, i32::from(viewsize) * 8);
+    let (x0, y0) = ((320 - vw) / 2 + 4, (200 - vh) / 2 + 4);
+    // Frame: a 64×64 outline in 0x0C.
+    fb.bar(x0, y0, 64, 1, 0x0C);
+    fb.bar(x0, y0 + 63, 64, 1, 0x0C);
+    fb.bar(x0, y0, 1, 64, 0x0C);
+    fb.bar(x0 + 63, y0, 1, 64, 0x0C);
+    // Walls: a 24×24 window around the player, columns from a multiple of 8.
+    let p = w.plr();
+    let window = |t: u16| -> i32 {
+        let c = (i32::from(t as i16) - 12).max(0);
+        if c + 24 > 64 { 40 } else { c }
+    };
+    let (c0, r0) = (window(p.tilex) & !7, window(p.tiley));
+    for ty in r0..r0 + 24 {
+        let row = w.automap.get(ty as usize).copied().unwrap_or(0);
+        for tx in c0..(c0 + 24).min(64) {
+            if row & (1 << tx) != 0 {
+                fb.put(x0 + tx, y0 + ty, 0x0C);
+            }
+        }
+    }
+    if w.gamestate.difficulty < 4 {
+        // ThermoSensor: every actor that ran this frame, inside the window.
+        if w.gamestate.cheatmode || w.thermosensor {
+            for &v in &w.actorpos {
+                let (tx, ty) = (i32::from(v >> 8), i32::from(v & 0xFF));
+                if v != 0 && (c0..c0 + 24).contains(&tx) && (r0..r0 + 24).contains(&ty) {
+                    fb.put(x0 + tx, y0 + ty, 1);
+                }
+            }
+        }
+        // Allies, anywhere in the box.
+        for id in w.obj_ids() {
+            let o = w.obj(id);
+            if id != w.player && o.obclass == obc_sim::world::class::ALLY {
+                fb.put(x0 + i32::from(o.tilex as i16), y0 + i32::from(o.tiley as i16), 2);
+            }
+        }
+    }
+    let c = if blink { 0xFC } else { 0x0F };
+    fb.put(x0 + i32::from(p.tilex as i16), y0 + i32::from(p.tiley as i16), c);
 }
 
 /// A small cross at the view centre (Enhanced overlay, C key).

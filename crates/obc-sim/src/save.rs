@@ -15,7 +15,7 @@ use crate::world::World;
 
 pub const MAGIC: &[u8; 8] = b"OBCRSAVE";
 /// Bumped whenever `World` or the header changes shape.
-pub const FORMAT: u32 = 2;
+pub const FORMAT: u32 = 3;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SaveHeader {
