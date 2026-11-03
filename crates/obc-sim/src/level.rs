@@ -6,7 +6,9 @@ use obc_formats::maps::Map;
 use crate::actors;
 use crate::allies;
 use crate::player;
-use crate::world::{AMBUSHTILE, AREATILE, Door, DoorAction, MAPSIZE, NUMAREAS, Occ, World};
+use crate::world::{
+    AMBUSHTILE, AREATILE, Door, DoorAction, MAPSIZE, NUMAREAS, Occ, World, ex,
+};
 
 /// Plane-0 door codes (130–137) and the per-lock door page (`DOORWALL` = 128).
 pub const DOOR_FIRST: u16 = 130;
@@ -132,19 +134,7 @@ impl World {
     /// `PrepareLevel` (ghidra 2f4d:0167): per-level resets.
     fn prepare_level(&mut self) {
         self.actorpos = [0; crate::world::MAXACTORS];
-        if !self.loadedgame {
-            let g = &mut self.gamestate;
-            g.fuel_cap = 100;
-            g.maxhealth = 100;
-            let cap = starthealth(g.difficulty);
-            g.health = g.health.min(cap);
-            g.attackframe = 0;
-            g.immune = 0;
-            g.shots_total += i32::from(g.shots_level);
-            g.hits_total += i32::from(g.hits_level);
-            g.shots_level = 0;
-            g.hits_level = 0;
-        }
+        player::setup_level_player_state(self);
         // The automap wall bitmap is derived on demand by the UI; clear bit 15 as the original does.
         for v in &mut self.plane1 {
             *v &= 0x7FFF;
@@ -275,6 +265,16 @@ impl World {
         } else {
             (self.rnd() % 9) as u16
         }
+    }
+}
+
+impl World {
+    /// `ex_completed` bookkeeping after the exit sequence (GAMEFLOW §5.3):
+    /// next map and +35 health, capped only by the per-frame 999 limit.
+    pub fn advance_level(&mut self) {
+        self.gamestate.mapon += 1;
+        self.gamestate.health = self.gamestate.health.saturating_add(35);
+        self.playstate = ex::STILLPLAYING;
     }
 }
 

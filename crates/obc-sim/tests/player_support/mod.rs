@@ -33,7 +33,7 @@ pub fn game_data() -> GameData {
             attackinfo[w][k] = AttackStep { tics, attack, frame };
         }
     }
-    GameData { states, attackinfo, statinfo: Vec::new() }
+    GameData { states, attackinfo, ..GameData::default() }
 }
 
 /// Room interior (inclusive) in a map of solid walls.

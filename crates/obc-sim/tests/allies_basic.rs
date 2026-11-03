@@ -41,7 +41,7 @@ fn world() -> World {
     let data = GameData {
         states: ally_states(),
         attackinfo: [[AttackStep::default(); 15]; 5],
-        statinfo: Vec::new(),
+        ..GameData::default()
     };
     let mut w = World::new(Arc::new(data), Arc::new(Tables::build()));
     for x in 0..MAPSIZE {

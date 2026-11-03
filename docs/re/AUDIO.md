@@ -87,7 +87,7 @@ Differences from Wolf3D (`WOLFSRC/ID_SD.C` `SD_PlaySound`):
 
 ### 4.2 Positioned sounds: `PlaySoundLocGlobal(id, x, y)` (ghidra 1823:0106) — LIKELY
 
-`SetSoundLoc` (1823:0006) computes `leftchannel` and `rightchannel` from the Wolf3D 15 × 30 tables (lookup bases DS:0x765 and DS:0x5A3). The sound starts only if
+`SetSoundLoc` (1823:0006) computes `leftchannel` and `rightchannel` from 15 × 30 tables laid out as Wolf3D's but with **OBC's own values** (maximum attenuation 7, not 8; CONFIRMED by file read): `righttable` at DS:0x0594 and `lefttable` at DS:0x0756. The code's lookup bases DS:0x5A3 and DS:0x765 are the table starts plus 15 (the `y + ATABLEMAX` term folded into the address); `lefttable` ends where the death-sound table DS:0x0918 begins. The sound starts only if
 
 `left + right < 13` **or** `id < 50` **or** (mixer type 1 **and** (`id > 62` **or** `id < 75`))
 

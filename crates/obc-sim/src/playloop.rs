@@ -17,7 +17,6 @@ impl World {
         // PollControls, then the walk/knock-back extras.
         player::apply_controls(self, cmd);
         player::pre_actors(self);
-        self.madenoise = false;
 
         self.move_doors();
         self.move_pwalls();
@@ -58,17 +57,59 @@ impl World {
             }
         }
 
-        if self.gamestate.health > 999 {
-            self.gamestate.health = 999;
-        }
+        // Wall-break animation and the health cap.
+        player::post_actors(self);
+        // TODO(M8): the random event roll (DS:0x0AB2, 2390:10f2) goes here.
+        player::check_keys(self);
+    }
 
-        // CheckKeys: ally orders and tremors toggle.
-        allies::handle_keys(self, cmd);
-        if cmd.toggle_tremors {
-            self.tremors = !self.tremors;
-            let msg = if self.tremors { "TREMORS ON" } else { "TREMORS OFF" };
-            self.emit(SimEvent::Message(msg.into()));
+    /// `PlayLoop` entry (ghidra 1942:1315, GAMEFLOW §5.1): the player resets
+    /// ([`player::play_loop_start`]), sewers start dark, allies are counted.
+    /// Returns the lighting mode: 2 when
+    /// the level's generator switch is off (a tile 96 in `tilemap`), else 1.
+    pub fn start_play_loop(&mut self) -> u8 {
+        player::play_loop_start(self);
+        self.dark = (0..=4).contains(&self.gamestate.mapon);
+        allies::init_allies(self);
+        if self.tilemap.contains(&96) { 2 } else { 1 }
+    }
+
+    /// Start of `Died` (ghidra 1823:0cda): hands away, random death scream
+    /// (table DS:0x0918 = 22–26, one `US_RndT`). Returns the angle to turn to,
+    /// facing the killer, if one is recorded.
+    pub fn start_death(&mut self) -> Option<i16> {
+        self.gamestate.weapon = -1;
+        let id = 22 + (self.rnd() % 5) as u16;
+        self.play_sound(id);
+        let k = self.killerobj?;
+        let (p, o) = (self.plr(), self.obj(k));
+        let dx = f64::from(o.x - p.x);
+        let dy = f64::from(p.y - o.y);
+        let mut fangle = dy.atan2(dx);
+        if fangle < 0.0 {
+            fangle += std::f64::consts::TAU;
         }
+        Some((fangle / std::f64::consts::TAU * 360.0) as i16 % 360)
+    }
+
+    /// One step of the death swing toward `target` (`DEATHROTATE` 4°/tic, the
+    /// shorter way round). Returns true when facing it.
+    pub fn death_turn(&mut self, target: i16, tics: i16) -> bool {
+        let a = self.plr().angle;
+        if a == target {
+            return true;
+        }
+        let clockwise = (target - a).rem_euclid(360);
+        let counter = (a - target).rem_euclid(360);
+        let step = 4 * tics;
+        let p = self.player;
+        let angle = if clockwise < counter {
+            a + step.min(clockwise)
+        } else {
+            a - step.min(counter)
+        };
+        self.obj_mut(p).angle = angle.rem_euclid(360);
+        self.obj(p).angle == target
     }
 
     /// Whether the level loop should end.

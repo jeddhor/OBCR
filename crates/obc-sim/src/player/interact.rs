@@ -148,20 +148,14 @@ pub(super) fn try_exit(w: &mut World) {
 }
 
 /// `PushWall(x, y, dir)` (ghidra 2281:0ce2, docs/re/LEVEL_CODES.md §4.7).
-///
-/// TODO(M5): owned by the push-wall module, which does not exist yet; call
-/// its `World::push_wall(x, y, dir)` here once it lands.
 #[doc(alias = "PushWall")]
 fn push_wall(w: &mut World, x: i32, y: i32, dir: u16) {
-    let _ = (w, x, y, dir);
+    w.push_wall(x, y, dir);
 }
 
 /// `OperateAnimWall(x, y)` (ghidra 2f4d:08e8, docs/re/LEVEL_CODES.md §4.4):
 /// opens or closes the door-look wall / barrier at the tile.
-///
-/// TODO(M5): owned by the animated-wall module (list DS:0x46E2), which does
-/// not exist yet; call its `World::operate_anim_wall(x, y)` here.
 #[doc(alias = "OperateAnimWall")]
 fn operate_anim_wall(w: &mut World, x: i32, y: i32) {
-    let _ = (w, x, y);
+    w.operate_anim_wall(x, y);
 }

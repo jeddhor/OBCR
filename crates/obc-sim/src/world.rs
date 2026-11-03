@@ -266,6 +266,10 @@ pub struct TicCmd {
     pub ally_stay: bool,
     pub ally_mode: bool,
     pub toggle_tremors: bool,
+    /// Modern controls: sideways movement applied alongside turning, in
+    /// `controlx` units (positive = right). The original profiles leave it 0
+    /// and strafe through `buttons[bt::STRAFE]`.
+    pub strafe: i16,
 }
 
 /// The whole simulated world.
@@ -331,8 +335,6 @@ pub struct World {
     pub shake: i16,
     /// Darker distance shading (DS:0x33B8): sewers, quake frames.
     pub dark: bool,
-    /// TREMORS option (DS:0x0D44), toggled with F8.
-    pub tremors: bool,
     /// State owned by `actors.rs` (enemies, projectiles, fire).
     pub act: crate::actors::ActorsState,
     /// State owned by `player.rs` (controls, weapons, effects).
@@ -395,7 +397,6 @@ impl World {
             quake: 0,
             shake: 0,
             dark: false,
-            tremors: true,
             act: Default::default(),
             ply: Default::default(),
             ally: Default::default(),

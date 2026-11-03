@@ -101,7 +101,7 @@ pub struct StatInfo {
 }
 
 /// Per-level presentation tables (docs/re/LEVEL_CODES.md §5).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct LevelTables {
     /// Roof ramp index, floor ramp index, roof colour, floor colour per map slot 0..51
     /// (`Rindex`/`Findex`/`Rclr`/`Fclr`, DS:0x9E6/0xA19/0xA4C/0xA7F).
@@ -125,7 +125,7 @@ impl LevelTables {
 }
 
 /// All tables the simulation reads from the executable.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct GameData {
     pub levels: LevelTables,
     pub states: BTreeMap<StateId, State>,
@@ -133,6 +133,11 @@ pub struct GameData {
     pub attackinfo: [[AttackStep; 15]; 5],
     /// `statinfo` (DS:0x11DA).
     pub statinfo: Vec<StatInfo>,
+    /// Positioned-sound attenuation, `[x][y + 15]` with 15 × 30 entries, 0 (loud)
+    /// to 7: `righttable` DS:0x0594 and `lefttable` DS:0x0756. OBC's values
+    /// differ from Wolf3D's (`WOLFSRC/WL_GAME.C:77`, maximum 8).
+    pub pan_right: Vec<u8>,
+    pub pan_left: Vec<u8>,
 }
 
 /// State-record ranges (DS offsets, inclusive): player, enemies/effects, allies.
@@ -206,7 +211,14 @@ impl GameData {
                 std::array::from_fn(|i| u16::from_le_bytes([b[2 * i], b[2 * i + 1]]))
             },
         };
-        Ok(Self { levels, states, attackinfo, statinfo })
+        Ok(Self {
+            levels,
+            states,
+            attackinfo,
+            statinfo,
+            pan_right: ds(exe, 0x0594, 450)?.to_vec(),
+            pan_left: ds(exe, 0x0756, 450)?.to_vec(),
+        })
     }
 
     pub fn state(&self, id: StateId) -> Option<&State> {

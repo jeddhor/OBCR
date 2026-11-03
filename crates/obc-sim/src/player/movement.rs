@@ -61,6 +61,15 @@ pub(super) fn control_movement(w: &mut World, id: ObjId) {
         }
     }
 
+    // Modern controls (not in the original): strafe while turning. Same
+    // direction and scale as the strafe button's sideways thrust.
+    let strafe = w.ply.cmd.strafe.clamp(w.tics.wrapping_mul(-100), w.tics.wrapping_mul(100));
+    if strafe != 0 && !w.buttonstate[bt::STRAFE] {
+        let a = w.obj(id).angle;
+        let side = if strafe > 0 { a - ANGLES / 4 } else { a + ANGLES / 4 };
+        thrust(w, side.rem_euclid(ANGLES), i32::from(strafe.unsigned_abs()) * MOVESCALE);
+    }
+
     if w.controly < 0 {
         let speed = i32::from(w.controly.wrapping_neg()).wrapping_mul(MOVESCALE);
         thrust(w, w.obj(id).angle, speed); // move forwards
