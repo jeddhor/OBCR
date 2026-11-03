@@ -50,9 +50,12 @@ fn page_file_counts() {
 #[test]
 fn every_map_decodes() {
     let d = data_or_skip!();
-    let maps =
-        MapArchive::parse(&d.read("MAPHEAD.BC").unwrap(), d.read("MAPTEMP.BC").unwrap(), Compression::Rlew)
-            .unwrap();
+    let maps = MapArchive::parse(
+        &d.read("MAPHEAD.BC").unwrap(),
+        d.read("MAPTEMP.BC").unwrap(),
+        Compression::Rlew,
+    )
+    .unwrap();
     assert_eq!(maps.rlew_tag(), 0xABCD);
     let slots: Vec<usize> = maps.used_slots().collect();
     assert_eq!(slots, (0..61).collect::<Vec<_>>());
@@ -87,7 +90,8 @@ fn graphics_decode() {
 #[test]
 fn audio_decodes() {
     let d = data_or_skip!();
-    let a = AudioArchive::parse(&d.read("AUDIOHED.BC").unwrap(), d.read("AUDIOT.BC").unwrap()).unwrap();
+    let a =
+        AudioArchive::parse(&d.read("AUDIOHED.BC").unwrap(), d.read("AUDIOT.BC").unwrap()).unwrap();
     assert_eq!(a.num_chunks(), 310);
     let first = a.pc_sound(0).unwrap();
     assert_eq!((first.data.len(), first.priority), (109, 99));

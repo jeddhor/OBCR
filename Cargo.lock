@@ -463,6 +463,7 @@ name = "obc-platform"
 version = "0.1.0"
 dependencies = [
  "sdl3",
+ "thiserror",
 ]
 
 [[package]]
@@ -472,6 +473,7 @@ dependencies = [
  "obc-core",
  "obc-formats",
  "obc-sim",
+ "png",
 ]
 
 [[package]]
