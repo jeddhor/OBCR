@@ -3,7 +3,7 @@
 //! `GunAttack` :1168, `T_Attack` :1293; OBC segment 208c, docs/re/PLAYER.md
 //! §3.8–3.10).
 //!
-//! Weapons: 0 pistol (unlimited), 1 Uzi, 2 Galil, 3 flame thrower,
+//! Weapons: 0 assault shotgun (unlimited), 1 Uzi, 2 Galil, 3 flame thrower,
 //! 4 grenade launcher. `gamestate.ammo` is one shared 30-round magazine;
 //! `gamestate.clips[w-1]` counts the clips per weapon, including the loaded one.
 
@@ -42,7 +42,7 @@ fn owns(w: &World, weapon: i16) -> bool {
 }
 
 /// *HasAmmo*(w) (ghidra 208c:184c, CONFIRMED): the shared magazine is not
-/// empty, or the weapon is the pistol.
+/// empty, or the weapon is the shotgun.
 #[doc(alias = "HasAmmo")]
 fn has_ammo(w: &World, weapon: i16) -> bool {
     w.gamestate.ammo != 0 || weapon == 0
@@ -139,7 +139,7 @@ pub fn give_clip(w: &mut World, weapon: i16) {
 
 /// *Reload* (ghidra 208c:1d24, CONFIRMED): uses up the current clip; with
 /// clips left the magazine refills, otherwise the weapon falls back to the
-/// pistol, or to the Uzi when 9 mm clips remain (weapons 2–4 only; the Uzi
+/// shotgun, or to the Uzi when 9 mm clips remain (weapons 2–4 only; the Uzi
 /// keeps an empty magazine then).
 #[doc(alias = "Reload")]
 fn reload(w: &mut World) {
@@ -354,7 +354,7 @@ fn attack_shot(w: &mut World, id: ObjId) {
 
 /// Attack code −1 (208c:1987): back to `s_player`; with an empty magazine
 /// step down to the next owned weapon that has ammo (in practice the
-/// pistol, since the magazine is shared); otherwise return to the chosen
+/// shotgun, since the magazine is shared); otherwise return to the chosen
 /// weapon. Clears `buttonstate`/`buttonheld` of fire, so holding fire
 /// starts the next cycle on the next frame.
 fn end_attack(w: &mut World, id: ObjId) {
@@ -505,7 +505,7 @@ mod tests {
 
     #[test]
     fn damage_table() {
-        // dist 0, rnd 0, pistol, difficulty 2 (×1): 0 + 50 + 100.
+        // dist 0, rnd 0, shotgun, difficulty 2 (×1): 0 + 50 + 100.
         assert_eq!(hit_damage(0, 0, 0, 2), 150);
         // rnd % 50 and the Uzi bonus 20 at dist 1: 49 + 20 + 75.
         assert_eq!(hit_damage(1, 99, 1, 2), 144);

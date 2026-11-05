@@ -29,5 +29,5 @@ fn state_tables_resolve() {
         eprintln!("unknown function {a} in state {id:04x}");
     }
     assert_eq!(data.state(0x14AE).unwrap().shape, 64, "rat stand sprite");
-    assert_eq!(data.attackinfo[0][3].tics, 56, "pistol raised frame");
+    assert_eq!(data.attackinfo[0][3].tics, 56, "shotgun raised frame");
 }

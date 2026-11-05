@@ -22,6 +22,8 @@ pub struct GameSettings {
     pub gametype: i16,
     /// VIEW SIZE: 12, 14, 16, 18 or 20.
     pub viewsize: u16,
+    /// Textured floors and ceilings (`floormode`, F5 off / F6 on; CONFIG.DAT 0x11A).
+    pub floor_textures: bool,
     /// The `nsr250` parameter: Alt+LShift+B enables bogus mode in game.
     #[serde(skip)]
     pub nsr250: bool,
@@ -42,7 +44,14 @@ pub struct Score {
 
 impl Default for GameSettings {
     fn default() -> Self {
-        Self { gametype: 1, viewsize: 18, nsr250: false, quicksave_slot: None, scores: Vec::new() }
+        Self {
+            gametype: 1,
+            viewsize: 18,
+            floor_textures: true,
+            nsr250: false,
+            quicksave_slot: None,
+            scores: Vec::new(),
+        }
     }
 }
 

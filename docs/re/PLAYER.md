@@ -11,7 +11,7 @@ Summary of the big differences from Wolf3D:
 
 1. No lives, no extra men, no face. Death in single player is game over (death FLC, high score, menu).
 2. Health runs 0–999 (start 400); there is a separate armor value (flak jacket) that absorbs half of each hit.
-3. Five weapons: pistol (unlimited), Uzi, Galil, flame thrower, grenade launcher. Ammo is a **30-round magazine** (`gamestate.ammo`) plus a **clip count per weapon** (max 19). The status bar AMMO bar shows clips, not rounds.
+3. Five weapons: assault shotgun (unlimited), Uzi, Galil, flame thrower, grenade launcher. Ammo is a **30-round magazine** (`gamestate.ammo`) plus a **clip count per weapon** (max 19). The status bar AMMO bar shows clips, not rounds.
 4. 14 buttons instead of 8 (five weapon keys, strafe moved to index 13, four extra keys).
 5. A difficulty value of 0–6 that doubles as the network game mode (4–6), with unusual damage multipliers.
 6. A status bar of segmented bars (health, ammo, armor) plus score, kills, level, ally indicators and a 32×32 event box.
@@ -111,7 +111,7 @@ Summary of the big differences from Wolf3D:
 | 0x8700 | +04 | long | (Wolf3D `oldscore`) | 0 | no direct references found | UNKNOWN |
 | 0x8704 | +08 | long | `score`, capped at 1,000,000 | 0 | *GivePoints* `208c:0614` | CONFIRMED |
 | 0x8708 | +0C | int | option bits: bit 0 toggled by bt[10] (S), bit 1 by bt[11] (I) | 3 | `2f4d:0bd3`; no reader found | field CONFIRMED, use UNKNOWN |
-| 0x870A | +0E | byte | weapons owned, bit *w* = weapon *w* | 3 (pistol, Uzi) | NewGame, *GiveWeapon* | CONFIRMED |
+| 0x870A | +0E | byte | weapons owned, bit *w* = weapon *w* | 3 (shotgun, Uzi) | NewGame, *GiveWeapon* | CONFIRMED |
 | 0x870C | +10 | int | `health`, 0–999 | `starthealth[difficulty]` | §4.3 | CONFIRMED |
 | 0x870E | +12 | int | `ammo`: rounds (or fuel units) left in the loaded magazine, 0–30 | 30 | §3.8 | CONFIRMED |
 | 0x8710 | +14 | int | number of carried-item records at 0x875A (max 3) | 0 | `2f4d:04be` | LIKELY |
@@ -175,7 +175,7 @@ Starting health `starthealth[difficulty]` is the int table at DS:0x32EC: `400 40
 
 ### 2.3 Lifetime of the fields
 
-- *NewGame* (`1497:0549`): clear; difficulty; weapons = pistol+Uzi; weapon = chosen = best = 1; health = starthealth; ammo = 30; 0x8708 = 3; score text; 0x8722 = 250; *ResetInventory*; 0x872C = 100; maxammo = 200; maxhealth = 100. CONFIRMED.
+- *NewGame* (`1497:0549`): clear; difficulty; weapons = shotgun+Uzi; weapon = chosen = best = 1; health = starthealth; ammo = 30; 0x8708 = 3; score text; 0x8722 = 250; *ResetInventory*; 0x872C = 100; maxammo = 200; maxhealth = 100. CONFIRMED.
 - *ResetInventory* (`2f4d:0f7c`): carried items cleared; armor = 0 (200 at difficulty 0); 0x8724 = 0; cheat flag cleared; shot/hit totals cleared; clips = {2,0,0,0}; weapon = chosen = best = 1. Note it does **not** clear the owned-weapons bitmask. CONFIRMED.
 - Every level start (`2f4d:0167`, unless loading a save): maxhealth = 0x872C = 100; health is **reduced** to starthealth if above it; attackframe = 0; 0x8724 = 0; level shot/hit counts are added to the totals and cleared; Tab-map state reset. CONFIRMED.
 - Level completed (`1823:1045`): mapon++, **health += 35** (no cap here; the next level start caps it to starthealth). CONFIRMED.
@@ -275,7 +275,7 @@ LIKELY (decompiler). Skipped while a modal box is up (DS:0xBFF4) or DS:0x95D5 is
 | Keys | Effect |
 |---|---|
 | Esc, F1, F2 | control panel (Wolf3D behavior) |
-| F5 / F6 | DS:0x33D2 = 0 / 2 (floor/ceiling mode?) |
+| F5 / F6 | DS:0x33D2 = 0 / 2: textured floors and ceilings **off** / **on** (RENDERER.md §3; the manual agrees) |
 | F8 | toggle `TREMORS` (screen shake), message "TREMORS ON"/"TREMORS OFF" |
 | F9 | quick action `1618:1210` if difficulty < 5 |
 | Pause | "PAUSE" box |
@@ -295,7 +295,7 @@ LIKELY (decompiler). Skipped while a modal box is up (DS:0xBFF4) or DS:0x95D5 is
 
 | # | Key | Weapon | Hand sprites (left / right half) | Status pic | Clip pool | Ammo used per attack step | Fire sound | Confidence |
 |---|---|---|---|---|---|---|---|---|
-| 0 | 1 | pistol (unlimited) | 544–551 / 584–591 | pic34 | — | 0 | 45 | CONFIRMED (code), name LIKELY (sprites) |
+| 0 | 1 | assault shotgun (unlimited) | 544–551 / 584–591 | pic34 | — | 0 | 45 | CONFIRMED (code); name from the manual ("assault shotgun", slugs) and pic34; earlier notes called it a pistol from the hand sprites |
 | 1 | 2 | Uzi | 552–559 / 592–599 | pic30 | `clips[0]` "9mm" | 1 | 46 | CONFIRMED |
 | 2 | 3 | Galil | 560–567 / 600–607 | pic31 | `clips[1]` "7mm" | 2 | 47 | CONFIRMED |
 | 3 | 4 | flame thrower | 568–575 / 608–615 | pic33 | `clips[2]` fuel | 1 | 48 | CONFIRMED |
@@ -344,7 +344,7 @@ States: `s_player` DS:0x0F46 = {rot 0, shape 0, tics 0, think 208c:1bfb}; `s_att
 
 | Weapon | Entry 0 | Entry 1 | Entry 2 | Entry 3 | Entry 4 |
 |---|---|---|---|---|---|
-| 0 pistol | 6, 0, 0 | 6, 2, 1 | 6, 0, 2 | **56**, 0, 3 | 36, −1, 4 |
+| 0 shotgun | 6, 0, 0 | 6, 2, 1 | 6, 0, 2 | **56**, 0, 3 | 36, −1, 4 |
 | 1 Uzi | 6, 1, 0 | 6, 2, 1 | 6, 2, 2 | 6, 3, 3 | 6, −1, 4 |
 | 2 Galil | 6, 1, 0 | 6, 2, 1 | 6, 2, 2 | 6, 3, 3 | 6, −1, 4 |
 | 3 flame | 6, 0, 0 | 6, 5, 1 | 6, 1, 2 | 6, 4, 3 | 6, −1, 4 |
@@ -366,7 +366,7 @@ After every code except −1, *UseAmmo* runs (even for code 0 steps). The light 
 
 | Weapon | First shot after press | Repeat while held | Ammo per cycle |
 |---|---|---|---|
-| 0 pistol | 12 tics | 1 shot per 80 tics (cycle ends; auto re-fire) | none |
+| 0 shotgun | 12 tics | 1 shot per 80 tics (cycle ends; auto re-fire) | none |
 | 1 Uzi | 6 tics | 3 hitscan shots per 24 tics | 4 rounds |
 | 2 Galil | 6 tics | 3 hitscan shots per 24 tics | 8 rounds |
 | 3 flame | 18 tics | 1 flame per 6 tics | 1 fuel unit per 6 tics |
@@ -530,7 +530,7 @@ Picture arguments are VGAGRAPH chunk numbers; the exported `picNN` = chunk − 3
 | kill lamp | bar (116,188) 4×6 | `30d6:0ad8` | single player only: color 0x0E if kills ≥ total, 2 if kills ≥ total/2 (exit open), else 1 |
 | difficulty digit | (128,187) | `30d6:01ec` | digit difficulty+1 (0–3), digit 5 for network |
 | health bar | y = 174 | `30d6:0b4a` | |
-| ammo bar | y = 182 | `30d6:0bfd` | value = 19 for the pistol, else `clips[weapon−1]` (clips, not rounds) |
+| ammo bar | y = 182 | `30d6:0bfd` | value = 19 for the shotgun, else `clips[weapon−1]` (clips, not rounds) |
 | armor bar | y = 190 | `30d6:0cdd` | |
 | score | (256,171), 7 digits | `DrawScore` | |
 | kills | (256,187), 3 digits | `30d6:0abe` | |
@@ -575,7 +575,7 @@ CONFIRMED unless noted.
 4. Network: respawn through `358f:0d7b` / `358f:1796` and continue the same level.
 5. Single player: fades, plays FLC "F6" (DS:0x094E) through `32a2:0bcb`, lighting mode 3, then the high-score check `2f4d:13ed`; if the score qualifies, name entry `2f4d:1422`. Return to the menu. **No lives: one death ends the game.** Wolf3D's lives logic (`WL_GAME.C:1114`) is gone.
 
-For comparison, level completion plays FLC "F2" after maps 0–4, "F5" after map 22, otherwise "F3" (exit 0x71/0x72) or "F4" (exit 0x73), then *LevelCompleted* stats (single player); victory plays "F7" (DS:0x0951). LIKELY: the names at DS:0x0942–0x0951 are FLC files.
+For comparison, level completion plays FLC "F2" after maps 0–4, "F5" after map 22, otherwise "F3" (exit 0x71/0x72) or "F4" (exit 0x73); victory plays "F7" (DS:0x0951). The names at DS:0x0942–0x0951 are FLC files. **There is no end-of-floor statistics screen**: the `ex_completed` handler (1823:0f6f, read instruction by instruction) goes straight from the sequence to the next floor (GAMEFLOW §5.3). CONFIRMED.
 
 ---
 
@@ -591,7 +591,7 @@ All CONFIRMED in code; their in-game effect is unverified.
 6. *GrenadeSplash* scans an asymmetric 4×4 box; *ExplosionTileEffects* uses an asymmetric 8×8 box and kills every shootable actor in it.
 7. Projectiles stop on door tiles even when the door is open (`tilemap` test).
 8. Health and armor bars saturate at about 342 while values run to 999.
-9. Pistol cycle: entry 3 holds the raised frame for 56 tics (one shot per 80 tics).
+9. Shotgun cycle: entry 3 holds the raised frame for 56 tics (one shot per 80 tics).
 10. *HealSelf* clamps health *down* to maxhealth (100 on most levels); only caller guards prevent losing health by healing.
 11. *TryExit* needs half the kills; the kill lamp shows this state.
 

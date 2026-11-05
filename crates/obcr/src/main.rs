@@ -61,6 +61,9 @@ struct Cli {
     /// Keys held during a headless run (PC scan codes in hex, comma separated).
     #[arg(long, value_delimiter = ',')]
     shot_keys: Vec<String>,
+    /// Headless: press and release a key at a tic, as `CODE@TIC` (hex scan code).
+    #[arg(long)]
+    shot_press: Vec<String>,
 }
 
 /// One tic: 1/70 s (`TICRATE`).
@@ -292,7 +295,21 @@ fn headless_shot(
             u8::from_str_radix(k.trim_start_matches("0x"), 16).context("bad --shot-keys code")?;
         input.key(code, true, false);
     }
-    for _ in 0..tics {
+    let mut presses = Vec::new();
+    for p in &cli.shot_press {
+        let (code, tic) = p.split_once('@').context("--shot-press wants CODE@TIC")?;
+        let code = u8::from_str_radix(code.trim_start_matches("0x"), 16)
+            .context("bad --shot-press code")?;
+        presses.push((code, tic.parse::<u32>().context("bad --shot-press tic")?));
+    }
+    for t in 0..tics {
+        for &(code, at) in &presses {
+            if at == t {
+                input.key(code, true, false);
+            } else if at + 1 == t {
+                input.key(code, false, false);
+            }
+        }
         let mut requests = Requests::default();
         let mut ctx = Ctx {
             assets,

@@ -52,6 +52,8 @@ pub struct UiKeys {
     pub music_toggle: bool,
     /// Alt+W in bogus mode: open the ` FLOOR: ` prompt.
     pub warp: bool,
+    /// F10: the `BACK TO DOS` prompt.
+    pub quit: bool,
 }
 
 #[derive(Debug, Default)]
@@ -133,6 +135,7 @@ impl Controls {
         ui.quicksave |= p(sc::F9);
         ui.sound_toggle |= p(sc::F1);
         ui.music_toggle |= p(key::F2);
+        ui.quit |= p(sc::F10);
     }
 
     /// Held buttons now, and whether run is active.

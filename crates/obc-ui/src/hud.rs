@@ -1,7 +1,7 @@
 //! The status bar and in-view messages (docs/re/PLAYER.md §5).
 
 use obc_render::Framebuffer;
-use obc_render::draw2d::{draw_pic, draw_text};
+use obc_render::draw2d::{draw_pic, draw_text, draw_text_native};
 use obc_sim::world::World;
 
 use crate::assets::Assets;
@@ -148,11 +148,12 @@ impl Hud {
         latch_number(fb, a, 288, 187, 3, i32::from(g.mapon) + 1);
     }
 
-    /// Draws the current message at view-relative (5,5) with a shadow at (6,6).
+    /// `DrawGameMessage` (2f4d:124a): a shadow in colour 0 at view-relative
+    /// (6,6), then the text at (5,5) in the font's own colours (`2e72:0569`).
     pub fn draw_message(&self, fb: &mut Framebuffer, a: &Assets, view_x: i32, view_y: i32) {
         let (Some((text, _)), Some(font)) = (&self.message, a.fonts.first()) else { return };
         draw_text(fb, font, text.as_bytes(), view_x + 6, view_y + 6, 0);
-        draw_text(fb, font, text.as_bytes(), view_x + 5, view_y + 5, 0x0F);
+        draw_text_native(fb, font, text.as_bytes(), view_x + 5, view_y + 5);
     }
 }
 

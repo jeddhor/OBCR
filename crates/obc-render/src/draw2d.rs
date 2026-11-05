@@ -46,6 +46,27 @@ pub fn draw_text(fb: &mut Framebuffer, font: &Font, text: &[u8], x: i32, y: i32,
     px
 }
 
+/// The second proportional-string drawer (`2e72:0569` → `2e72:0117`): OBC's
+/// fonts are multi-coloured, and this one writes each glyph pixel's own colour
+/// (nonzero bytes), not a single font colour. Returns the x after the text.
+pub fn draw_text_native(fb: &mut Framebuffer, font: &Font, text: &[u8], x: i32, y: i32) -> i32 {
+    let mut px = x;
+    for &c in text {
+        let w = font.width(c) as i32;
+        let glyph = font.glyph(c);
+        for row in 0..font.height as i32 {
+            for col in 0..w {
+                let v = glyph[(row * w + col) as usize];
+                if v != 0 {
+                    fb.put(px + col, y + row, v);
+                }
+            }
+        }
+        px += w;
+    }
+    px
+}
+
 /// Text with a one-pixel drop shadow (down-right).
 pub fn draw_text_shadow(
     fb: &mut Framebuffer,

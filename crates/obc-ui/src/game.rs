@@ -34,6 +34,8 @@ const WHITESTEPS: i32 = 10;
 const WHITETICS: i32 = 6;
 /// `T2[c]` of the page-flip shake (DS:0x0D51): two lines up on odd counts.
 const SHAKE_LINES: [usize; 2] = [0, 2];
+/// The low-health blackout: 50 fade steps, one per tic.
+const BLACKOUT: u32 = 50;
 /// Level fade-in and exit fade-out, in tics.
 const FADE_IN: u32 = 30;
 const FADE_OUT: u32 = 30;
@@ -101,6 +103,11 @@ pub struct Game {
     /// The bogus-mode warp prompt being typed, and the warp it produced.
     warp_prompt: Option<String>,
     pending_cheat: obc_sim::world::Cheat,
+    /// Tics left of a low-health blackout (`VL_FadeOut(…, 50)` in TakeDamage
+    /// 208c:05b5); the game is frozen while it runs, as the original blocks.
+    blackout: u32,
+    /// F10 `CP_CheckQuick`: `BACK TO DOS` asked over the game.
+    quit_prompt: bool,
     /// Enhanced interpolation: player pose and actor positions at the last
     /// frame boundary, and whether it is enabled.
     prev_pose: (i32, i32, i16),
@@ -147,6 +154,8 @@ impl Game {
             map_blink: false,
             warp_prompt: None,
             pending_cheat: obc_sim::world::Cheat::None,
+            blackout: 0,
+            quit_prompt: false,
             prev_pose: (0, 0, 0),
             prev_objs: Vec::new(),
             interpolate: false,
@@ -288,7 +297,8 @@ impl Game {
                 }
                 SimEvent::Lighting(n) => self.lighting = n,
                 SimEvent::Fault(f) => eprintln!("sim fault: {f}"),
-                SimEvent::Splat(_) | SimEvent::Hud | SimEvent::Blackout => {}
+                SimEvent::Blackout => self.blackout = BLACKOUT,
+                SimEvent::Splat(_) | SimEvent::Hud => {}
             }
         }
     }
@@ -430,6 +440,27 @@ impl Screen for Game {
             self.sound.set_channels(ctx.settings.audio.channels);
             self.start_music(ctx);
         }
+        if self.blackout > 0 {
+            self.blackout -= 1;
+            return Transition::None;
+        }
+        if self.quit_prompt {
+            let input = ctx.input;
+            if input.pressed(obc_core::input::sc::Y)
+                || input.pad_pressed(obc_core::input::pad::SOUTH)
+            {
+                ctx.audio.send(AudioCommand::StopMusic);
+                self.sound.stop_all(ctx.audio);
+                return Transition::Reset(Box::new(crate::menu::QuitScreen::default()));
+            }
+            if input.pressed(obc_core::input::sc::N)
+                || input.pressed(obc_core::input::sc::ESCAPE)
+                || input.pad_pressed(obc_core::input::pad::EAST)
+            {
+                self.quit_prompt = false;
+            }
+            return Transition::None;
+        }
         if let Some(text) = &mut self.warp_prompt {
             // ` FLOOR: ` (1942:0b4a): two digits, Enter to warp, Esc to cancel.
             let input = ctx.input;
@@ -478,11 +509,17 @@ impl Screen for Game {
                     }
                     return Transition::None;
                 }
-                if ui.menu {
+                // Esc is ignored while a tremor shakes the screen with TREMORS on
+                // (DS:0x0D40 and DS:0x0D44, CheckKeys).
+                if ui.menu && !(self.world.shake > 0 && self.world.ply.tremors) {
                     ctx.audio.send(AudioCommand::StopMusic);
                     self.sound.stop_all(ctx.audio);
                     self.in_menu = true;
                     return Transition::Push(crate::menu::in_game(Box::new(self.world.clone())));
+                }
+                if ui.quit {
+                    self.quit_prompt = true;
+                    return Transition::None;
                 }
                 if ui.pause {
                     self.paused = true;
@@ -516,12 +553,15 @@ impl Screen for Game {
                 if ui.quicksave && self.world.gamestate.difficulty <= 4 {
                     self.quick_save(ctx);
                 }
-                if ui.floor_on {
-                    self.floor_mode = 2;
-                }
+                // F5 / F6 (1942:07a5, 07b2): textured floors and ceilings off / on
+                // (`floormode` DS:0x33D2 = 0 / 2, kept in CONFIG.DAT).
                 if ui.floor_off {
-                    self.floor_mode = 0;
+                    ctx.settings.game.floor_textures = false;
                 }
+                if ui.floor_on {
+                    ctx.settings.game.floor_textures = true;
+                }
+                self.floor_mode = if ctx.settings.game.floor_textures { 2 } else { 0 };
                 self.show_health ^= ui.health_overlay;
                 self.crosshair ^= ui.crosshair;
                 self.play_frame(ctx, &cmd);
@@ -656,33 +696,35 @@ impl Screen for Game {
             view.render(out.frame, l.x, l.y, &scene, a);
             view.draw_splats(out.frame, l.x, l.y, &self.splats, a);
         }
-        if self.crosshair {
-            draw_crosshair(out.frame, &l, p.scale);
-        }
-
         out.layer.clear(0xFF);
         out.layer_key = Some(0xFF);
+        let (vx, vy) = (i32::from(160 - self.viewsize * 8), i32::from(80 - self.viewsize * 4));
+        let (vw, vh) = (i32::from(self.viewsize) * 16, i32::from(self.viewsize) * 8);
+        if self.crosshair {
+            draw_crosshair(out.layer, vx + vw / 2, vy + vh / 2);
+        }
+        if self.show_health {
+            draw_health(out.layer, a, w.gamestate.health, vx + vw, vy);
+        }
         if w.ply.map_overlay == 1 {
             draw_overhead_map(out.layer, w, self.viewsize, self.map_blink);
         }
         self.hud.draw(out.layer, a, w);
-        let (vx, vy) = (i32::from(160 - self.viewsize * 8), i32::from(80 - self.viewsize * 4));
         self.hud.draw_message(out.layer, a, vx, vy);
-        if self.show_health
-            && let Some(font) = a.fonts.first()
-        {
-            let g = &w.gamestate;
-            let text = format!("HEALTH {}  ARMOR {}", g.health, g.armor);
-            obc_render::draw2d::draw_text(out.layer, font, text.as_bytes(), vx + 5, vy + 130, 0x0F);
-        }
         if self.paused {
             draw_box(out.layer, a, "PAUSE");
         }
         if let Some(t) = &self.warp_prompt {
             draw_box(out.layer, a, &format!(" FLOOR: {t}_"));
         }
+        if self.quit_prompt {
+            draw_box(out.layer, a, "BACK TO DOS Y/N");
+        }
 
-        let pal = self.view_palette(a);
+        let mut pal = self.view_palette(a);
+        if self.blackout > 0 {
+            pal = faded(&pal, (BLACKOUT - self.blackout) as i32, BLACKOUT as i32, [0, 0, 0]);
+        }
         out.palette = match self.phase {
             Phase::FadeIn(t) => faded(&pal, (FADE_IN - t) as i32, FADE_IN as i32, [0, 0, 0]),
             Phase::ExitFade(t) => faded(&pal, t as i32, FADE_OUT as i32, [0, 0, 0]),
@@ -765,14 +807,33 @@ fn draw_overhead_map(fb: &mut Framebuffer, w: &World, viewsize: u16, blink: bool
     fb.put(x0 + i32::from(p.tilex as i16), y0 + i32::from(p.tiley as i16), c);
 }
 
-/// A small cross at the view centre (Enhanced overlay, C key).
-fn draw_crosshair(fb: &mut Framebuffer, l: &Layout, k: usize) {
-    let k = k as i32;
-    let cx = l.x + l.cfg.width as i32 / 2;
-    let cy = l.y + i32::from(l.cfg.viewsize) * 4 * k;
-    for d in [-3, -2, 2, 3] {
-        fb.bar(cx + d * k, cy, k, k, 0x0F);
-        fb.bar(cx, cy + d * k, k, k, 0x0F);
+/// The C crosshair (30d6:07d0): eleven dots every other pixel across and down
+/// through the view centre (`viewwidth/2`, `viewheight/2`), colour 0xE1.
+fn draw_crosshair(fb: &mut Framebuffer, cx: i32, cy: i32) {
+    for i in (0..22).step_by(2) {
+        fb.put(cx + i - 10, cy, 0xE1);
+        fb.put(cx, cy + i - 10, 0xE1);
+    }
+}
+
+/// The H health readout (30d6:0779; positions from `SetViewSize` 1497:1143):
+/// `%3d` in font 1 at (viewwidth − 27, 0) with a black shadow, in the font's
+/// own colours, or flat 0xFE below 50; the health icon (pic 24) at
+/// (viewwidth − 40, 2). `right`/`top` are the view's right edge and top.
+fn draw_health(fb: &mut Framebuffer, a: &Assets, health: i16, right: i32, top: i32) {
+    use obc_render::draw2d::{draw_text, draw_text_native};
+    if let Some(font) = a.fonts.get(1) {
+        let text = format!("{health:3}");
+        let (x, y) = (right - 27, top);
+        draw_text(fb, font, text.as_bytes(), x + 1, y + 1, 0);
+        if health < 50 {
+            draw_text(fb, font, text.as_bytes(), x, y, 0xFE);
+        } else {
+            draw_text_native(fb, font, text.as_bytes(), x, y);
+        }
+    }
+    if let Some(icon) = a.pics.get(24) {
+        obc_render::draw2d::draw_pic(fb, icon, right - 40, top + 2);
     }
 }
 

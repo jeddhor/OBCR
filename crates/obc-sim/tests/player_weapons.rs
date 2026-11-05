@@ -36,15 +36,15 @@ fn armed(weapon: i16) -> World {
 }
 
 #[test]
-fn pistol_fires_once_per_81_frames() {
+fn shotgun_fires_once_per_81_frames() {
     let mut w = armed(0);
     // Entry 1 (code 2) fires 12 tics after the press; the cycle ends at
     // +80 with code −1, which clears the fire button so the held button
     // re-triggers Cmd_Fire on the next frame (+81).
     let shots = hold_fire(&mut w, 200);
     assert_eq!(shots, [13, 94, 175]);
-    assert_eq!(w.gamestate.ammo, 30, "the pistol uses no ammo");
-    // Code 2 plays the pistol sound before and after the shot.
+    assert_eq!(w.gamestate.ammo, 30, "the shotgun uses no ammo");
+    // Code 2 plays the shotgun sound before and after the shot.
     let ev = take_events(&mut w);
     assert_eq!(sounds(&ev).iter().filter(|&&s| s == 45).count(), 6);
     assert_eq!(w.gamestate.shots_level, 0, "only code-1 shots are counted");
@@ -114,7 +114,7 @@ fn grenade_launcher_fires_once_per_26_tics_one_clip_each() {
 }
 
 #[test]
-fn uzi_runs_dry_and_falls_back_to_the_pistol() {
+fn uzi_runs_dry_and_falls_back_to_the_shotgun() {
     let mut w = armed(1);
     w.gamestate.clips[0] = 1;
     hold_fire(&mut w, 1 + 6 * 30 + 100);
@@ -140,7 +140,7 @@ fn weapon_keys_load_the_magazine_first() {
     frame(&mut w, &with_button(cmd(), bt::WEAPON1 + 1));
     assert_eq!((w.gamestate.ammo, w.gamestate.clips[0]), (30, 2));
 
-    // The pistol is always selectable; weapons above bestweapon are ignored.
+    // The shotgun is always selectable; weapons above bestweapon are ignored.
     frame(&mut w, &with_button(cmd(), bt::WEAPON1));
     assert_eq!((w.gamestate.weapon, w.gamestate.chosenweapon), (0, 0));
     w.gamestate.weapons |= 1 << 4;
@@ -178,7 +178,7 @@ fn empty_magazine_reloads_on_fire() {
 }
 
 #[test]
-fn pistol_starts_the_glass_break() {
+fn shotgun_starts_the_glass_break() {
     let mut w = armed(0);
     set_wall(&mut w, 15, 12, 0x39);
     // Move next to the wall so it is the tile in front.

@@ -487,7 +487,7 @@ With `debugmode`, plain keys in `CheckKeys`:
 
 ### 11.3 Ordinary in-game keys handled by `CheckKeys` (for reference)
 
-Esc → control panel (ignored while DS:0xD40 and the tremors option DS:0xD44 are both set, presumably during a tremor; the level music restarts from the beginning afterwards); F1/F2 sound/music toggles; F5 roof/floor on (DS:0x33D2 = 0); F6 off (= 2); F8 tremors toggle (`TREMORS ON/OFF`); F9 QuickSave; F10 quit prompt; H exact-health display toggle (DS:0xD46 bit 0); C crosshair toggle (DS:0xD46 bit 6); F change ally focus; A switch to ally (`SWITCH` or `NO ALLIES!`); S switch and stay (`STAYPUT & SWITCH`); W wipe visor; Pause shows `PAUSE` and stops the music until a key. Matches pic 3.
+Esc → control panel (ignored while DS:0xD40 and the tremors option DS:0xD44 are both set, presumably during a tremor; the level music restarts from the beginning afterwards); F1/F2 sound/music toggles; F5 textured floors/ceilings off (DS:0x33D2 = 0); F6 on (= 2); F8 tremors toggle (`TREMORS ON/OFF`); F9 QuickSave; F10 quit prompt; H exact-health display toggle (DS:0xD46 bit 0); C crosshair toggle (DS:0xD46 bit 6); F change ally focus; A switch to ally (`SWITCH` or `NO ALLIES!`); S switch and stay (`STAYPUT & SWITCH`); W wipe visor; Pause shows `PAUSE` and stops the music until a key. Matches pic 3.
 
 `president` is not a cheat (§1.3).
 

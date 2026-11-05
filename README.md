@@ -60,9 +60,10 @@ In the main menu, **O** opens OPTIONS: display mode (Classic or Enhanced), resol
 | Map (Tab overlay) | Tab | Tab | Back |
 | Menu | Esc | Esc | Start |
 | Quick save | F9 | F9 | — |
-| Tremors on/off, floors on/off, pause | F8, F5/F6, Pause | same | — |
+| Tremors on/off, textured floors off/on, pause | F8, F5/F6, Pause | same | — |
+| Exact health, crosshair, sound/music toggles, quit | H, C, F1/F2, F10 | same | — |
 
-You leave a floor through its stairs or elevator once at least half of its enemies are dead (the kill lamp on the status bar turns green). There are no extra lives: save often (F9 saves to the slot you last saved from the menu; an AutoSave is written before every floor change).
+You leave a floor through its stairs, ladder or elevator once at least half of its enemies are dead: the kill lamp on the status bar is red, turns yellow at half and green when every enemy is dead. Kills by allies earn nothing and do not count. There are no extra lives: save often (F9 saves to the slot you last saved from the menu; an AutoSave is written before every floor change).
 
 ## Legal
 

@@ -585,7 +585,7 @@ pub fn play_loop_start(w: &mut World) {
 }
 
 /// The `gamestate` part of `NewGame(difficulty)` (ghidra 1497:0549, CONFIRMED;
-/// `WOLFSRC/WL_MAIN.C:276`): pistol and Uzi owned, weapon 1, start health,
+/// `WOLFSRC/WL_MAIN.C:276`): shotgun and Uzi owned, weapon 1, start health,
 /// a full magazine, then `ResetInventory`.
 #[doc(alias = "NewGame")]
 pub fn new_game(w: &mut World, difficulty: i16) {
