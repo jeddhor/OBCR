@@ -44,7 +44,7 @@ pub fn tile_background(frame: &mut Framebuffer, assets: &Assets, k: usize) {
     for y in 0..frame.height {
         for x in 0..frame.width {
             let (tx, ty) = ((x / k) % 8, (y / k) % 8);
-            frame.pixels[y * frame.width + x] = tile.pixels[ty * 8 + tx];
+            frame.put(x as i32, y as i32, tile.pixels[ty * 8 + tx]);
         }
     }
 }
@@ -176,6 +176,7 @@ impl Screen for Viewer {
             player_fine_angle: Some((self.angle * 10.0) as i32),
             sprites: &self.buffers.sprites,
             weapon: None,
+            smooth_floors: out.smooth_floors,
         };
         if let Some((_, view)) = &mut self.view {
             view.render(out.frame, l.x, l.y, &scene, assets);

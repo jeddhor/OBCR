@@ -269,6 +269,7 @@ impl Game {
         };
         self.set_view_size(ctx.settings.game.viewsize);
         self.world.setup_game_level(&map, mapon);
+        prepare_textures(ctx.assets, &self.world);
         self.start_music(ctx);
         self.lighting = self.world.start_play_loop();
         self.hud.event = Default::default();
@@ -825,6 +826,7 @@ impl Screen for Game {
             player_fine_angle: fine,
             sprites: &self.buffers.sprites,
             weapon: weapon_view(w),
+            smooth_floors: out.smooth_floors,
         };
         self.splats.clear();
         for s in &w.ply.splats[..usize::from(w.ply.splatcount)] {
@@ -901,6 +903,47 @@ impl Screen for Boot {
         out.frame.clear(0);
         out.layer.clear(0);
     }
+}
+
+/// Builds the xBRZ versions (if enabled) of the textures a new floor shows
+/// first: its walls and doors, floors and ceilings, statics, the actors'
+/// current frames and the hand weapons. Other frames follow on first use.
+fn prepare_textures(a: &Assets, w: &World) {
+    use obc_render::view3d::Textures;
+    if a.hires() < 2 {
+        return;
+    }
+    let mut walls: Vec<u16> = w
+        .tilemap
+        .iter()
+        .filter(|&&t| t != 0)
+        .map(|&t| u16::from(t & 0x7F).wrapping_sub(1))
+        .collect();
+    walls.extend(w.doors.iter().map(|d| d.kind));
+    walls.push(130); // door frame
+    let flats: Vec<u16> = w
+        .floor_sets
+        .iter()
+        .flat_map(|&(f, c)| [f, c])
+        .map(|p| u16::from(p).wrapping_sub(1))
+        .collect();
+    let mut sprites: Vec<u16> =
+        w.statics.iter().filter(|s| s.shape >= 0).map(|s| s.shape as u16).collect();
+    let mut cur = w.plr().next;
+    while let Some(id) = cur {
+        let o = w.obj(id);
+        cur = o.next;
+        if let Some(st) = w.data.state(o.state).filter(|s| s.shape > 0) {
+            let base = st.shape as u16;
+            sprites.extend(base..base + if st.rotate != 0 { 8 } else { 1 });
+        }
+    }
+    sprites.extend(544..624); // both halves of every hand weapon
+    for v in [&mut walls, &mut sprites] {
+        v.sort_unstable();
+        v.dedup();
+    }
+    a.prepare_upscaled(&walls, &flats, &sprites);
 }
 
 /// The Tab overhead map (`2f4d:0d31`, RENDERER.md §9.2), one pixel per tile

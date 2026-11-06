@@ -123,7 +123,7 @@ All classes in ACTORS.md are ported with their state tables read from `COUNT.EXE
 |---|---|---|---|
 | Push walls | Plane-1 code 98, Use; coexist with blasts | `animwalls.rs` | ✅ |
 | Locked doors | Four lock kinds, all cosmetic | `doors.rs` | ✅ |
-| Textured floors and ceilings, several sets per map | Floor/ceiling set per plane-0 area code (`plane0 − 144`), sewer overrides | `view3d.rs` | ✅ |
+| Textured floors and ceilings, several sets per map | Floor/ceiling set per plane-0 area code (`plane0 − 144`), sewer overrides | `view3d.rs`; Enhanced adds SMOOTH floors (ADR-019) and xBRZ textures (ADR-020) | ✅ |
 | See-through walls (grates, windows) | Plane-1 0x69–0x6B; second ray pass | `view3d.rs` | ✅ |
 | Exterior views | Wall textures behind see-through tiles; no outdoor geometry | same | ✅ |
 | View size | 12–20 (XS–XL) | menu VIEW SIZE | ✅ |

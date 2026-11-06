@@ -141,3 +141,23 @@ Template:
 - **Decision**: Another exception to ADR-008 in Classic and Enhanced alike, in the spirit of ADR-016: every enemy death counts in `killcount`, whoever caused it. Allies still earn no score (`GivePoints` keeps its `allyfiring` check), and killing an ally still does not count.
 - **Consequences**: The exit opens, and the kill number and lamp advance, when allies kill. Recorded traces with an ally kill diverge from the original in `killcount` and the unread kill timer (`DS:0xCD87`) from that point.
 
+## ADR-019 — Smooth floors and ceilings (Enhanced)
+
+- **Status**: Accepted (2026-11-05), at the owner's request
+- **Context**: The original draws each visible tile's floor and ceiling as a separate quad, slightly smaller than the tile (`d = 0x7600`), with the texture laid in screen space, one texel per pixel, restarting at each quad; one shade per tile; the background gradient shows between quads as grout lines ([re/RENDERER.md](re/RENDERER.md) §3, CONFIRMED). In play this reads as seams and stripes. The owner asked for smooth floors.
+- **Decision**: An Enhanced option, FLOORS = SMOOTH (default) or ORIGINAL. SMOOTH runs after the wall pass: for each screen column, every pixel below the wall (and its mirror above) is cast to the map, so the texture is in perspective, 64 texels per tile, continuous across tiles, with no gaps. The floor sets, floor codes and shading rule (`texel − shade`, clamped to the page's ramp base) are the original's; the shade follows each row's distance through a continuous version of the floor shade table, blending the two nearest steps. Classic and FLOORS = ORIGINAL keep the original quads.
+- **Consequences**: Enhanced floors no longer look like the original's. Rows just below very distant walls (drawn at least 8 tall by `CalcHeight`) take the nearest point on the map. The framebuffer can blend two palette indices per pixel (see ADR-020).
+
+## ADR-020 — xBRZ texture upscaling (Enhanced)
+
+- **Status**: Accepted (2026-11-05), at the owner's request
+- **Context**: The owner asked for xBRZ 2×–6× upscaling. The renderer is palette-indexed: distance shading subtracts from palette indices, and damage flashes, fades and the generator blackout change the palette. An RGB upscale would lose all of that.
+- **Decision**:
+  - `obc-render::xbrz` ports xBRZ 1.6 (Zenju; the copy in `dosbox-x/src/libs/xBRZ`) to palette images. Colour distance comes from `gamepal`; each output texel is a `Mix` of at most two palette indices with a weight; transparency (index 0xFF, or a sprite's mask) is resolved at 50 %. Walls repeat sideways and floors both ways when scaled, so tiles join without seams.
+  - The `Framebuffer` gains a lazily allocated plane with a second index and weight per pixel; plain writes clear it. Presentation blends the two colours through the palette of the moment, so shading and every palette effect still apply.
+  - Enhanced option TEXTURES = ORIGINAL or XBRZ 2X–6X (default 4X) for walls, doors, floors, ceilings, sprites, the hand weapon and splats. Each texel's screen span shows its n×n sub-texels, so geometry and clipping are unchanged; sprites are clipped column by column. Textures are built on first use, and a new floor builds its walls, flats, statics, the actors' current frames and the hand weapons up front on all cores.
+  - Enhanced option XBRZ HUD/MENUS (default off) upscales the 320×200 2D layer at the presentation scale (at most 6×), cached while the layer and palette stay the same.
+  - Classic never uses either.
+- **Licence**: xBRZ is distributed under the GPL version 3. `xbrz.rs` is a derivative and carries that licence; it is compatible with the project's GPL-3.0-or-later (ADR-006), and a binary that includes it is distributed under GPL-3.0.
+- **Consequences**: About 0.2 MB per texture at 4× and 0.4 MB at 6×, for the textures a session has shown. Distance shading on upscaled sprites and walls is still one step per post, as in the original.
+

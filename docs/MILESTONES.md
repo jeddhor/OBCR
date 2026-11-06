@@ -563,6 +563,8 @@ Revised after the RE (ADR-017: the original broadcasts state; it is not lockstep
 | M14.7 | Quality of life: unlimited saves, quick-load key, autosave slots, crosshair option, message log. |
 | M14.8 | Accessibility: subtitles or captions for key sounds (optional), high-contrast HUD option, remappable everything, reduced flashing option. |
 | M14.9 | Opt-in quirk fixes (`K-###` flags) exposed in an options menu. |
+| M14.10 | Smooth floors and ceilings: perspective-correct, gapless, smooth distance shading (ADR-019). |
+| M14.11 | xBRZ 2×–6× texture upscaling for the 3D view, optional for the 2D screens (ADR-020). |
 
 ### Acceptance criteria
 

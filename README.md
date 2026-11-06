@@ -41,9 +41,17 @@ target/release/obcr --data <your Operation Body Count directory>
 
 OBCR remembers the data directory (and finds a Steam install by itself). Settings go to `obcr.toml` in your user config directory and saved games to your user data directory, never into the game directory.
 
-Useful options: `--classic` (original 320×200), `--scale 2..8` and `--aspect 4:3|16:10|16:9|21:9` (Enhanced), `--fullscreen` / `--windowed`, `--play N` (start straight on floor N+1, for testing), `--nsr250` (the original's cheat parameter: in game, Alt+Left Shift+B turns on BOGUS MODE, then Alt+R restock, Alt+I invincible, Alt+H health, Alt+B bewitched, Alt+W warp to a floor; bogus games do not enter the high scores). Alt+Enter toggles fullscreen.
+Useful options: `--classic` (original 320×200), `--scale 2..8` and `--aspect 4:3|16:10|16:9|21:9` (Enhanced), `--xbrz 0|2..6`, `--floors smooth|original` and `--xbrz-screens on|off` (Enhanced textures, see below), `--fullscreen` / `--windowed`, `--play N` (start straight on floor N+1, for testing), `--nsr250` (the original's cheat parameter: in game, Alt+Left Shift+B turns on BOGUS MODE, then Alt+R restock, Alt+I invincible, Alt+H health, Alt+B bewitched, Alt+W warp to a floor; bogus games do not enter the high scores). Alt+Enter toggles fullscreen.
 
-In the main menu, **O** opens OPTIONS: display mode (Classic or Enhanced), resolution, aspect, fullscreen, smooth filter, integer scaling, smooth motion, control scheme, always run, mouse and pad speed, rumble, volumes, the number of sound voices (1 as the original, or 4 mixed) and the effects device (digitized, AdLib or PC speaker). The original menu items work as in the original game (GAME TYPE picks difficulty 1–3, Random, or the network types N, T and M; START GAME begins on floor 1).
+In the main menu, **O** opens OPTIONS: display mode (Classic or Enhanced), resolution, aspect, fullscreen, smooth filter, integer scaling, smooth motion, textures, floors, xBRZ for the HUD and menus, control scheme, always run, mouse and pad speed, rumble, volumes, the number of sound voices (1 as the original, or 4 mixed) and the effects device (digitized, AdLib or PC speaker). The original menu items work as in the original game (GAME TYPE picks difficulty 1–3, Random, or the network types N, T and M; START GAME begins on floor 1).
+
+### Enhanced textures and floors
+
+These apply in Enhanced mode only; Classic always shows the original picture.
+
+- **TEXTURES**: `XBRZ 2X` to `XBRZ 6X` upscale walls, doors, floors, ceilings, enemies, items and the weapon with xBRZ, which rounds off the blocky texels while keeping edges sharp. `ORIGINAL` shows the original texels. Default 4×. Shading, damage flashes and fades still work as in the original. Higher factors take more memory: textures are built when first needed, about 0.2 MB each at 4× and 0.4 MB at 6×.
+- **FLOORS**: `SMOOTH` draws floors and ceilings in true perspective, aligned to the map grid and continuous across tiles, with the light fading smoothly with distance. `ORIGINAL` keeps the original's look: each tile drawn separately with the texture pasted flat on screen, a grout line between tiles and one brightness per tile. Default smooth.
+- **XBRZ HUD/MENUS**: also upscales the status bar, menus and full-screen pictures with xBRZ (at the resolution multiple, up to 6×). Default off.
 
 ### Multiplayer
 

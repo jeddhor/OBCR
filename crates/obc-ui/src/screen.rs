@@ -59,6 +59,8 @@ pub struct Frame<'a> {
     /// How far into the current 70 Hz tic this draw happens (0..1), for
     /// Enhanced interpolation.
     pub alpha: f32,
+    /// Enhanced SMOOTH FLOORS for the 3D view (ADR-019).
+    pub smooth_floors: bool,
 }
 
 pub trait Screen {

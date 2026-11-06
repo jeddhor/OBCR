@@ -456,14 +456,15 @@ Output: `Framebuffer { w: 320, h: 200, pixels: Vec<u8> }` plus the current 256-e
 
 #### 7.3.2 High-resolution path (Enhanced)
 
-- Same algorithms evaluated at an integer scale factor (2×–8×) or an arbitrary resolution, using the generalized projection math ECWolf and Wolf4SDL use (`screenofs`, `viewscreenx`, wider `pixelangle` tables). Textures are still 64×64 indexed, sampled nearest.
+- Same algorithms evaluated at an integer scale factor (2×–8×) or an arbitrary resolution, using the generalized projection math ECWolf and Wolf4SDL use (`screenofs`, `viewscreenx`, wider `pixelangle` tables). Textures are 64×64 indexed, sampled nearest, or optionally upscaled 2×–6× with xBRZ into two-index blends (ADR-020).
+- Floors and ceilings: the original quads, or optionally perspective-correct and gapless (ADR-019).
 - Widescreen is Hor+: vertical FOV preserved, horizontal widened, HUD pillarboxed or stretched by option.
 - Interpolation: positions and angles lerped between the last two tic states for rendering only.
 - High-res is a different code path from Classic and must never change Classic output. Golden tests run against both: Classic must match the original, and high-res must match its own snapshots.
 
 #### 7.3.3 Presentation
 
-`obc-platform` converts indexed pixels to RGBA through a 256-entry lookup, uploads to an SDL streaming texture, and presents it with:
+`obc-platform` converts indexed pixels to RGBA through a 256-entry lookup (blending the two indices of Enhanced blended pixels), uploads to an SDL streaming texture, and presents it with:
 
 - 4:3 aspect correction (320×200 shown as 320×240 logical) by default; "square pixels" optional.
 - Nearest filtering by default; optional sharp-bilinear and CRT-style shader in Enhanced.

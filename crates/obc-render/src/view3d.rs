@@ -13,6 +13,7 @@ use obc_core::trig::{FINEANGLES, Tables, radtoint};
 use obc_formats::vswap::Shape;
 
 use crate::framebuffer::Framebuffer;
+use crate::xbrz::{HiTexture, Mix};
 
 const TILEGLOBAL: i32 = 1 << 16;
 const FOCALLENGTH: i32 = 0x5700;
@@ -102,6 +103,9 @@ pub struct Scene<'a> {
     pub player_fine_angle: Option<i32>,
     pub sprites: &'a [SpriteRef],
     pub weapon: Option<WeaponView>,
+    /// Enhanced SMOOTH FLOORS (ADR-019): perspective-correct, gapless floors
+    /// and ceilings with smooth distance shading. Ignored in Classic.
+    pub smooth_floors: bool,
 }
 
 /// Source of wall and sprite pixels.
@@ -109,6 +113,23 @@ pub trait Textures {
     /// 4096 column-major palette indices.
     fn wall(&self, page: u16) -> Option<&[u8]>;
     fn sprite(&self, index: u16) -> Option<&Shape>;
+    /// xBRZ factor of the upscaled textures below (Enhanced, ADR-020), or 1
+    /// when there are none.
+    fn hires(&self) -> usize {
+        1
+    }
+    /// Upscaled wall page (repeats sideways).
+    fn wall_hi(&self, _page: u16) -> Option<&HiTexture> {
+        None
+    }
+    /// Upscaled floor or ceiling page (repeats both ways).
+    fn flat_hi(&self, _page: u16) -> Option<&HiTexture> {
+        None
+    }
+    /// Upscaled sprite.
+    fn sprite_hi(&self, _index: u16) -> Option<&HiTexture> {
+        None
+    }
 }
 
 /// View geometry.
@@ -251,6 +272,7 @@ struct Post {
     postx: usize,
     width: usize,
     page: u16,
+    /// Texture column: 0–63, or 0–64n−1 with upscaled textures.
     column: u16,
     lastside: i32,
     key: i32,
@@ -271,6 +293,8 @@ pub struct View3D {
     maxscale: i32,
     wallheight: Vec<i32>,
     see_through: usize,
+    /// xBRZ factor of the textures this frame (1 = original texels).
+    hires: usize,
     /// Tiles a ray passed through this frame.
     pub spotvis: Vec<bool>,
 }
@@ -291,6 +315,7 @@ impl View3D {
             maxscale: 0,
             wallheight: vec![0; cfg.width],
             see_through: 0,
+            hires: 1,
             spotvis: vec![false; 4096],
         };
         v.calc_projection();
@@ -372,13 +397,22 @@ impl View3D {
         tex: &dyn Textures,
     ) {
         let ray = self.view_ray(scene);
-        self.background(fb, x0, y0, &scene.floor);
+        let classic = self.cfg.is_classic();
+        self.hires = if classic { 1 } else { tex.hires().clamp(1, 6) };
+        let smooth = scene.smooth_floors && !classic && scene.floor.mode != 0;
+        // Smooth floors cover every pixel the walls leave.
+        if !smooth {
+            self.background(fb, x0, y0, &scene.floor);
+        }
         self.spotvis.fill(false);
         self.trace_pass(fb, x0, y0, scene, tex, &ray, Pass::A);
-        if scene.floor.mode != 0 {
+        if scene.floor.mode != 0 && !smooth {
             self.floor_tiles(fb, x0, y0, scene, tex, &ray);
         }
         self.trace_pass(fb, x0, y0, scene, tex, &ray, Pass::B);
+        if smooth {
+            self.floor_smooth(fb, x0, y0, scene, tex, &ray);
+        }
         let vis = self.visible_sprites(scene, &ray);
         self.draw_sprites(fb, x0, y0, &vis, scene, tex);
         if self.see_through > 0 {
@@ -726,66 +760,64 @@ impl View3D {
         post: &mut Post,
         tex: &dyn Textures,
     ) {
-        let (side, key, texture, page, xi, yi) = match hit {
+        // `along`: the intercept's position on the face (its low 16 bits);
+        // `flip`: the texture runs the other way (`0xFC0 - texture`).
+        let (side, key, along, flip, page, xi, yi) = match hit {
             Hit::Wall { vertical: true, x, xi, yi, page, .. } => {
-                let mut texture = ((yi >> 4) & 0xFC0) as u16;
                 let mut xi = xi;
                 if xs == -1 {
-                    texture = 0xFC0 - texture;
                     xi += TILEGLOBAL;
                 }
-                (1, x * 1024 + i32::from(page), texture, page, xi, yi)
+                (1, x * 1024 + i32::from(page), yi, xs == -1, page, xi, yi)
             }
             Hit::Wall { vertical: false, y, xi, yi, page, .. } => {
-                let mut texture = ((xi >> 4) & 0xFC0) as u16;
                 let mut yi = yi;
                 if ys == -1 {
                     yi += TILEGLOBAL;
-                } else {
-                    texture = 0xFC0 - texture;
                 }
-                (0, y * 1024 + i32::from(page), texture, page, xi, yi)
+                (0, y * 1024 + i32::from(page), xi, ys != -1, page, xi, yi)
             }
             Hit::Thin { vertical, x, y, xi, yi, page, offset } => {
                 let along = if vertical { yi } else { xi };
-                let texture = ((along.wrapping_sub(i32::from(offset)) >> 4) & 0xFC0) as u16;
-                (2, x * 64 + y, texture, page, xi, yi)
+                (2, x * 64 + y, along.wrapping_sub(i32::from(offset)), false, page, xi, yi)
             }
             Hit::PushWall { vertical, x, y, xi, yi, page } => {
                 let offset = i32::from(scene.pwall_pos) << 10;
                 let (mut xi, mut yi) = (xi, yi);
-                let texture = if vertical {
-                    let t = ((yi >> 4) & 0xFC0) as u16;
+                let (along, flip) = if vertical {
                     if xs == -1 {
                         xi += TILEGLOBAL - offset;
-                        t
                     } else {
                         xi += offset;
-                        0xFC0 - t
                     }
+                    (yi, xs != -1)
                 } else {
-                    let t = ((xi >> 4) & 0xFC0) as u16;
                     if ys == -1 {
                         yi += TILEGLOBAL - offset;
-                        t
                     } else {
                         yi += offset;
-                        0xFC0 - t
                     }
+                    (xi, ys != -1)
                 };
-                (3, x * 64 + y, texture, page, xi, yi)
+                (3, x * 64 + y, along, flip, page, xi, yi)
             }
+        };
+        // `texture >> 6` in the original: (along >> 10) & 63, mirrored by flip.
+        let column = {
+            let span = 64 * self.hires as u32;
+            let c = (u32::from(along as u16) * span) >> 16;
+            (if flip { span - 1 - c } else { c }) as u16
         };
         let height = self.calc_height(xi, yi, ray);
         self.wallheight[pixx] = height;
         if post.lastside == side && post.key == key {
-            if texture >> 6 == post.column {
+            if column == post.column {
                 post.width += 1;
                 self.wallheight[pixx] = self.wallheight[pixx - 1];
                 return;
             }
             self.scale_post(fb, x0, y0, post, tex, scene);
-            post.column = texture >> 6;
+            post.column = column;
             post.width = 1;
             post.postx = pixx;
             return;
@@ -793,7 +825,7 @@ impl View3D {
         if post.lastside != -1 {
             self.scale_post(fb, x0, y0, post, tex, scene);
         }
-        *post = Post { postx: pixx, width: 1, page, column: texture >> 6, lastside: side, key };
+        *post = Post { postx: pixx, width: 1, page, column, lastside: side, key };
     }
 
     /// `CalcHeight`: `heightnumerator / (nx >> 8)`, at least 8.
@@ -816,12 +848,21 @@ impl View3D {
         tex: &dyn Textures,
         scene: &Scene,
     ) {
-        let Some(wall) = tex.wall(post.page) else { return };
         let height = self.wallheight[post.postx];
         let sc = self.scaler((height >> 3).min(self.maxscale));
         let shade = self.shade_for(height, scene);
-        let col = &wall[post.column as usize * 64..post.column as usize * 64 + 64];
         let vh = self.h as i32;
+        if self.hires > 1
+            && let Some(hi) = tex.wall_hi(post.page)
+        {
+            let cols = post.postx as i32..(post.postx + post.width) as i32;
+            let fine = usize::from(post.column).min(hi.size() - 1);
+            draw_hi_column(fb, x0, y0, cols, fine, hi, sc, vh, shade);
+            return;
+        }
+        let Some(wall) = tex.wall(post.page) else { return };
+        let column = usize::from(post.column) / self.hires;
+        let col = &wall[column * 64..column * 64 + 64];
         for (src, &(start, end)) in sc.rows.iter().enumerate() {
             let Some(c) = shade_texel(col[src], shade) else { continue };
             for y in start.max(0)..end.min(vh) {
@@ -872,15 +913,155 @@ impl View3D {
                 }
                 let shade = scene.shade_table[((h3 >> 2) - 5).clamp(0, 255) as usize];
                 let (fp, cp) = scene.floor.sets[Self::floor_code(scene, x, y)];
-                let (Some(fpage), Some(cpage)) = (
-                    tex.wall(u16::from(fp).wrapping_sub(1)),
-                    tex.wall(u16::from(cp).wrapping_sub(1)),
-                ) else {
+                let (fp, cp) = (u16::from(fp).wrapping_sub(1), u16::from(cp).wrapping_sub(1));
+                let (Some(fpage), Some(cpage)) = (tex.wall(fp), tex.wall(cp)) else {
                     continue;
                 };
-                self.raster_quad(fb, x0, y0, &corners, fpage, cpage, shade, d < 0x8000);
+                let hi = match (self.hires > 1, tex.flat_hi(fp), tex.flat_hi(cp)) {
+                    (true, Some(f), Some(c)) => Some((f, c)),
+                    _ => None,
+                };
+                let pages = QuadPages { floor: fpage, ceiling: cpage, hi };
+                self.raster_quad(fb, x0, y0, &corners, &pages, shade, d < 0x8000);
             }
         }
+    }
+
+    /// Enhanced SMOOTH FLOORS (ADR-019), after the wall pass: every screen
+    /// pixel below a column's wall (and its mirror above) is cast to the map
+    /// and textured there, so the texture is in perspective, aligned to the
+    /// tile grid and continuous from tile to tile, with no gaps between
+    /// tiles. The shade follows the distance row by row through a continuous
+    /// version of the floor shade (`shade_table[(h3 >> 2) - 5]`), blending
+    /// the two nearest shade steps. Floor sets, codes and shading rules are
+    /// the original's.
+    fn floor_smooth(
+        &self,
+        fb: &mut Framebuffer,
+        x0: i32,
+        y0: i32,
+        scene: &Scene,
+        tex: &dyn Textures,
+        ray: &Ray,
+    ) {
+        let vh = self.h as i32;
+        let half = vh / 2;
+        let flat = |p: u8| -> Option<Flat> {
+            let page = u16::from(p).wrapping_sub(1);
+            let px = tex.wall(page)?;
+            let hi = if self.hires > 1 { tex.flat_hi(page) } else { None };
+            Some(Flat { page: px, hi, base: px[0] & 0xF0 })
+        };
+        let sets: [Option<(Flat, Flat)>; 10] = std::array::from_fn(|c| {
+            let (fp, cp) = scene.floor.sets[c];
+            Some((flat(fp)?, flat(cp)?))
+        });
+        let mut codes = [0u8; 4096];
+        for (i, code) in codes.iter_mut().enumerate() {
+            *code = Self::floor_code(scene, (i / 64) as i32, (i % 64) as i32) as u8;
+        }
+
+        let curve = smooth_shades(scene.shade_table);
+        let k = f64::from(self.k());
+        let hn = self.heightnumerator as f64;
+        // Per row below the horizon: forward distance and shade.
+        let rows: Vec<(f64, u8, u8)> = (0..(vh - half))
+            .map(|r| {
+                let off = f64::from(r) + 0.5;
+                // A wall at distance nx is heightnumerator·256/nx eighth
+                // pixels tall, its foot height/8 pixels below the centre.
+                let nx = hn * 32.0 / off;
+                // h3 = height / k with height = 8·off.
+                let s = sample_curve(&curve, 2.0 * off / k - 5.0);
+                let si = s.floor();
+                (nx, si as u8, ((s - si) * 255.0).round() as u8)
+            })
+            .collect();
+        // First floor row of each column: just below its wall.
+        let first: Vec<i32> = self.wallheight[..self.w]
+            .iter()
+            .map(|&h| {
+                let wall = 2 * (h >> 3).min(self.maxscale);
+                ((vh - wall) / 2 + wall).max(half)
+            })
+            .collect();
+        let top = first.iter().copied().min().unwrap_or(vh);
+        let (sin, cos) = (sign_magnitude_f(ray.viewsin), sign_magnitude_f(ray.viewcos));
+        let (vx, vy) = (f64::from(ray.viewx) / 65536.0, f64::from(ray.viewy) / 65536.0);
+        let scale = self.scale as f64;
+        let l0 = -f64::from(self.centerx) / scale;
+        let width = fb.width;
+        if y0 < 0 || x0 < 0 || (y0 + vh) as usize > fb.height || x0 as usize + self.w > width {
+            return;
+        }
+        // Distant walls are drawn at least 8 tall (`CalcHeight`), so the rows
+        // just below one can reach past it, off the map: those take the
+        // nearest point on the map.
+        const EDGE: f64 = 64.0 - 1.0 / 65536.0;
+        // One floor row (view row y) and its mirrored ceiling row. The point
+        // under column x is the view point + nx·(cos + l·sin, l·cos − sin),
+        // l = (x − centerx)/scale (nx = gx·cos − gy·sin, ny = gy·cos + gx·sin
+        // = l·nx, inverted): it steps linearly along the row.
+        let draw_row = |y: i32,
+                        floor_row: (&mut [u8], &mut [[u8; 2]]),
+                        ceiling_row: (&mut [u8], &mut [[u8; 2]])| {
+            if y < top {
+                return;
+            }
+            let (nx, s, frac) = rows[(y - half) as usize];
+            let n = nx / 65536.0;
+            let (dx, dy) = (n * sin / scale, n * cos / scale);
+            let (mut px, mut py) = (vx + n * (cos + l0 * sin), vy + n * (l0 * cos - sin));
+            let (fp, fm) = floor_row;
+            let (cp, cm) = ceiling_row;
+            let (fy, cy) = (y0 + y, y0 + vh - 1 - y);
+            for (x, &f) in first.iter().enumerate() {
+                if y >= f {
+                    let (qx, qy) = (px.clamp(0.0, EDGE), py.clamp(0.0, EDGE));
+                    let (tx, ty) = (qx as usize, qy as usize);
+                    if let Some((floor, ceiling)) = &sets[usize::from(codes[tx * 64 + ty])] {
+                        let (u, v) = (qx - tx as f64, qy - ty as f64);
+                        let sx = x0 + x as i32;
+                        let i = sx as usize;
+                        let d = |row: i32| BAYER[((row & 3) * 4 + (sx & 3)) as usize];
+                        (fp[i], fm[i]) = floor.shade(u, v, s, frac, d(fy));
+                        (cp[i], cm[i]) = ceiling.shade(u, v, s, frac, d(cy));
+                    }
+                }
+                px += dx;
+                py += dy;
+            }
+        };
+        // Floor rows lie in the lower half of the view and their ceiling rows
+        // in the upper half, so stripes of rows can be drawn in parallel.
+        let (pixels, mix) = fb.planes_mut();
+        let (vtop, vmid, vend) = (y0 as usize, (y0 + half) as usize, (y0 + vh) as usize);
+        let (up_px, low_px) =
+            pixels[vtop * width..vend * width].split_at_mut((vmid - vtop) * width);
+        let (up_mx, low_mx) = mix[vtop * width..vend * width].split_at_mut((vmid - vtop) * width);
+        let floor_rows = (vh - half) as usize;
+        let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(1, 8);
+        let per = floor_rows.div_ceil(threads).max(1);
+        let chunk = per * width;
+        let draw_row = &draw_row;
+        std::thread::scope(|scope| {
+            let stripes = low_px
+                .chunks_mut(chunk)
+                .zip(low_mx.chunks_mut(chunk))
+                .zip(up_px.rchunks_mut(chunk).zip(up_mx.rchunks_mut(chunk)));
+            for (t, ((fp, fm), (cp, cm))) in stripes.enumerate() {
+                scope.spawn(move || {
+                    let n = fp.len() / width;
+                    let fp_rows = fp.chunks_mut(width).zip(fm.chunks_mut(width));
+                    // Ceiling rows run the other way: floor row r of the
+                    // stripe mirrors ceiling row n − 1 − r.
+                    let cp_rows = cp.chunks_mut(width).zip(cm.chunks_mut(width)).rev();
+                    for (r, (f, c)) in fp_rows.zip(cp_rows).enumerate().take(n) {
+                        draw_row(half + (t * per + r) as i32, f, c);
+                    }
+                });
+            }
+        });
     }
 
     /// Floor code 0–9 for a tile (docs/re/RENDERER.md §3.2).
@@ -911,7 +1092,8 @@ impl View3D {
         9
     }
 
-    /// `30d6:1814`/`30d6:1a21`: column spans, screen-space texturing.
+    /// `30d6:1814`/`30d6:1a21`: column spans, screen-space texturing. With
+    /// upscaled textures each original texel's k×k pixels show its n×n.
     #[allow(clippy::too_many_arguments)]
     fn raster_quad(
         &self,
@@ -919,35 +1101,44 @@ impl View3D {
         x0: i32,
         y0: i32,
         c: &[(i32, i32); 4],
-        fpage: &[u8],
-        cpage: &[u8],
+        pages: &QuadPages,
         shade: u8,
         grout: bool,
     ) {
+        let (fpage, cpage) = (pages.floor, pages.ceiling);
         let k = self.k();
         let half = self.h as i32 / 2;
         let maxx = c.iter().map(|p| p.0).max().unwrap_or(0).min(self.w as i32);
         let minx = c.iter().map(|p| p.0).min().unwrap_or(0).max(0);
         let cbase = cpage[0] & 0xF0;
         let fbase = fpage[0] & 0xF0;
-        for col in minx..maxx {
-            let (mut ymin, mut ymax) = (200 * k, -1);
-            for (a, b) in [(3usize, 0usize), (0, 1), (1, 2), (2, 3)] {
-                let (x1, y1) = c[a];
-                let (x2, y2) = c[b];
-                if (x1 < col && x2 < col) || (x1 > col && x2 > col) || x1 == x2 {
-                    continue;
+        if let Some((fhi, chi)) = pages.hi {
+            let n = fhi.n;
+            let rule = |t: Mix, base: u8| {
+                let s = |c: u8| c.saturating_sub(shade).max(base);
+                (s(t.a), s(t.b), t.w)
+            };
+            for col in minx..maxx {
+                let Some((ymin, ymax)) = quad_span(c, col, half, k) else { continue };
+                let count = ymax - ymin;
+                let u = (((col - minx) / k) % 64) as usize * n
+                    + ((col - minx) % k) as usize * n / k as usize;
+                for i in 0..count {
+                    let (fc, fr) = if grout && i == count - 1 {
+                        (0, 0)
+                    } else {
+                        (u, ((i / k) % 63) as usize * n + (i % k) as usize * n / k as usize)
+                    };
+                    let (a, b, w) = rule(chi.at(fc, fr), cbase);
+                    fb.put_mix(x0 + col, y0 + ymin + i, a, b, w);
+                    let (a, b, w) = rule(fhi.at(fc, fr), fbase);
+                    fb.put_mix(x0 + col, y0 + (self.h as i32 - 1 - ymin - i), a, b, w);
                 }
-                let slope = ((y2 - y1) << 7) / (x2 - x1);
-                let y = ((y1 << 7) + (col - x1) * slope) >> 7;
-                ymin = ymin.min(y);
-                ymax = ymax.max(y);
             }
-            ymax = ymax.min(half);
-            ymin = ymin.max(0);
-            if ymin > ymax {
-                continue;
-            }
+            return;
+        }
+        for col in minx..maxx {
+            let Some((ymin, ymax)) = quad_span(c, col, half, k) else { continue };
             let count = ymax - ymin;
             let u = (((col - minx) / k) % 64) as usize;
             let mut v = 0usize;
@@ -1064,6 +1255,13 @@ impl View3D {
         }
         let sc = self.scaler(scale.min(self.maxscale));
         let vw = self.w as i32;
+        if self.hires > 1
+            && let Some(hi) = tex.sprite_hi(shape)
+        {
+            let place = HiPlace { x0, y0, xcenter, cols: 0..vw, rows: self.h as i32, shade };
+            draw_hi_shape(fb, &place, sh, hi, sc, Some((&self.wallheight, height)));
+            return;
+        }
         let wh = |x: i32| self.wallheight[x as usize];
         let draw = |fb: &mut Framebuffer, x: i32, w: i32, srcx: i32| {
             self.scale_line(fb, x0, y0, x, w, sh, srcx as usize, sc, shade);
@@ -1222,7 +1420,14 @@ impl View3D {
         for (shape, off) in [(wv.left, off1), (wv.right, off1 + off2)] {
             let Some(sh) = tex.sprite(shape) else { continue };
             let (dy, dx) = decompose(off);
-            simple_scale_shape(fb, x0 + dx * k, y0 + dy * k, xcenter, sh, &sc);
+            let (ox, oy) = (x0 + dx * k, y0 + dy * k);
+            match tex.sprite_hi(shape).filter(|_| self.hires > 1) {
+                Some(hi) => {
+                    let place = HiPlace::unclipped(ox, oy, xcenter);
+                    draw_hi_shape(fb, &place, sh, hi, &sc, None);
+                }
+                None => simple_scale_shape(fb, ox, oy, xcenter, sh, &sc),
+            }
         }
     }
 
@@ -1246,7 +1451,244 @@ impl View3D {
             }
             let sc = Scaler::build(s.height * k, vh0 * k);
             let xcenter = s.x * k + (self.w as i32 - base_w * k) / 2;
-            simple_scale_shape(fb, x0, y0, xcenter, sh, &sc);
+            match tex.sprite_hi(s.shape).filter(|_| self.hires > 1) {
+                Some(hi) => {
+                    draw_hi_shape(fb, &HiPlace::unclipped(x0, y0, xcenter), sh, hi, &sc, None)
+                }
+                None => simple_scale_shape(fb, x0, y0, xcenter, sh, &sc),
+            }
+        }
+    }
+}
+
+/// The ceiling rows a floor quad covers in screen column `col`: the edges'
+/// intersections (7-bit fixed slopes), clipped to the upper half.
+fn quad_span(c: &[(i32, i32); 4], col: i32, half: i32, k: i32) -> Option<(i32, i32)> {
+    let (mut ymin, mut ymax) = (200 * k, -1);
+    for (a, b) in [(3usize, 0usize), (0, 1), (1, 2), (2, 3)] {
+        let (x1, y1) = c[a];
+        let (x2, y2) = c[b];
+        if (x1 < col && x2 < col) || (x1 > col && x2 > col) || x1 == x2 {
+            continue;
+        }
+        let slope = ((y2 - y1) << 7) / (x2 - x1);
+        let y = ((y1 << 7) + (col - x1) * slope) >> 7;
+        ymin = ymin.min(y);
+        ymax = ymax.max(y);
+    }
+    let (ymin, ymax) = (ymin.max(0), ymax.min(half));
+    (ymin <= ymax).then_some((ymin, ymax))
+}
+
+/// One floor or ceiling texture for [`View3D::floor_smooth`].
+struct Flat<'t> {
+    page: &'t [u8],
+    hi: Option<&'t HiTexture>,
+    /// The page's ramp base (`page[0] & 0xF0`): shading never goes below it.
+    base: u8,
+}
+
+/// 4×4 ordered-dither thresholds (0–255).
+const BAYER: [u8; 16] = [8, 136, 40, 168, 200, 72, 232, 104, 56, 184, 24, 152, 248, 120, 216, 88];
+
+impl Flat<'_> {
+    /// The pixel for the texel at (`u`, `v`) in 0..1 with shade `s` blended
+    /// `frac`/255 toward `s + 1`, as (index, [second index, weight]). A
+    /// plain texel spends the blend on the shade; an xBRZ edge texel already
+    /// blends two colours, so its shade is dithered against `dither`.
+    #[inline]
+    fn shade(&self, u: f64, v: f64, s: u8, frac: u8, dither: u8) -> (u8, [u8; 2]) {
+        let rule = |c: u8, s: u8| c.saturating_sub(s).max(self.base);
+        let s2 = s.saturating_add(1);
+        match self.hi {
+            Some(hi) => {
+                let size = hi.size();
+                let col = ((u * size as f64) as usize).min(size - 1);
+                let row = ((v * size as f64) as usize).min(size - 1);
+                let t = hi.at(col, row);
+                if t.w == 0 {
+                    (rule(t.a, s), [rule(t.a, s2), frac])
+                } else {
+                    let d = if frac > dither { s2 } else { s };
+                    (rule(t.a, d), [rule(t.b, d), t.w])
+                }
+            }
+            None => {
+                let col = ((u * 64.0) as usize).min(63);
+                let row = ((v * 64.0) as usize).min(63);
+                let t = self.page[col * 64 + row];
+                (rule(t, s), [rule(t, s2), frac])
+            }
+        }
+    }
+}
+
+/// A continuous version of a stepped shade table, so the shade can change
+/// smoothly with distance: linear between the table's steps, with each step
+/// at the midpoint of the two levels it separates. `floor` of the result
+/// equals the table in the middle of each step; the first and last levels are
+/// held flat.
+fn smooth_shades(t: &[u8; 256]) -> [f32; 256] {
+    let steps: Vec<usize> = (1..256).filter(|&i| t[i] != t[i - 1]).collect();
+    let (Some(&first), Some(&last)) = (steps.first(), steps.last()) else {
+        return t.map(f32::from);
+    };
+    let mut pts: Vec<(f32, f32)> = vec![(0.0, f32::from(t[0]))];
+    if first > 1 {
+        pts.push(((first - 1) as f32, f32::from(t[0])));
+    }
+    for &i in &steps {
+        pts.push((i as f32, (f32::from(t[i - 1]) + f32::from(t[i])) / 2.0));
+    }
+    // The last step continues at its slope down to the last level.
+    let prev = if steps.len() > 1 { steps[steps.len() - 2] } else { 0 };
+    let tail = ((last - prev) as f32 / 2.0).max(1.0);
+    pts.push(((last as f32 + tail).min(255.0), f32::from(t[255])));
+    pts.push((255.0, f32::from(t[255])));
+    let mut out = [0f32; 256];
+    for (i, o) in out.iter_mut().enumerate() {
+        let x = i as f32;
+        let k = pts.partition_point(|p| p.0 <= x).clamp(1, pts.len() - 1);
+        let ((x0, y0), (x1, y1)) = (pts[k - 1], pts[k]);
+        *o = if x1 > x0 { y0 + (y1 - y0) * ((x - x0) / (x1 - x0)).clamp(0.0, 1.0) } else { y1 };
+    }
+    out
+}
+
+/// [`smooth_shades`] at a fractional index (clamped to the table).
+fn sample_curve(curve: &[f32; 256], idx: f64) -> f64 {
+    let idx = idx.clamp(0.0, 255.0);
+    let i = idx.floor() as usize;
+    let j = (i + 1).min(255);
+    let f = idx - idx.floor();
+    f64::from(curve[i]) * (1.0 - f) + f64::from(curve[j]) * f
+}
+
+/// A sign-magnitude table value (bit 31 sign, 16-bit fraction) as a float.
+fn sign_magnitude_f(v: i32) -> f64 {
+    let m = f64::from(v as u32 & 0x7FFF_FFFF) / 65536.0;
+    if v < 0 { -m } else { m }
+}
+
+/// Floor and ceiling pages of one quad, with their upscaled versions.
+struct QuadPages<'t> {
+    floor: &'t [u8],
+    ceiling: &'t [u8],
+    /// (floor, ceiling).
+    hi: Option<(&'t HiTexture, &'t HiTexture)>,
+}
+
+/// Shades an upscaled texel with the wall and sprite rule
+/// ([`shade_texel`]); `None` if transparent.
+#[inline]
+fn shade_mix(t: Mix, shade: u8) -> Option<(u8, u8, u8)> {
+    let a = shade_texel(t.a, shade)?;
+    if t.w == 0 {
+        return Some((a, a, 0));
+    }
+    Some((a, shade_texel(t.b, shade).unwrap_or(a), t.w))
+}
+
+/// One fine texture column over screen columns `cols`: each source texel's
+/// rows (from `sc`) show its n fine rows. Rows at or past `rows` are skipped.
+#[allow(clippy::too_many_arguments)]
+fn draw_hi_column(
+    fb: &mut Framebuffer,
+    x0: i32,
+    y0: i32,
+    cols: std::ops::Range<i32>,
+    fine: usize,
+    hi: &HiTexture,
+    sc: &Scaler,
+    rows: i32,
+    shade: u8,
+) {
+    let (top, bottom) = (sc.rows[0].0, sc.rows[63].1);
+    let span = i64::from(bottom - top);
+    let (fw, fh) = (fb.width as i32, fb.height as i32);
+    let xs = (x0 + cols.start).max(0)..(x0 + cols.end).min(fw);
+    if span <= 0 || xs.is_empty() {
+        return;
+    }
+    let ys = top.max(0).max(-y0)..bottom.min(rows).min(fh - y0);
+    let size = hi.size();
+    let col = &hi.texels[fine * size..(fine + 1) * size];
+    // Fine rows per screen row, 16.16 fixed point.
+    let step = ((size as i64) << 16) / span;
+    let width = fb.width;
+    let (pixels, mix) = fb.planes_mut();
+    for y in ys {
+        let row = ((i64::from(y - top) * step) >> 16) as usize;
+        let Some((a, b, w)) = shade_mix(col[row.min(size - 1)], shade) else { continue };
+        let base = (y0 + y) as usize * width;
+        for x in xs.clone() {
+            pixels[base + x as usize] = a;
+            mix[base + x as usize] = [b, w];
+        }
+    }
+}
+
+/// Where an upscaled shape goes: origin, centre column, the screen columns
+/// and rows it may cover, and its shade.
+struct HiPlace {
+    x0: i32,
+    y0: i32,
+    xcenter: i32,
+    cols: std::ops::Range<i32>,
+    rows: i32,
+    shade: u8,
+}
+
+impl HiPlace {
+    /// `SimpleScaleShape` placement: unclipped (the framebuffer clips), shade 0.
+    fn unclipped(x0: i32, y0: i32, xcenter: i32) -> Self {
+        Self { x0, y0, xcenter, cols: i32::MIN / 2..i32::MAX / 2, rows: i32::MAX / 2, shade: 0 }
+    }
+}
+
+/// Upscaled `ScaleShape` / `SimpleScaleShape`. Source columns are laid out
+/// from `xcenter` with the original widths (including Wolf3D's start at
+/// `xcenter` for shapes whose `leftpix` is 31 or more) and each column's
+/// span shows its n fine columns. xBRZ can round a shape one texel past
+/// `leftpix`/`rightpix`, so one more column is drawn on each side. With
+/// `clip`, screen columns whose wall is at least `height` are hidden, one by
+/// one rather than by the end-column test of the original.
+fn draw_hi_shape(
+    fb: &mut Framebuffer,
+    at: &HiPlace,
+    sh: &Shape,
+    hi: &HiTexture,
+    sc: &Scaler,
+    clip: Option<(&[i32], i32)>,
+) {
+    let left = usize::from(sh.left).min(63);
+    let right_start = if left < 31 { 32 } else { left };
+    let mut spans = [(0i32, 0i32); 64];
+    let mut x = at.xcenter;
+    for (src, span) in spans.iter_mut().enumerate().skip(right_start) {
+        *span = (x, sc.width[src]);
+        x += sc.width[src];
+    }
+    let mut x = at.xcenter;
+    for src in (0..right_start.min(32)).rev() {
+        x -= sc.width[src];
+        spans[src] = (x, sc.width[src]);
+    }
+    let first = if left < 31 { left.saturating_sub(1) } else { left };
+    let last = (usize::from(sh.right) + 1).min(63);
+    let n = hi.n as i32;
+    for (src, &(sx, sw)) in spans.iter().enumerate().take(last + 1).skip(first) {
+        if sw <= 0 {
+            continue;
+        }
+        for x in sx.max(at.cols.start)..(sx + sw).min(at.cols.end) {
+            if let Some((wall, height)) = clip
+                && wall[x as usize] >= height
+            {
+                continue;
+            }
+            let fine = src * hi.n + ((x - sx) * n / sw) as usize;
+            draw_hi_column(fb, at.x0, at.y0, x..x + 1, fine, hi, sc, at.rows, at.shade);
         }
     }
 }
@@ -1433,10 +1875,239 @@ mod tests {
                     player_fine_angle: None,
                     sprites: &[],
                     weapon: Some(WeaponView { left: 544, right: 584, bob: 0 }),
+                    smooth_floors: false,
                 };
                 v.render(&mut fb, 0, 0, &scene, &NoTex);
             }
             assert!(v.spotvis.iter().filter(|&&s| s).count() > 100);
+        }
+    }
+
+    /// Walls with diagonal stripes (xBRZ has edges to round), a floor page in
+    /// ramp 96–111 and a ceiling page in ramp 112–127 at pages 80 and 81.
+    struct StripeTex {
+        walls: Vec<Vec<u8>>,
+        hi_walls: Vec<HiTexture>,
+        hi_flats: Vec<HiTexture>,
+        n: usize,
+    }
+
+    impl StripeTex {
+        fn new(n: usize) -> Self {
+            let mut walls = vec![vec![0u8; 4096]; 90];
+            for (p, page) in walls.iter_mut().enumerate() {
+                for c in 0..64 {
+                    for r in 0..64 {
+                        page[c * 64 + r] = match p {
+                            80 => 100 + 4 * (((c + r) / 16) % 2) as u8,
+                            81 => 118 + 4 * (((c + 2 * r) / 16) % 2) as u8,
+                            _ => 40 + 6 * (((c + r) / 16) % 2) as u8,
+                        };
+                    }
+                }
+            }
+            let mut pal = [[0u8; 3]; 256];
+            for (i, c) in pal.iter_mut().enumerate() {
+                *c = [i as u8, (i * 3) as u8, (i * 7) as u8];
+            }
+            let m = crate::xbrz::Metric::new(&pal, Some(0xFF));
+            let (hi_walls, hi_flats) = if n > 1 {
+                (
+                    walls.iter().map(|p| HiTexture::from_page(p, n, &m, true, false)).collect(),
+                    walls.iter().map(|p| HiTexture::from_page(p, n, &m, true, true)).collect(),
+                )
+            } else {
+                (Vec::new(), Vec::new())
+            };
+            Self { walls, hi_walls, hi_flats, n }
+        }
+    }
+
+    impl Textures for StripeTex {
+        fn wall(&self, page: u16) -> Option<&[u8]> {
+            self.walls.get(usize::from(page)).map(Vec::as_slice)
+        }
+        fn sprite(&self, _: u16) -> Option<&Shape> {
+            None
+        }
+        fn hires(&self) -> usize {
+            self.n
+        }
+        fn wall_hi(&self, page: u16) -> Option<&HiTexture> {
+            self.hi_walls.get(usize::from(page))
+        }
+        fn flat_hi(&self, page: u16) -> Option<&HiTexture> {
+            self.hi_flats.get(usize::from(page))
+        }
+    }
+
+    /// A 64×64 room walled with tile 5, floor codes all 0.
+    fn room() -> (Vec<u8>, Vec<u16>, Vec<u16>) {
+        let mut tiles = vec![0u8; 4096];
+        for i in 0..64 {
+            for (x, y) in [(i, 0), (i, 63), (0, i), (63, i)] {
+                tiles[x * 64 + y] = 5;
+            }
+        }
+        (tiles, vec![18u16; 4096], vec![0x90u16; 4096])
+    }
+
+    fn render_room(
+        cfg: ViewConfig,
+        tex: &dyn Textures,
+        smooth: bool,
+        angle: i32,
+        pos: (i32, i32),
+    ) -> Framebuffer {
+        let mut v = View3D::new(cfg);
+        let mut fb = Framebuffer::new(cfg.width, cfg.height());
+        // A colour no texture or shade produces: shows undrawn pixels.
+        fb.clear(UNDRAWN);
+        render_into(&mut v, &mut fb, tex, smooth, angle, pos);
+        fb
+    }
+
+    const UNDRAWN: u8 = 250;
+
+    fn render_into(
+        v: &mut View3D,
+        fb: &mut Framebuffer,
+        tex: &dyn Textures,
+        smooth: bool,
+        angle: i32,
+        pos: (i32, i32),
+    ) {
+        let (tiles, info, plane0) = room();
+        let table = build_shade_table(false);
+        let scene = Scene {
+            tiles: &tiles,
+            info: &info,
+            plane0: &plane0,
+            doors: &[],
+            pwall_pos: 0,
+            floor: FloorParams {
+                mode: 2,
+                cc: 81,
+                fc: 116,
+                rc: 46,
+                rlim: 33,
+                rf: 65,
+                fl: 78,
+                quad: 0x7600,
+                sets: [(81, 82); 10],
+            },
+            shade_table: &table,
+            shade_bias: 0,
+            player_x: pos.0,
+            player_y: pos.1,
+            player_angle: angle,
+            player_fine_angle: None,
+            sprites: &[],
+            weapon: None,
+            smooth_floors: smooth,
+        };
+        fb.begin_frame();
+        v.render(fb, 0, 0, &scene, tex);
+    }
+
+    /// Lower-half pixels left with the background's floor colours (115–127).
+    fn background_in_floor(fb: &Framebuffer) -> usize {
+        (fb.height / 2..fb.height)
+            .flat_map(|y| (0..fb.width).map(move |x| (x, y)))
+            .filter(|&(x, y)| (112..=127).contains(&fb.get(x, y)))
+            .count()
+    }
+
+    #[test]
+    fn smooth_floors_leave_no_gaps() {
+        let cfg = ViewConfig { viewsize: 18, k: 3, width: 1200 };
+        let tex = StripeTex::new(1);
+        for (angle, pos) in
+            [(0, (32 << 16, 32 << 16)), (37, (10 << 16, 50 << 16)), (200, (0x1C8000, 0x2A4000))]
+        {
+            let original = render_room(cfg, &tex, false, angle, pos);
+            assert!(background_in_floor(&original) > 0, "the original has grout gaps");
+            let smooth = render_room(cfg, &tex, true, angle, pos);
+            assert_eq!(background_in_floor(&smooth), 0, "angle {angle}: no gaps");
+            let undrawn = smooth.pixels.iter().filter(|&&p| p == UNDRAWN).count();
+            assert_eq!(undrawn, 0, "angle {angle}: every pixel drawn without the background");
+            assert!(smooth.is_mixed(), "the shade blends between steps");
+        }
+    }
+
+    #[test]
+    fn classic_ignores_enhanced_options() {
+        let cfg = ViewConfig::classic(18);
+        for angle in [0, 45, 135, 300] {
+            let pos = (0x1C8000, 0x2A4000);
+            let plain = render_room(cfg, &StripeTex::new(1), false, angle, pos);
+            let enhanced = render_room(cfg, &StripeTex::new(2), true, angle, pos);
+            assert_eq!(plain.pixels, enhanced.pixels, "angle {angle}");
+            assert!(!enhanced.is_mixed());
+        }
+    }
+
+    #[test]
+    fn upscaled_walls_blend_texels() {
+        let cfg = ViewConfig { viewsize: 18, k: 4, width: 1152 };
+        let pos = (40 << 16, 3 << 16);
+        let plain = render_room(cfg, &StripeTex::new(1), false, 90, pos);
+        assert!(!plain.is_mixed());
+        for n in [2, 4, 6] {
+            let hi = render_room(cfg, &StripeTex::new(n), false, 90, pos);
+            assert!(hi.is_mixed(), "{n}x: edge texels blend");
+            // Same geometry: the wall covers the same rows in the centre column.
+            let c = cfg.width / 2;
+            let wall = |fb: &Framebuffer| {
+                (0..fb.height).filter(|&y| (16..=63).contains(&fb.get(c, y))).count()
+            };
+            assert_eq!(wall(&plain), wall(&hi), "{n}x");
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn bench_render() {
+        let cfg = ViewConfig { viewsize: 18, k: 8, width: 3412 };
+        let mut v = View3D::new(cfg);
+        let mut fb = Framebuffer::new(cfg.width, cfg.height());
+        for (n, smooth) in [(1, false), (1, true), (4, false), (4, true), (6, true)] {
+            let tex = StripeTex::new(n);
+            render_into(&mut v, &mut fb, &tex, smooth, 37, (10 << 16, 50 << 16));
+            let t = std::time::Instant::now();
+            for i in 0..20 {
+                render_into(&mut v, &mut fb, &tex, smooth, 37 + i, (0x1C8000, 0x2A4000));
+            }
+            eprintln!("n {n} smooth {smooth}: {:.2} ms/frame", t.elapsed().as_secs_f64() * 50.0);
+        }
+    }
+
+    #[test]
+    fn smooth_shade_curve_follows_the_table() {
+        for dark in [false, true] {
+            let t = build_shade_table(dark);
+            let curve = smooth_shades(&t);
+            for w in curve.windows(2) {
+                assert!(w[1] <= w[0] + 1e-4, "never brighter far away");
+            }
+            // In the middle of each unit step the curve rounds to the table
+            // value (the first steps, at the horizon, are one or two entries
+            // long and jump by more).
+            let mut start = 0;
+            for i in 1..=256 {
+                if i == 256 || t[i] != t[start] {
+                    let mid = (start + i - 1) / 2;
+                    let unit = start > 0
+                        && i < 256
+                        && i - start >= 3
+                        && t[start - 1] == t[start] + 1
+                        && t[start] == t[i] + 1;
+                    if unit {
+                        assert_eq!(curve[mid].round() as u8, t[mid], "dark {dark}, index {mid}");
+                    }
+                    start = i;
+                }
+            }
         }
     }
 }
