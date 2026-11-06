@@ -96,8 +96,12 @@ pub struct VideoSettings {
     /// Enhanced: xBRZ factor for walls, floors, sprites and the weapon
     /// (2–6), or 0 for the original texels (ADR-020).
     pub xbrz: usize,
-    /// Enhanced: xBRZ for the 2D screens too (status bar, menus, pictures).
-    pub xbrz_screens: bool,
+    /// Enhanced: xBRZ for the 2D screens: menus, title and intro pictures,
+    /// animated sequences, help and score pages.
+    pub xbrz_menus: bool,
+    /// Enhanced: xBRZ for the in-game status bar and overlays (small text
+    /// suffers, so off by default).
+    pub xbrz_hud: bool,
     /// Enhanced: perspective-correct floors and ceilings without the
     /// original's grout lines and per-tile shading (ADR-019).
     pub smooth_floors: bool,
@@ -143,7 +147,8 @@ impl Default for VideoSettings {
             integer_scale: false,
             interpolate: true,
             xbrz: 4,
-            xbrz_screens: false,
+            xbrz_menus: true,
+            xbrz_hud: false,
             smooth_floors: true,
             window_width: 1280,
             window_height: 720,
@@ -190,9 +195,11 @@ impl VideoSettings {
         if self.mode == "classic" || self.xbrz < 2 { 1 } else { self.xbrz.min(6) }
     }
 
-    /// Whether the 2D layer is upscaled with xBRZ.
-    pub fn screens_xbrz(&self) -> bool {
-        self.mode != "classic" && self.xbrz_screens
+    /// Whether a screen's 2D layer is upscaled with xBRZ: `hud` for the
+    /// in-game status bar and overlays, otherwise menus, pictures and
+    /// sequences.
+    pub fn layer_xbrz(&self, hud: bool) -> bool {
+        self.mode != "classic" && if hud { self.xbrz_hud } else { self.xbrz_menus }
     }
 
     /// Whether floors and ceilings use the smooth renderer.

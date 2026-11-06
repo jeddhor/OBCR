@@ -1035,7 +1035,8 @@ enum Opt {
     Interpolate,
     Textures,
     Floors,
-    XbrzScreens,
+    XbrzMenus,
+    XbrzHud,
     Controls,
     AlwaysRun,
     Mouse,
@@ -1048,7 +1049,7 @@ enum Opt {
     Effects,
 }
 
-const OPTS: [Opt; 20] = [
+const OPTS: [Opt; 21] = [
     Opt::Display,
     Opt::Scale,
     Opt::Aspect,
@@ -1058,7 +1059,8 @@ const OPTS: [Opt; 20] = [
     Opt::Interpolate,
     Opt::Textures,
     Opt::Floors,
-    Opt::XbrzScreens,
+    Opt::XbrzMenus,
+    Opt::XbrzHud,
     Opt::Controls,
     Opt::AlwaysRun,
     Opt::Mouse,
@@ -1095,7 +1097,8 @@ impl Options {
             Opt::Interpolate => "SMOOTH MOTION",
             Opt::Textures => "TEXTURES",
             Opt::Floors => "FLOORS",
-            Opt::XbrzScreens => "XBRZ HUD/MENUS",
+            Opt::XbrzMenus => "XBRZ MENUS",
+            Opt::XbrzHud => "XBRZ STATUS BAR",
             Opt::Controls => "CONTROLS",
             Opt::AlwaysRun => "ALWAYS RUN",
             Opt::Mouse => "MOUSE SPEED",
@@ -1126,7 +1129,8 @@ impl Options {
                 _ => "ORIGINAL".into(),
             },
             Opt::Floors => if s.video.smooth_floors { "SMOOTH" } else { "ORIGINAL" }.into(),
-            Opt::XbrzScreens => on(s.video.xbrz_screens),
+            Opt::XbrzMenus => on(s.video.xbrz_menus),
+            Opt::XbrzHud => on(s.video.xbrz_hud),
             Opt::Controls => s.input.profile.to_uppercase(),
             Opt::AlwaysRun => on(s.input.always_run),
             Opt::Mouse => pct(s.input.mouse_sensitivity),
@@ -1187,7 +1191,8 @@ impl Options {
                 s.video.xbrz = all[(cur + d).rem_euclid(all.len() as i32) as usize];
             }
             Opt::Floors => s.video.smooth_floors = !s.video.smooth_floors,
-            Opt::XbrzScreens => s.video.xbrz_screens = !s.video.xbrz_screens,
+            Opt::XbrzMenus => s.video.xbrz_menus = !s.video.xbrz_menus,
+            Opt::XbrzHud => s.video.xbrz_hud = !s.video.xbrz_hud,
             Opt::Controls => {
                 s.input.profile =
                     if s.input.profile == "modern" { "original" } else { "modern" }.into();

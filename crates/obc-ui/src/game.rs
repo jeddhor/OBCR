@@ -843,6 +843,7 @@ impl Screen for Game {
         }
         out.layer.clear(0xFF);
         out.layer_key = Some(0xFF);
+        out.layer_hud = true;
         let (vx, vy) = (i32::from(160 - self.viewsize * 8), i32::from(80 - self.viewsize * 4));
         let (vw, vh) = (i32::from(self.viewsize) * 16, i32::from(self.viewsize) * 8);
         if self.crosshair {

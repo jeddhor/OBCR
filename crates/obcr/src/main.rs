@@ -39,9 +39,12 @@ struct Cli {
     /// Enhanced xBRZ texture factor: 2–6, or 0 for the original texels.
     #[arg(long)]
     xbrz: Option<usize>,
-    /// Enhanced xBRZ for the status bar, menus and pictures: on or off.
+    /// Enhanced xBRZ for menus, pictures and animated sequences: on or off.
     #[arg(long)]
-    xbrz_screens: Option<String>,
+    xbrz_menus: Option<String>,
+    /// Enhanced xBRZ for the in-game status bar: on or off.
+    #[arg(long)]
+    xbrz_hud: Option<String>,
     /// Enhanced floors and ceilings: smooth or original.
     #[arg(long)]
     floors: Option<String>,
@@ -55,6 +58,9 @@ struct Cli {
     /// Developer: start a new game directly on this map (0-based).
     #[arg(long)]
     play: Option<i16>,
+    /// Developer: play a rendered sequence (F2, F3, F4 or F6), then quit.
+    #[arg(long)]
+    sequence: Option<String>,
     /// The original's cheat parameter: Alt+LShift+B in game turns on bogus mode.
     #[arg(long)]
     nsr250: bool,
@@ -160,12 +166,16 @@ fn run() -> Result<()> {
     if let Some(n) = cli.xbrz {
         settings.video.xbrz = n;
     }
-    if let Some(v) = &cli.xbrz_screens {
-        settings.video.xbrz_screens = match v.as_str() {
-            "on" => true,
-            "off" => false,
-            other => anyhow::bail!("--xbrz-screens wants on or off, not {other}"),
-        };
+    let on_off = |flag: &str, v: &str| match v {
+        "on" => Ok(true),
+        "off" => Ok(false),
+        other => Err(anyhow::anyhow!("--{flag} wants on or off, not {other}")),
+    };
+    if let Some(v) = &cli.xbrz_menus {
+        settings.video.xbrz_menus = on_off("xbrz-menus", v)?;
+    }
+    if let Some(v) = &cli.xbrz_hud {
+        settings.video.xbrz_hud = on_off("xbrz-hud", v)?;
     }
     if let Some(v) = &cli.floors {
         settings.video.smooth_floors = match v.as_str() {
@@ -200,6 +210,13 @@ fn run() -> Result<()> {
         Some(other) => anyhow::bail!("--net wants N, T or M, not {other}"),
     };
     let first: Box<dyn Screen> = match (cli.viewer, cli.play) {
+        _ if cli.sequence.is_some() => {
+            let name = cli.sequence.as_deref().unwrap_or_default().to_ascii_uppercase();
+            Box::new(
+                obc_ui::sequence::Sequence::load(&assets, &name)
+                    .with_context(|| format!("sequence {name} not found in the game data"))?,
+            )
+        }
         _ if net_kind.is_some() && cli.net_setup => {
             Box::new(obc_ui::netui::SetupBoot { kind: net_kind.unwrap_or(4) })
         }
@@ -348,7 +365,6 @@ fn compose(
     t.frame.resize(fw, fh);
     t.frame.begin_frame();
     let smooth_floors = settings.video.smooth_floors();
-    let xbrz_screens = settings.video.screens_xbrz();
     let mut palette = assets.gamepal;
     let mut scroll = 0;
     let first_visible = stack.iter().rposition(|s| s.opaque()).unwrap_or(0);
@@ -358,6 +374,7 @@ fn compose(
             frame: t.frame,
             layer: t.layer,
             layer_key: None,
+            layer_hud: false,
             palette,
             scroll: 0,
             alpha,
@@ -367,7 +384,7 @@ fn compose(
         palette = out.palette;
         scroll = out.scroll;
         let key = out.layer_key;
-        if xbrz_screens {
+        if settings.video.layer_xbrz(out.layer_hud) {
             t.scaler.blit(t.frame, t.layer, p, key, &palette);
         } else {
             blit_layer(t.frame, t.layer, p, key);

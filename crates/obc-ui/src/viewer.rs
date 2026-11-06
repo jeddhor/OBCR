@@ -183,6 +183,7 @@ impl Screen for Viewer {
         }
         out.layer.clear(0xFF);
         out.layer_key = Some(0xFF);
+        out.layer_hud = true;
         if let Some(bar) = assets.pics.get(29) {
             obc_render::draw2d::draw_pic(out.layer, bar, 0, 160);
         }

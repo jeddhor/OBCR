@@ -119,11 +119,6 @@ impl Metric {
     }
 
     #[inline]
-    fn same(&self, a: u8, b: u8) -> bool {
-        self.canon[usize::from(a)] == self.canon[usize::from(b)]
-    }
-
-    #[inline]
     fn eq(&self, a: u8, b: u8) -> bool {
         self.d(a, b) < EQUAL_COLOR_TOLERANCE
     }
@@ -173,36 +168,38 @@ const NONE: u8 = 0;
 const NORMAL: u8 = 1;
 const DOMINANT: u8 = 2;
 
-/// `preProcessCorners` for the corner between F (x, y), G, J and K:
-/// `blend_f | blend_g << 2 | blend_j << 4 | blend_k << 6`.
-fn pre_process(img: &Image, m: &Metric, x: isize, y: isize) -> u8 {
-    let p = |dx: isize, dy: isize| img.at(x + dx, y + dy);
+/// `preProcessCorners` for the corner between F, G, J and K, with F at `at`
+/// in the padded canonical image `c` (stride `pw`):
+/// `blend_f | blend_g << 2 | blend_j << 4 | blend_k << 6`. Canonical indices
+/// are equal exactly when the colours are.
+fn pre_process(c: &[u8], pw: usize, m: &Metric, at: usize) -> u8 {
+    let (up, dn, dn2) = (at - pw, at + pw, at + 2 * pw);
     // Kernel A–P; A, D, M and P do not take part.
-    let (b, c) = (p(0, -1), p(1, -1));
-    let (e, f, g, h) = (p(-1, 0), p(0, 0), p(1, 0), p(2, 0));
-    let (i, j, k, l) = (p(-1, 1), p(0, 1), p(1, 1), p(2, 1));
-    let (n, o) = (p(0, 2), p(1, 2));
-    if (m.same(f, g) && m.same(j, k)) || (m.same(f, j) && m.same(g, k)) {
+    let (b, cc) = (c[up], c[up + 1]);
+    let (e, f, g, h) = (c[at - 1], c[at], c[at + 1], c[at + 2]);
+    let (i, j, k, l) = (c[dn - 1], c[dn], c[dn + 1], c[dn + 2]);
+    let (n, o) = (c[dn2], c[dn2 + 1]);
+    if (f == g && j == k) || (f == j && g == k) {
         return 0;
     }
     const WEIGHT: f64 = 4.0;
-    let jg = m.d(i, f) + m.d(f, c) + m.d(n, k) + m.d(k, h) + WEIGHT * m.d(j, g);
+    let jg = m.d(i, f) + m.d(f, cc) + m.d(n, k) + m.d(k, h) + WEIGHT * m.d(j, g);
     let fk = m.d(e, j) + m.d(j, o) + m.d(b, g) + m.d(g, l) + WEIGHT * m.d(f, k);
     let (mut bf, mut bg, mut bj, mut bk) = (NONE, NONE, NONE, NONE);
     if jg < fk {
         let t = if DOMINANT_DIRECTION_THRESHOLD * jg < fk { DOMINANT } else { NORMAL };
-        if !m.same(f, g) && !m.same(f, j) {
+        if f != g && f != j {
             bf = t;
         }
-        if !m.same(k, j) && !m.same(k, g) {
+        if k != j && k != g {
             bk = t;
         }
     } else if fk < jg {
         let t = if DOMINANT_DIRECTION_THRESHOLD * fk < jg { DOMINANT } else { NORMAL };
-        if !m.same(j, f) && !m.same(j, k) {
+        if j != f && j != k {
             bj = t;
         }
-        if !m.same(g, f) && !m.same(g, k) {
+        if g != f && g != k {
             bg = t;
         }
     }
@@ -218,6 +215,8 @@ struct Acc {
 }
 
 impl Acc {
+    const EMPTY: Self = Self { idx: [0; 4], w: [0.0; 4], n: 0 };
+
     fn solid(c: u8, m: &Metric) -> Self {
         let mut a = Self { idx: [0; 4], w: [0.0; 4], n: 0 };
         if !m.is_transparent(c) {
@@ -441,13 +440,46 @@ fn rotate_ij(i: usize, j: usize, rot: usize, n: usize) -> (usize, usize) {
     (i, j)
 }
 
-type Block = [[Acc; 6]; 6];
+/// The n×n output block of one source pixel. Only pixels a blend touches
+/// get an accumulator (bit i·6 + j of `touched`); the rest keep the source
+/// pixel.
+struct Block {
+    acc: [[Acc; 6]; 6],
+    touched: u64,
+    /// The source pixel, as an accumulator.
+    solid: Acc,
+}
+
+impl Block {
+    fn reset(&mut self, solid: Acc) {
+        self.touched = 0;
+        self.solid = solid;
+    }
+
+    fn at(&mut self, i: usize, j: usize) -> &mut Acc {
+        let bit = 1u64 << (i * 6 + j);
+        if self.touched & bit == 0 {
+            self.touched |= bit;
+            self.acc[i][j] = self.solid;
+        }
+        &mut self.acc[i][j]
+    }
+}
 
 /// `blendPixel<Scaler, ColorDistance, rotDeg>` for the bottom-right corner
-/// of the (rotated) kernel.
-fn blend_pixel(ker: &[u8; 9], blend_info: u8, rot: usize, n: usize, m: &Metric, out: &mut Block) {
+/// of the (rotated) kernel: decisions on the canonical kernel `kc`, colours
+/// from the original kernel `ko`.
+fn blend_pixel(
+    kc: &[u8; 9],
+    ko: &[u8; 9],
+    blend_info: u8,
+    rot: usize,
+    n: usize,
+    m: &Metric,
+    out: &mut Block,
+) {
     let r = &ROT_KERNEL[rot];
-    let [_a, b, c, d, e, f, g, h, i] = r.map(|k| ker[k]);
+    let [_a, b, c, d, e, f, g, h, i] = r.map(|k| kc[k]);
     let blend = rotate_blend(blend_info, rot);
     let bottom_r = (blend >> 4) & 3;
     if bottom_r < NORMAL {
@@ -465,12 +497,13 @@ fn blend_pixel(ker: &[u8; 9], blend_info: u8, rot: usize, n: usize, m: &Metric, 
         // No full line blend for L-shapes: blend the corner only.
         !(!m.eq(e, i) && m.eq(g, h) && m.eq(h, i) && m.eq(i, f) && m.eq(f, c))
     };
-    let px = if m.d(e, f) <= m.d(e, h) { f } else { h };
+    // Most similar colour, F or H, as the original index.
+    let px = if m.d(e, f) <= m.d(e, h) { ko[r[5]] } else { ko[r[7]] };
     let shape = if do_line {
         let fg = m.d(f, g);
         let hc = m.d(h, c);
-        let shallow = STEEP_DIRECTION_THRESHOLD * fg <= hc && !m.same(e, g) && !m.same(d, g);
-        let steep = STEEP_DIRECTION_THRESHOLD * hc <= fg && !m.same(e, c) && !m.same(b, c);
+        let shallow = STEEP_DIRECTION_THRESHOLD * fg <= hc && e != g && d != g;
+        let steep = STEEP_DIRECTION_THRESHOLD * hc <= fg && e != c && b != c;
         match (shallow, steep) {
             (true, true) => 2,
             (true, false) => 0,
@@ -484,11 +517,11 @@ fn blend_pixel(ker: &[u8; 9], blend_info: u8, rot: usize, n: usize, m: &Metric, 
         match op {
             G(oi, oj, num, den) => {
                 let (bi, bj) = rotate_ij(usize::from(oi), usize::from(oj), rot, n);
-                out[bi][bj].grad(num, den, px, m);
+                out.at(bi, bj).grad(num, den, px, m);
             }
             S(oi, oj) => {
                 let (bi, bj) = rotate_ij(usize::from(oi), usize::from(oj), rot, n);
-                out[bi][bj] = Acc::solid(px, m);
+                *out.at(bi, bj) = Acc::solid(px, m);
             }
         }
     }
@@ -507,6 +540,17 @@ pub fn scale(img: &Image, n: usize, m: &Metric, threads: usize) -> Vec<Mix> {
     let threads = threads.clamp(1, h);
     let rows_per = h.div_ceil(threads);
 
+    // The image padded by one pixel left and above and two right and below
+    // (the edge rule applied once), as original and canonical indices.
+    let pw = w + 3;
+    let mut orig = vec![0u8; pw * (h + 3)];
+    for (k, v) in orig.iter_mut().enumerate() {
+        *v = img.at((k % pw) as isize - 1, (k / pw) as isize - 1);
+    }
+    let canon: Vec<u8> = orig.iter().map(|&v| m.canon[usize::from(v)]).collect();
+    let (orig, canon) = (&orig, &canon);
+    let at = move |x: usize, y: usize| (y + 1) * pw + x + 1;
+
     // Pass 1: corner analysis for every pixel.
     let mut res = vec![0u8; w * h];
     std::thread::scope(|s| {
@@ -514,7 +558,7 @@ pub fn scale(img: &Image, n: usize, m: &Metric, threads: usize) -> Vec<Mix> {
             s.spawn(move || {
                 for (k, r) in chunk.iter_mut().enumerate() {
                     let (x, y) = (k % w, t * rows_per + k / w);
-                    *r = pre_process(img, m, x as isize, y as isize);
+                    *r = pre_process(canon, pw, m, at(x, y));
                 }
             });
         }
@@ -525,26 +569,36 @@ pub fn scale(img: &Image, n: usize, m: &Metric, threads: usize) -> Vec<Mix> {
     // Blend type of one corner of pixel (x, y)'s pre-pass result; only
     // called with x ≥ −1 and y ≥ −1.
     let corner = move |x: isize, y: isize, shift: u8| -> u8 {
-        if (x < 0 && !img.wrap_x) || (y < 0 && !img.wrap_y) {
-            return NONE;
-        }
-        let (x, y) = (x.rem_euclid(w as isize) as usize, y.rem_euclid(h as isize) as usize);
+        let x = match x {
+            -1 if img.wrap_x => w - 1,
+            -1 => return NONE,
+            _ => x as usize,
+        };
+        let y = match y {
+            -1 if img.wrap_y => h - 1,
+            -1 => return NONE,
+            _ => y as usize,
+        };
         (res[y * w + x] >> shift) & 3
     };
     std::thread::scope(|s| {
         for (t, chunk) in out.chunks_mut(rows_per * n * ow).enumerate() {
             s.spawn(move || {
                 let rows = chunk.len() / (n * ow);
+                let mut block = Block { acc: [[Acc::EMPTY; 6]; 6], touched: 0, solid: Acc::EMPTY };
                 for ry in 0..rows {
-                    let y = (t * rows_per + ry) as isize;
-                    for x in 0..w as isize {
+                    let yu = t * rows_per + ry;
+                    let y = yu as isize;
+                    for xu in 0..w {
+                        let x = xu as isize;
                         // TopL, TopR, BottomR, BottomL as xBRZ packs them.
                         let info = corner(x - 1, y - 1, 6)
                             | corner(x, y - 1, 4) << 2
                             | corner(x, y, 0) << 4
                             | corner(x - 1, y, 2) << 6;
-                        let e = img.at(x, y);
-                        let base = ry * n * ow + x as usize * n;
+                        let c = at(xu, yu);
+                        let e = orig[c];
+                        let base = ry * n * ow + xu * n;
                         if info == 0 {
                             let px = Mix::plain(e);
                             for i in 0..n {
@@ -552,24 +606,31 @@ pub fn scale(img: &Image, n: usize, m: &Metric, threads: usize) -> Vec<Mix> {
                             }
                             continue;
                         }
-                        let ker = [
-                            img.at(x - 1, y - 1),
-                            img.at(x, y - 1),
-                            img.at(x + 1, y - 1),
-                            img.at(x - 1, y),
-                            e,
-                            img.at(x + 1, y),
-                            img.at(x - 1, y + 1),
-                            img.at(x, y + 1),
-                            img.at(x + 1, y + 1),
+                        let k = [
+                            c - pw - 1,
+                            c - pw,
+                            c - pw + 1,
+                            c - 1,
+                            c,
+                            c + 1,
+                            c + pw - 1,
+                            c + pw,
+                            c + pw + 1,
                         ];
-                        let mut block = [[Acc::solid(e, m); 6]; 6];
+                        let (kc, ko) = (k.map(|i| canon[i]), k.map(|i| orig[i]));
+                        block.reset(Acc::solid(e, m));
                         for rot in 0..4 {
-                            blend_pixel(&ker, info, rot, n, m, &mut block);
+                            blend_pixel(&kc, &ko, info, rot, n, m, &mut block);
                         }
-                        for (i, row) in block.iter().enumerate().take(n) {
-                            for (j, acc) in row.iter().enumerate().take(n) {
-                                chunk[base + i * ow + j] = acc.finish(m);
+                        let plain = Mix::plain(e);
+                        for i in 0..n {
+                            for j in 0..n {
+                                chunk[base + i * ow + j] =
+                                    if block.touched & (1 << (i * 6 + j)) != 0 {
+                                        block.acc[i][j].finish(m)
+                                    } else {
+                                        plain
+                                    };
                             }
                         }
                     }
@@ -693,6 +754,55 @@ mod tests {
         for y in 0..16 {
             for x in 0..16 {
                 assert_eq!(wrapped[y * 16 + x], s2[y * 16 + (x + 2) % 16], "({x}, {y})");
+            }
+        }
+    }
+
+    /// Timing of a full 320×200 screen (run with `--ignored --nocapture`).
+    #[test]
+    #[ignore]
+    fn bench_screen() {
+        let mut pal = [[0u8; 3]; 256];
+        for (i, c) in pal.iter_mut().enumerate() {
+            *c = [(i * 37 % 256) as u8, (i * 91 % 256) as u8, (i * 13 % 256) as u8];
+        }
+        let m = Metric::new(&pal, Some(255));
+        // Picture-like: blobs of a few colours with dithered edges.
+        let px: Vec<u8> = (0..320 * 200)
+            .map(|i| {
+                let (x, y) = (i % 320, i / 320);
+                let v = (x / 7 + y / 5 + (x * y / 97) % 3) % 12;
+                (v * 9 + (x ^ y) % 2) as u8
+            })
+            .collect();
+        let img = Image { px: &px, w: 320, h: 200, wrap_x: false, wrap_y: false };
+        let pw = 323;
+        let mut padded = vec![0u8; pw * 203];
+        for (k, v) in padded.iter_mut().enumerate() {
+            *v = img.at((k % pw) as isize - 1, (k / pw) as isize - 1);
+        }
+        let t = std::time::Instant::now();
+        let mut blends = 0usize;
+        for _ in 0..10 {
+            for y in 0..200 {
+                for x in 0..320 {
+                    blends += usize::from(pre_process(&padded, pw, &m, (y + 1) * pw + x + 1) != 0);
+                }
+            }
+        }
+        eprintln!(
+            "pass 1 alone: {:.2} ms ({} blended corners)",
+            t.elapsed().as_secs_f64() * 100.0,
+            blends / 10
+        );
+        for n in 2..=6 {
+            for threads in [1, 8] {
+                let t = std::time::Instant::now();
+                for _ in 0..10 {
+                    let _ = scale(&img, n, &m, threads);
+                }
+                let ms = t.elapsed().as_secs_f64() * 100.0;
+                eprintln!("{n}x, {threads} threads: {ms:.2} ms");
             }
         }
     }

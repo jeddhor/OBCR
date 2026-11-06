@@ -101,7 +101,7 @@ pub fn blit_layer(
     }
 }
 
-/// Enhanced XBRZ HUD/MENUS: the 2D layer upscaled with xBRZ at the
+/// Enhanced XBRZ MENUS / XBRZ HUD: the 2D layer upscaled with xBRZ at the
 /// presentation scale (at most 6×, then nearest to the frame), cached while
 /// the layer, its key and the palette stay the same.
 #[derive(Default)]
@@ -159,15 +159,21 @@ impl LayerScaler {
             self.out = xbrz::scale(&img, f, metric, threads);
             self.cached = Some(key);
         }
-        let (sw, ox) = (layer.width * f, p.inset_x());
-        for dy in 0..(layer.height * k).min(dst.height) {
-            let row = &self.out[dy * f / k * sw..];
-            for dx in 0..layer.width * k {
-                let m = row[dx * f / k];
+        let (sw, ox, fw) = (layer.width * f, p.inset_x(), dst.width);
+        let (cols, rows) =
+            ((layer.width * k).min(fw.saturating_sub(ox)), (layer.height * k).min(dst.height));
+        let (pixels, mix) = dst.planes_mut();
+        for dy in 0..rows {
+            let src = &self.out[dy * f / k * sw..][..sw];
+            let base = dy * fw + ox;
+            let (px, mx) = (&mut pixels[base..base + cols], &mut mix[base..base + cols]);
+            for (dx, (p, q)) in px.iter_mut().zip(mx.iter_mut()).enumerate() {
+                let m = if k == f { src[dx] } else { src[dx * f / k] };
                 if m.w == 0 && transparent == Some(m.a) {
                     continue;
                 }
-                dst.put_mix((ox + dx) as i32, dy as i32, m.a, m.b, m.w);
+                *p = m.a;
+                *q = [m.b, m.w];
             }
         }
     }

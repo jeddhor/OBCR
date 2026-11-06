@@ -52,6 +52,9 @@ pub struct Frame<'a> {
     pub layer: &'a mut Framebuffer,
     /// Layer color treated as transparent when compositing, if any.
     pub layer_key: Option<u8>,
+    /// The layer is the in-game status bar and overlays (XBRZ HUD), not a
+    /// menu, picture or sequence (XBRZ MENUS).
+    pub layer_hud: bool,
     pub palette: Palette,
     /// Lines (original pixels) the finished frame scrolls up by: the tremor
     /// shake moves the CRTC start address, status bar included.
