@@ -19,7 +19,7 @@ Wolf3D references: `WOLFSRC/ID_CA.C` (cache manager), `WOLFSRC/ID_PM.C` (page ma
 | `VGAGRAPH.BC` | 317,566 | Graphics chunks | `VGAGRAPH.WL6` | CONFIRMED §4 |
 | `AUDIOHED.BC` | 1,244 | Audio chunk offsets | `AUDIOHED.WL6` | CONFIRMED §5 |
 | `AUDIOT.BC` | 197,419 | PC speaker, AdLib, music chunks | `AUDIOT.WL6` | LIKELY §5 |
-| `AUDIOMUS.BC` | 1,376,256 | PCM background music | — (new) | LIKELY §6 |
+| `AUDIOMUS.BC` | 1,376,256 | Paged archive of 99 digitized sounds | — (Corridor 7 has the same file) | CONFIRMED §6 |
 | `CONFIG.DAT` | 287 | High scores and settings | `CONFIG.WL6` | §7 |
 | `SVGM0.SAV`, `SVGM2.SAV` | 19,188 each | Save games | `SAVEGAM?.WL6` | UNKNOWN §8 |
 | `AUTSV.SAV` | 18,594 | AutoSave slot | — | UNKNOWN §8 |
@@ -155,17 +155,15 @@ Pic dimensions (index: size): 0: 8×8 · 1–8: 320×200 (eight full screens) ·
 
 ---
 
-## 6. AUDIOMUS.BC — PCM background music
+## 6. AUDIOMUS.BC — digitized sound archive
 
-LIKELY raw unsigned 8-bit PCM.
+CONFIRMED by parsing (same layout as Corridor 7's `AUDIOMUS.CO7`, EC7Wolf `src/resourcefiles/file_audiomus.cpp`). Not background music, as first assumed.
 
-- Size 1,376,256 = 0x150000 = exactly 21 × 64 KiB.
-- Byte histogram peaks at 0x80 and neighbors (128: 3,651; 126: 2,511; 129: 2,475 …) with many 0x00 bytes (11,668 in the first 64 KiB) and a zero-filled tail: consistent with audio blocks padded to 64 KiB boundaries.
-- Mean absolute difference between consecutive bytes ≈ 14.7: smooth, audio-like.
-- Associated UI: `BCKGRND MUSIC` and `FM MUSIC VOLUME` mixer labels.
-- UNKNOWN: block or track directory, sample rate, looping, how tracks map to levels (Q-004).
-
----
+- 336 pages of 4,096 bytes. The **last page** is a directory: `u32 offset[335]` (always `i × 4096`) then `u16 length[335]`.
+- The last directory entry (page 334, 792 bytes) is the **sound map**: 99 × `(u32 start_page, u32 length_bytes)`.
+- A sound occupies consecutive pages from `start_page` until `length` bytes are collected (pages may be short, e.g. page 3 holds 1,824 bytes).
+- Samples are 8-bit unsigned mono. Rate: Corridor 7 plays at **9009 Hz** (EC7Wolf `C7_SAMPLE_RATE`); OBC's rate is LIKELY the same (Q-005). Lengths range up to 124,928 bytes (≈13.9 s at 9009 Hz).
+- `GFXTILES.BC` also contains 46 digitized sounds; which set the game plays is open (Q-007).
 
 ## 7. CONFIG.DAT
 
@@ -207,7 +205,8 @@ Embedded tables:
 | Table | File offset | Image-linear | Confidence |
 |---|---|---|---|
 | `rndtable[256]` (identical to `WOLFSRC/ID_US_A.ASM:19`) | 0x2D8F2 | 0x2A4F2 | CONFIRMED |
-| Palette candidate 1 (768 bytes of 6-bit values) | ≈0x2DDB0 | ≈0x2A9B0 | LIKELY (Q-025) |
-| Palette candidate 2 (same first 12 bytes as candidate 1) | ≈0x2E0B0 | ≈0x2ACB0 | LIKELY (Q-025) |
+| `gamepal` (768 bytes, 6-bit): 3D view, sprites, HUD | 0x2DDB0 | 0x2A9B0 (far 3A9B:0000 in Ghidra) | CONFIRMED (passed to `VL_FadeIn` by the control panel, ghidra 1618:061a; sprites export correctly) |
+| Second palette, identical start to `gamepal` | 0x2E0B0 | 0x2ACB0 | LIKELY a working copy or variant (Q-025) |
+| Picture palette: full-screen pics 1–8 (intro, title, help, menu, credits) | 0x2E3B0 | 0x2AFB0 | CONFIRMED visually (pics render correctly only with it); call sites to confirm |
 | Scan-code to ASCII tables (unshifted, shifted) | 0x2E6B2, 0x2E732 | | LIKELY (`ID_IN`) |
 | Default high scores (7 × 28 bytes) | 0x383E4 | DS:0x2E64 | CONFIRMED |

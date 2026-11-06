@@ -53,9 +53,10 @@ The result is written in Rust, runs on SDL3, reads the user's own copy of the or
 |---|---|---|---|
 | Original game | `../OBC/` | Data files; `COUNT.EXE` (main program) | **Read-only reference.** Never run the game in place: it writes `CONFIG.DAT`, saves and `BC.LOG`. Copy it to `.local/` first. |
 | `COUNT.EXE` in DOSBox-X | built from `../dosbox-x/` | **Behavior.** The final word on what the game does. | Timing-dependent; needs the instrumentation in §9 to be reproducible. |
-| Ghidra analysis of `COUNT.EXE` | `C:\Users\jason\Desktop\ghidra_12.2_PUBLIC`; project in `.local/ghidra/` | Algorithms, constants, data layouts, tables | 16-bit segmented decompilation is imperfect. Cross-check anything subtle in DOSBox-X. |
+| Ghidra analysis of `COUNT.EXE` | `C:\Users\jason\Desktop\ghidra_12.2_PUBLIC`; project in `P:\msdos\OBC\ghidra\` (Ghidra rejects project paths containing a dot-folder such as `.local`); text exports in `.local/ghidra/export/` | Algorithms, constants, data layouts, tables | 16-bit segmented decompilation is imperfect. Cross-check anything subtle in DOSBox-X. |
 | Wolf3D source | `../wolf3d/WOLFSRC/` | Baseline algorithms and naming; starting point for every port | **OBC modified this engine.** Never assume OBC = Wolf3D without a delta check (§2.3). |
 | `WOLF3D.EXE` + `WOLF3D.MAP` | `../wolf3d/WOLFSRC/` | Symbol seeding. The EXE carries Turbo Debugger symbols (`FB52` signature at file offset 311232) and the MAP lists every public with its segment and offset. | Built from a slightly different Wolf3D revision. Use it to match library and engine functions, not as an OBC fact. |
+| EC7Wolf (owner's Corridor 7 port) | `../EC7Wolf/` | **Capstone engine changes shared with OBC.** Corridor 7 (also Capstone, 1994) introduced much of what OBC inherited: `GFXTILES`/`MAPTEMP`/`AUDIOMUS` formats, wall and marker conventions, door and exit triggers, floor/ceiling shading, FLC playback, executable palettes. Docs: `docs/corridor7.md`; sources `src/c7_*.cpp`, `src/resourcefiles/file_audiomus.cpp`, `wadsrc/static/xlat/corridor7.txt`, `wadsrc/static/actors/corridor7/` | A Corridor 7 port: OBC's numeric codes and constants differ and must come from `COUNT.EXE`. Use it for concepts and leads, then confirm in OBC. |
 | ECWolf | `../ECWolf/` | Proven modern solutions: format readers (it already reads `MAPTEMP`), high-res raycasting math, aspect correction, OPL playback, input, Steam detection (`src/filesys_steam.cpp` already knows OBC's Steam app id 1627120) | Not authoritative for OBC behavior. ZDoom-derived C++ architecture: port ideas, not structure. `src/mame/` has a non-GPL license: do not port from it. |
 | DOSBox-X source | `../dosbox-x/` | Debug tooling: debugger, JSON-RPC agent (`docs/rpc-agent-usage.md`, `client/python`), control server (`mcp_server`) | Local modifications stay local (see AGENT_GUIDE §6.8). |
 | Manual supplement | `../OBC/readme.txt` | Intended feature behavior (allies, autosave, quicksave, game types) | Marketing-level detail only. |
@@ -68,7 +69,7 @@ When sources disagree, the higher one wins:
 2. `COUNT.EXE` disassembly or decompilation.
 3. Original data files.
 4. Wolf3D source.
-5. ECWolf and other source ports.
+5. EC7Wolf (for Capstone-specific mechanics), ECWolf and other source ports.
 6. Recollection, web pages, forum posts, and model memory.
 
 Level 6 is never evidence on its own. It can only suggest where to look.

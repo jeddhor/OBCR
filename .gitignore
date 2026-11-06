@@ -36,3 +36,6 @@ __pycache__/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Agent worktrees (Claude Code)
+/.claude/worktrees/

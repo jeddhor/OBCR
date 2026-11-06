@@ -1,0 +1,16 @@
+[package]
+name = "obc-render"
+description = "Software renderer for OBCR"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+obc-core.workspace = true
+obc-formats.workspace = true
+obc-sim.workspace = true
+
+[lints]
+workspace = true

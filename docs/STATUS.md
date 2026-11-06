@@ -2,28 +2,28 @@
 
 Live project state. Every agent reads this at the start of a session and updates it at the end (AGENT_GUIDE §3). Keep edits small: change your own rows, append to the log.
 
-**Current milestone: M0 — Bootstrap and tooling**
+**Current milestone: M12 — first-episode playtest (owner testing needed)**
 **Last updated: 2026-11-02**
 
 ## Milestones
 
 | # | Milestone | Status | Notes |
 |---|---|---|---|
-| M0 | Bootstrap and tooling | Ready | Repository and planning docs created; no code yet |
-| M1 | Data formats and asset pipeline | Not started | Initial format survey done (re/DATA_FORMATS.md) |
-| M2 | Reverse-engineering foundation | Not started | |
-| M3 | Platform shell | Not started | |
-| M4 | Classic renderer | Not started | |
-| M5 | World simulation core | Not started | |
-| M6 | Audio | Not started | |
-| M7 | Weapons, combat and HUD | Not started | |
-| M8 | Enemies and AI | Not started | |
-| M9 | Allies | Not started | |
-| M10 | Game flow and front end | Not started | |
-| M11 | Persistence | Not started | |
-| M12 | Single-player parity certification | Not started | |
+| M0 | Bootstrap and tooling | Done | Workspace, xtask ci/lint/test-data, Ghidra pipeline |
+| M1 | Data formats and asset pipeline | Done | obc-formats: VSWAP, maps, VGAGRAPH, fonts, audio, AUDIOMUS, FLC, palettes, config; obc-tool |
+| M2 | Reverse-engineering foundation | In progress | re/ notes for actors, player, allies, renderer, game flow, audio, level codes; no DOSBox-X traces yet |
+| M3 | Platform shell | Done | SDL3 window, audio, keyboard/mouse/gamepad, fullscreen, rumble |
+| M4 | Classic renderer | Done | OBC pipeline (floors/ceilings, shading, see-through walls, two-part weapon); widescreen Hor+ and k× scale |
+| M5 | World simulation core | Done | Level setup, doors, push walls, animated walls, visibility pass, frame loop |
+| M6 | Audio | Done | AdLib/PC sounds, 9,009 Hz digitized with OBC panning, IMF music; 1 or 4 voices |
+| M7 | Weapons, combat and HUD | Done | Five weapons, pickups, damage, status bar, event box, flashes, splats, shake |
+| M8 | Enemies and AI | Done | All classes, projectiles, fire, face apparition |
+| M9 | Allies | Done | Follow/disperse, switching, stay; shared actors AI |
+| M10 | Game flow and front end | Done | Title, control panel, options, help, quit/credits, sequences F2/F3/F4/F6, death, floor change |
+| M11 | Persistence | Done | OBCR saves, AutoSave, QuickSave, high scores, settings |
+| M12 | Single-player parity certification | In progress | Needs DOSBox-X traces; owner playtest of maps 0–22 |
 | M13 | Multiplayer | Not started | |
-| M14 | Enhanced mode | Not started | |
+| M14 | Enhanced mode | In progress | Widescreen, 2–8× scale, smooth motion, modern controls, gamepad done |
 | M15 | Release engineering | Not started | |
 
 Status values: `Not started`, `Ready` (prerequisites met), `In progress`, `Blocked`, `Done`.
@@ -54,3 +54,17 @@ Work milestone by milestone until the owner must test something, or until **the 
 Append one line per completed task or notable event: `YYYY-MM-DD — <task> — <what changed> — <evidence>`.
 
 - 2026-11-02 — setup — Repository created; DESIGN, AGENT_GUIDE, MILESTONES, DECISIONS, STATUS and the re/ knowledge base written from an initial survey of `..\OBC`, `..\wolf3d`, `..\ECWolf`, `..\dosbox-x` — data parsed with throwaway Python scripts (61 maps, 937 VSWAP chunks, 58 VGAGRAPH chunks, 310 audio chunks); `rndtable` byte-match confirmed.
+- 2026-11-02 — M1–M11 — Engine, renderer, audio, simulation (player, enemies, allies), front end and persistence implemented; three parallel agents merged (player 6bfe0cb, allies 09344bb, actors 8faa675) — `cargo xtask ci` and `cargo xtask test-data` pass.
+- 2026-11-02 — M12 — Soak test plays maps 0–22 at game types 0–3 for 2,500 frames each without panics or faults; every first-episode exit is reachable; save/load continues bit-identically; UI flow tests cover floor change, load and death. Fixed: the player was not objlist[0] (maps with an actor before the start lost the player's think).
+
+- 2026-11-02 — M7/M8/M10 — Healing stations, shootable-wall search and overhead map (agent 6f10c71); grenade tremors fixed (actors had a private DS:0x09D8); enemies operate door-look walls; Tab map; bogus-mode cheats; F1/F2 toggles; victory screen; Enhanced smooth motion — 33 test suites pass.
+
+- 2026-11-05 — audit — Mechanics checked against the Wolf3D/OBC comparison (docs/MECHANICS_AUDIT.md); fixed F5/F6, message and H/C overlays, blackout, F10, tremor Esc rule, clock-seeded RNG, effects device option; weapon 0 renamed assault shotgun — 33 test suites pass.
+
+## Known gaps (first episode)
+
+- No DOSBox-X trace comparison yet: behaviour follows the disassembly, unverified against the original at run time.
+- Not shipped by the original release: sequences F1, F5, F7 (skipped, as the original does).
+- Debug keys (`vfr750hondarc45`, Backspace) not ported; the bogus-mode cheats are (`--nsr250`).
+- Multiplayer game types N, T, M (M13) not started; see docs/MECHANICS_AUDIT.md §11.
+- Healing stations are ported but, as in OBC-A, nothing can start them (PLAYER.md §9).

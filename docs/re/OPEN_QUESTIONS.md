@@ -9,7 +9,7 @@ Seeded 2026-11-02 from the initial survey.
 | Q-001 | Plane-0 code meanings | M2, M4, M5 | OPEN |
 | Q-002 | Plane-1 code meanings | M2, M5, M8, M9 | OPEN |
 | Q-003 | Floor and ceiling rendering | M4 | OPEN |
-| Q-004 | AUDIOMUS.BC layout and rate | M1, M6 | OPEN |
+| Q-004 | AUDIOMUS.BC layout | M1, M6 | RESOLVED |
 | Q-005 | Digitized SFX sample rate | M1, M6 | OPEN |
 | Q-006 | IMF rate and music assignment | M6 | OPEN |
 | Q-007 | Audio chunk layout (`NUMSOUNDS`) | M1 | OPEN |
@@ -30,9 +30,9 @@ Seeded 2026-11-02 from the initial survey.
 | Q-022 | Enemy roster and sprite ranges | M2, M8 | OPEN |
 | Q-023 | Status bar layout | M7 | OPEN |
 | Q-024 | Timing (`TimeCount`, `MAXTICS`) | M2, M5 | OPEN |
-| Q-025 | Palettes | M1, M3 | OPEN |
+| Q-025 | Palettes | M1, M3 | PARTIAL (gamepal and picture palette found) |
 | Q-026 | Cheats and debug activation | M10 | OPEN |
-| Q-027 | Map ThermoSensor | M10 | OPEN |
+| Q-027 | Map ThermoSensor | M10 | RESOLVED |
 | Q-028 | Command-line parameter semantics | M10 | OPEN |
 | Q-029 | Other releases and their differences | M0, M15 | OPEN |
 | Q-030 | High-score semantics (`completed`, `episode`) | M10 | OPEN |
@@ -62,11 +62,9 @@ Seeded 2026-11-02 from the initial survey.
 - **Approach**: find who prints those strings (DS offsets in STRINGS.md); read the 3D refresh for floor and ceiling code; capture screenshots of rooms with 144 and 145 tiles to see whether ceilings or floors differ per tile.
 - **Status**: OPEN
 
-### Q-004 — What is the layout and sample rate of AUDIOMUS.BC?
-- **Matters for**: background music (M6.6).
-- **Evidence**: 21 × 64 KiB, PCM-like statistics, 0x00 padding (DATA_FORMATS §6).
-- **Approach**: find the loader (string `AUDIOMUS.`) and the Sound Blaster programming (DSP time constant command `0x40`, or `0x41` for an output rate); check whether a directory exists in the file or in `COUNT.EXE`; check which game events start or switch it.
-- **Status**: OPEN
+### Q-004 — What is AUDIOMUS.BC?
+- **Answer** (2026-11-02, CONFIRMED): a paged archive of 99 digitized sounds, same layout as Corridor 7's `AUDIOMUS.CO7` (DATA_FORMATS §6). Sample rate tracked in Q-005.
+- **Status**: RESOLVED
 
 ### Q-005 — What sample rate do digitized SFX use?
 - **Matters for**: correct pitch (M6.5).
@@ -184,7 +182,8 @@ Seeded 2026-11-02 from the initial survey.
 ### Q-027 — What does the Map ThermoSensor do?
 - **Evidence**: pickup string only.
 - **Approach**: find the item's effect flag and its readers; observe in game.
-- **Status**: OPEN
+- **Answer** (CONFIRMED by instruction read, not yet observed): item 10 sets `DS:0x3304` (`GetBonus` `208c:096a`), cleared at every PlayLoop start (`1942:14d1`), so it lasts one level. Its only reader is the Tab overhead map (`2f4d:0d31`): in single player, with the flag (or BOGUS MODE), every running non-ally actor in the 24×24-tile map window is drawn as a colour-1 dot from `actorpos[]`. Details: [RENDERER.md](RENDERER.md) §9.2.
+- **Status**: RESOLVED (2026-11-02, static analysis; run-time check pending)
 
 ### Q-028 — Command-line parameter semantics
 - **Evidence**: D-018.
