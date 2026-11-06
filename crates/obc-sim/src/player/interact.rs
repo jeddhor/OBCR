@@ -44,12 +44,18 @@ pub(super) fn cmd_use(w: &mut World) {
         return;
     }
 
-    // Edge trigger. The network flag DS:0xEF93 (358f:198d) is 0 in single player.
-    if w.buttonheld[bt::USE] {
+    // Edge trigger, skipped while a remote player's Use is replayed
+    // (DS:0xEF93, 358f:198d); a local Use is reported at once (358f:1979).
+    let remote = crate::net::use_in_progress(w);
+    if w.buttonheld[bt::USE] && !remote {
         return;
     }
-    // TODO(M13): difficulty >= 4 also calls 358f:1979 here.
-    w.buttonheld[bt::USE] = true;
+    if !remote {
+        if w.gamestate.difficulty >= 4 {
+            crate::net::report_use(w);
+        }
+        w.buttonheld[bt::USE] = true;
+    }
 
     if doornum & 0x80 != 0 {
         w.operate_door(usize::from(doornum & !0x80));

@@ -24,8 +24,19 @@ const MAXSCORE: i32 = 1_000_000;
 pub fn take_damage(w: &mut World, points: i16, attacker: Option<ObjId>) {
     let mut points = points;
     if w.gamestate.difficulty >= 4 {
-        // TODO(M13): network filter: team mode 5 ignores friendly attackers
-        // (358f:199d); only other players and classes 0x12/0x13 count (358f:1259).
+        // Network filter: no friendly fire in a team game (358f:199d); only a
+        // player who targeted us, or a flame or grenade, can hurt (358f:1259).
+        let Some(a) = attacker else { return };
+        if w.gamestate.difficulty == crate::net::kind::TEAMS && crate::net::same_team(w, a) {
+            return;
+        }
+        let c = w.obj(a).obclass;
+        if !crate::net::targets_me(w, a)
+            && c != crate::world::class::FLAME
+            && c != crate::world::class::GRENADE
+        {
+            return;
+        }
     }
     if w.gamestate.health >= 30 {
         points = points.wrapping_mul(w.gamestate.difficulty / 2 + 1);
@@ -65,7 +76,10 @@ pub fn take_damage(w: &mut World, points: i16, attacker: Option<ObjId>) {
     }
 
     if w.gamestate.health <= 0 {
-        // TODO(M13): difficulty >= 4 notifies the network (358f:182c).
+        // Network: count the death and announce it at once (358f:182c).
+        if w.gamestate.difficulty >= 4 {
+            crate::net::player_died(w, attacker);
+        }
         w.gamestate.health = 0;
         w.playstate = ex::DIED;
         w.killerobj = attacker;

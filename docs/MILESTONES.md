@@ -520,8 +520,17 @@ RE runs continuously. M2 builds the foundation; every later milestone has its ow
 
 ### Implementation tasks
 
+Revised after the RE (ADR-017: the original broadcasts state; it is not lockstep).
+
 | Id | Task |
 |---|---|
+| M13.1 | `obc-sim::net`: segment 358f's rules (packets, puppets, remote fire and Use, damage filter, deaths and the KILLS table, respawn, dropped weapons, level flow), with in-process multi-world tests. |
+| M13.2 | `obc-net`: the UDP transport (versioned header with the data-release id, LAN broadcast discovery, join by address, peer-list gossip, three-packet redundancy with sequence numbers, ids that avoid collisions, keep-alive, timeout and leave). |
+| M13.3 | UI: game types N, T and M in GAME TYPE; the network setup screen (player id, address, port, CHOOSE A PLAYER / CHOOSE A TEAM, join address); the M direct-connection screen; the KILLS table; Save and Load disabled; opening the menu counts as a death. |
+| M13.4 | Game screen: transport polling, respawn after the death turn, the network level flow (no cutscenes, KILLS, next NETLEVEL), messages. |
+| M13.5 | Headless loopback tests: several `obcr` processes on one machine with scripted input; soak with packet loss. |
+
+---|---|
 | M13.1 | Lockstep core: per-tic input exchange, input delay, stall handling. |
 | M13.2 | UDP transport: sequencing, redundancy, keepalive, timeout, versioned handshake (release id, options). |
 | M13.3 | Lobby: host, join by address, LAN discovery, player and team selection screens matching the original. |
@@ -531,9 +540,9 @@ RE runs continuously. M2 builds the foundation; every later milestone has its ow
 
 ### Acceptance criteria
 
-- [ ] 2-player and maximum-player sessions over LAN and over the Internet (direct IP) run 30 minutes with no desync.
-- [ ] Rules match the original per M13.R1 observations.
-- [ ] Packet loss of 5% and latency of 150 ms degrade smoothly (input delay) without desync.
+- [ ] 2-player and 12-player sessions over LAN and over the Internet (direct IP) run 30 minutes with no failure.
+- [ ] Rules match the original's code (re/NETWORK.md); a DOSBox-X two-machine trace is still advised.
+- [ ] With 5 % packet loss and 150 ms latency, kills, deaths and exits still register on every machine.
 
 ---
 

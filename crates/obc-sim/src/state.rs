@@ -115,6 +115,13 @@ impl World {
         if o.flags & (fl::NONMARK | fl::NEVERMARK) == 0 {
             self.set_actorat(o.tilex as i32, o.tiley as i32, Occ::Empty);
         }
+        // 358f:19fd: a remote player's puppet follows its packets.
+        let o = if self.gamestate.difficulty >= 4 && index != 0 && matches!(o.obclass, 4 | 5 | 12) {
+            crate::net::sync_puppet(self, id);
+            *self.obj(id)
+        } else {
+            o
+        };
         if o.obclass != class::ALLY
             && id != self.player
             && let Some(p) = self.actorpos.get_mut(index)

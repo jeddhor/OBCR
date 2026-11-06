@@ -108,7 +108,10 @@ pub(super) fn check_weapon_change(w: &mut World) {
 /// is marked owned and one clip given.
 #[doc(alias = "GiveWeapon")]
 pub fn give_weapon(w: &mut World, weapon: i16) {
-    // TODO(M13): difficulty >= 4 notifies the network (358f:1969).
+    // 358f:1969: a dropped weapon of this kind was picked up.
+    if w.gamestate.difficulty >= 4 {
+        crate::net::clear_drop(w, weapon.clamp(0, 4) as usize);
+    }
     if weapon >= w.gamestate.bestweapon {
         w.gamestate.chosenweapon = weapon;
         w.gamestate.bestweapon = weapon;
@@ -125,7 +128,10 @@ pub fn give_weapon(w: &mut World, weapon: i16) {
 #[doc(alias = "GiveClip")]
 #[doc(alias = "GiveAmmo")]
 pub fn give_clip(w: &mut World, weapon: i16) {
-    // TODO(M13): weapon 1 in network games notifies 358f:1969 first.
+    // 358f:1969 for weapon 1 (the Uzi's 9mm clip) in network games.
+    if weapon == 1 && w.gamestate.difficulty >= 4 {
+        crate::net::clear_drop(w, 1);
+    }
     if let Some(i) = clip_index(weapon) {
         let c = &mut w.gamestate.clips[i];
         *c = c.wrapping_add(1);
@@ -396,14 +402,21 @@ pub(super) fn gun_attack(w: &mut World, ob: ObjId) {
     let mut viewdist = i32::MAX;
     let mut closest: Option<ObjId> = None;
 
-    if w.gamestate.weapon == 4 {
-        // TODO(M13): network report 358f:13a2 and owner id 358f:1995.
-        actors::spawn_grenade(w, None);
-        return;
-    }
-    if w.gamestate.weapon == 3 {
-        // TODO(M13): network report 358f:13a2 and owner id 358f:1995.
-        actors::spawn_player_flame(w, None);
+    let network = w.gamestate.difficulty >= 4;
+    if w.gamestate.weapon == 4 || w.gamestate.weapon == 3 {
+        // Network: report the shot (358f:13a2) and stamp our id (358f:1995).
+        if network {
+            crate::net::report_fire(w, -1);
+        }
+        let before = w.lastobj;
+        if w.gamestate.weapon == 4 {
+            actors::spawn_grenade(w, None);
+        } else {
+            actors::spawn_player_flame(w, None);
+        }
+        if network && let Some(n) = w.lastobj.filter(|&n| Some(n) != before) {
+            w.obj_mut(n).temp2 = crate::net::my_id(w) as i16;
+        }
         return;
     }
 
@@ -428,7 +441,11 @@ pub(super) fn gun_attack(w: &mut World, ob: ObjId) {
             cur = check.next;
         }
         if closest == oldclosest {
-            return; // no more targets, all missed (network: 358f:13a2 miss report)
+            // No more targets: all missed (network: report a miss, 358f:13a2).
+            if network {
+                crate::net::report_fire(w, -1);
+            }
+            return;
         }
         let Some(c) = closest else { return };
         if actors::check_line(w, c) {
@@ -436,8 +453,14 @@ pub(super) fn gun_attack(w: &mut World, ob: ObjId) {
         }
     };
 
-    // TODO(M13): network games report the hit (358f:13a2) and let the
-    // owner apply the damage (358f:135a) instead.
+    // Network: report the hit (358f:13a2); the victim's machine decides the
+    // damage, here the puppet only shows pain (358f:135a).
+    if network {
+        let id = w.obj(target).temp2;
+        crate::net::report_fire(w, id);
+        crate::net::hit_puppet(w, target);
+        return;
+    }
     w.ply.gunhit = true;
     let t = *w.obj(target);
     let p = *w.plr();
