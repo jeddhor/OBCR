@@ -38,10 +38,12 @@ endif()
 
 # The game and the licence travel inside Setup as resources.
 set(license "${CMAKE_CURRENT_SOURCE_DIR}/../LICENSE")
+set(notices "${CMAKE_CURRENT_SOURCE_DIR}/../THIRD_PARTY_NOTICES.md")
 set_source_files_properties("${OBCR_BINARY}" PROPERTIES QT_RESOURCE_ALIAS "${game_name}")
 set_source_files_properties("${license}" PROPERTIES QT_RESOURCE_ALIAS "LICENSE")
+set_source_files_properties("${notices}" PROPERTIES QT_RESOURCE_ALIAS "THIRD_PARTY_NOTICES.md")
 qt_add_resources(OBCR-Setup payload
     PREFIX "/payload"
     BIG_RESOURCES
-    FILES "${OBCR_BINARY}" "${license}"
+    FILES "${OBCR_BINARY}" "${license}" "${notices}"
 )

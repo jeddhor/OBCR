@@ -540,7 +540,7 @@ dependencies = [
 
 [[package]]
 name = "obc-audio"
-version = "0.1.0"
+version = "1.0.0-beta.1"
 dependencies = [
  "nuked-opl3",
  "obc-core",
@@ -549,14 +549,14 @@ dependencies = [
 
 [[package]]
 name = "obc-core"
-version = "0.1.0"
+version = "1.0.0-beta.1"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "obc-formats"
-version = "0.1.0"
+version = "1.0.0-beta.1"
 dependencies = [
  "obc-testdata",
  "proptest",
@@ -566,11 +566,11 @@ dependencies = [
 
 [[package]]
 name = "obc-net"
-version = "0.1.0"
+version = "1.0.0-beta.1"
 
 [[package]]
 name = "obc-platform"
-version = "0.1.0"
+version = "1.0.0-beta.1"
 dependencies = [
  "obc-core",
  "sdl3",
@@ -579,7 +579,7 @@ dependencies = [
 
 [[package]]
 name = "obc-render"
-version = "0.1.0"
+version = "1.0.0-beta.1"
 dependencies = [
  "obc-core",
  "obc-formats",
@@ -588,7 +588,7 @@ dependencies = [
 
 [[package]]
 name = "obc-sim"
-version = "0.1.0"
+version = "1.0.0-beta.1"
 dependencies = [
  "obc-core",
  "obc-formats",
@@ -600,11 +600,11 @@ dependencies = [
 
 [[package]]
 name = "obc-testdata"
-version = "0.1.0"
+version = "1.0.0-beta.1"
 
 [[package]]
 name = "obc-tool"
-version = "0.1.0"
+version = "1.0.0-beta.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -615,7 +615,7 @@ dependencies = [
 
 [[package]]
 name = "obc-ui"
-version = "0.1.0"
+version = "1.0.0-beta.1"
 dependencies = [
  "obc-audio",
  "obc-core",
@@ -630,7 +630,7 @@ dependencies = [
 
 [[package]]
 name = "obcr"
-version = "0.1.0"
+version = "1.0.0-beta.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -646,7 +646,7 @@ dependencies = [
 
 [[package]]
 name = "obcr-setup"
-version = "0.1.0"
+version = "1.0.0-beta.1"
 dependencies = [
  "miniz_oxide 0.8.9",
 ]
@@ -1190,7 +1190,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "1.0.0-beta.1"
 dependencies = [
  "anyhow",
  "miniz_oxide 0.8.9",

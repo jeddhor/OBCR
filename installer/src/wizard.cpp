@@ -19,6 +19,7 @@
 #include <QPushButton>
 #include <QRadioButton>
 #include <QStorageInfo>
+#include <QTabWidget>
 #include <QTextBrowser>
 #include <QThread>
 #include <QTimer>
@@ -41,12 +42,23 @@ QString mb(qint64 bytes) {
 void showLicense(QWidget *parent) {
     QDialog d(parent);
     d.setWindowTitle(QStringLiteral("OBCR licence"));
-    d.resize(640, 520);
+    d.resize(720, 560);
     auto *layout = new QVBoxLayout(&d);
-    auto *text = new QTextBrowser(&d);
-    QFile f(QStringLiteral(":/payload/LICENSE"));
-    if (f.open(QIODevice::ReadOnly)) text->setPlainText(QString::fromUtf8(f.readAll()));
-    layout->addWidget(text);
+    auto *tabs = new QTabWidget(&d);
+    auto page = [&](const QString &resource, const QString &title, bool markdown) {
+        auto *text = new QTextBrowser(tabs);
+        text->setOpenExternalLinks(true);
+        QFile f(resource);
+        if (f.open(QIODevice::ReadOnly)) {
+            const QString s = QString::fromUtf8(f.readAll());
+            if (markdown) text->setMarkdown(s);
+            else text->setPlainText(s);
+        }
+        tabs->addTab(text, title);
+    };
+    page(QStringLiteral(":/payload/LICENSE"), QStringLiteral("Licence (GPL-3.0)"), false);
+    page(QStringLiteral(":/payload/THIRD_PARTY_NOTICES.md"), QStringLiteral("Third-party notices"), true);
+    layout->addWidget(tabs);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, &d);
     QObject::connect(buttons, &QDialogButtonBox::rejected, &d, &QDialog::reject);
     layout->addWidget(buttons);

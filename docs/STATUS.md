@@ -68,6 +68,7 @@ Append one line per completed task or notable event: `YYYY-MM-DD — <task> — 
 - 2026-11-06 — M14.11 — xBRZ for the 2D screens split in two: XBRZ MENUS (default on: menus, title and intro pictures, animated sequences, help and score pages) and XBRZ STATUS BAR (default off); 2D xBRZ about 2.5× faster (padded kernel, per-pixel touched blocks), direct layer writes; developer flag `--sequence F2|F3|F4|F6` — screenshots of the intro, menu and F2 with the option on and off.
 - 2026-11-06 — repo — m14 merged into main; private GitHub repository `jeddhor/OBCR` created and main plus the task branches pushed (history audited: no game data or decompiled code).
 - 2026-11-06 — M15.1 — Per-user Qt 6 installer and uninstaller for Windows and Linux (ADR-021): `installer/` wizard, `obcr --check-data`, `obcr-setup` self-extracting launcher, `cargo xtask pack-installer`, build scripts; `obcr` is a GUI program on Windows — Windows (15 MB) and Linux (27 MB) packages each installed unattended, game ran from the installed folder, update in place and uninstall left nothing behind (no Qt on PATH on Windows; WSL Ubuntu 22.04 for Linux); wizard pages rendered on both.
+- 2026-11-06 — M15.5 — Version 1.0.0-beta.1: CHANGELOG.md, THIRD_PARTY_NOTICES.md (also in Setup's licence dialog), tag `v1.0.0-beta.1`, GitHub pre-release with both installers.
 
 ## Known gaps (first episode)
 
