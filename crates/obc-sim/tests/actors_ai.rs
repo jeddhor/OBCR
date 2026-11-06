@@ -349,6 +349,25 @@ fn kill_scores_and_drops_item() {
     assert_eq!(w.act.kill_timer, 17);
 }
 
+/// ADR-018: an ally's kill counts toward the exit quota but scores nothing.
+#[test]
+fn ally_kills_count_toward_the_exit() {
+    let mut w = world_or_skip!();
+    put_player(&mut w, 2, 2, 0);
+    actors::spawn_stand(&mut w, 1, 20, 20, 0);
+    let id = last(&w);
+    actors::spawn_stand(&mut w, 1, 24, 20, 0);
+    let score = w.gamestate.score;
+    w.ally.allyfiring = true;
+    actors::damage_actor(&mut w, id, 1000);
+    w.ally.allyfiring = false;
+    assert_eq!(w.obj(id).state, st::SOLDIER_DIE);
+    assert_eq!(w.gamestate.killcount, 1);
+    assert_eq!(w.gamestate.score, score, "no points for an ally's kill");
+    // 1 of 2 dead: killtotal / 2 = 1 <= killcount, so the exit opens.
+    assert!(w.gamestate.killtotal >> 1 <= w.gamestate.killcount);
+}
+
 #[test]
 fn damage_pain_and_first_hit_doubles() {
     let mut w = world_or_skip!();

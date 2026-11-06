@@ -112,7 +112,8 @@ pub struct AlliesState {
     pub switchstay: i16,
     /// `allyfiring` (DS:0x2BC8): true only while an ally's shot is inside
     /// `DamageActor`. `GivePoints` (ghidra 208c:0614) returns at once and
-    /// `KillActor` (ghidra 1e43:1615) does not count the kill while it is set.
+    /// `KillActor` (ghidra 1e43:1615) does not count the kill while it is set;
+    /// OBCR counts it (ADR-018).
     pub allyfiring: bool,
     /// `allyswitchidx` (DS:0x2BD1, byte): position in the `A`/`S` cycle.
     pub switchidx: u8,
@@ -946,7 +947,8 @@ fn plane1_flat(w: &World, y: i16, x: i16) -> Option<u16> {
 ///   the in-game effect still awaits a trace (Q-017, ALLIES.md §11.1);
 /// - disguised soldiers (classes 8–11) not yet alerted are woken *before*
 ///   the damage;
-/// - `allyfiring` suppresses score and kill count inside `DamageActor`.
+/// - `allyfiring` suppresses score inside `DamageActor` (and, in the original,
+///   the kill count; OBCR counts the kill, ADR-018).
 #[doc(alias = "T_AllyShoot")]
 fn t_ally_shoot(w: &mut World, id: ObjId) {
     if w.gamestate.difficulty >= 4 {

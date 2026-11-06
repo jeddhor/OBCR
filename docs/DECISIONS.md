@@ -134,3 +134,10 @@ Template:
 - **Alternatives**: Lockstep (ADR-009). It would need a multi-player rewrite of the simulation, add input delay to every movement, and would no longer play like the original.
 - **Consequences**: There is no global consistency to check, so there are no desync hashes. As in the original, items, fires and level state can differ between machines. Network games cannot be saved.
 
+## ADR-018 — Ally kills count toward the exit quota
+
+- **Status**: Accepted (2026-11-05), at the owner's request
+- **Context**: *KillActor* (`1e43:161c`) does not increment `killcount` while `allyfiring` is set (ALLIES.md §4.4). The exit needs `killcount >= killtotal / 2` (*TryExit*), so a squad that does most of the killing can leave the floor short, and the HUD kill count and lamp ignore the squad's work.
+- **Decision**: Another exception to ADR-008 in Classic and Enhanced alike, in the spirit of ADR-016: every enemy death counts in `killcount`, whoever caused it. Allies still earn no score (`GivePoints` keeps its `allyfiring` check), and killing an ally still does not count.
+- **Consequences**: The exit opens, and the kill number and lamp advance, when allies kill. Recorded traces with an ally kill diverge from the original in `killcount` and the unread kill timer (`DS:0xCD87`) from that point.
+

@@ -1657,7 +1657,11 @@ pub fn kill_actor(w: &mut World, id: ObjId) {
     }
 
     if !network {
-        if !w.ally.allyfiring && o.obclass != class::ALLY {
+        // The original also skips kills made while `allyfiring` (1e43:161c),
+        // so a squad doing most of the killing can leave the floor short of
+        // its 50 % quota. OBCR counts them (ADR-018); they still score
+        // nothing (`give_points`).
+        if o.obclass != class::ALLY {
             w.gamestate.killcount = w.gamestate.killcount.wrapping_add(1);
             w.emit(SimEvent::Hud);
         }

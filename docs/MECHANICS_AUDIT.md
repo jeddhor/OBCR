@@ -23,7 +23,7 @@ Where the comparison and the code disagree, the code wins: OBCR reproduces the s
 | Mechanic | Original (`COUNT.EXE`) | OBCR | Status |
 |---|---|---|---|
 | 40-floor linear campaign | `mapon` 0–39, strictly `mapon + 1` per exit; no episodes; maps 40–49 unused (GAMEFLOW §5.2, §5.7) | `World::advance_level`, game screen floor flow | ✅ |
-| 50 % kill quota for the exit | *TryExit* `30d6:1bc0`: `killcount >= killtotal / 2` (integer division), else `UNFINISHED BUSINESS`; map 39 exits do nothing (PLAYER.md §3.6) | `player/interact.rs` | ✅ |
+| 50 % kill quota for the exit | *TryExit* `30d6:1bc0`: `killcount >= killtotal / 2` (integer division), else `UNFINISHED BUSINESS`; map 39 exits do nothing (PLAYER.md §3.6) | `player/interact.rs`; ally kills count too (ADR-018) | ✅ ≠ |
 | Red / yellow / green status lamp | Kill lamp at (116,188): palette 1 red below half, 2 yellow at half, 0x0E green at all (PLAYER.md §5.2; colours checked in `gamepal`) | `hud.rs` | ✅ |
 | Exit kinds (ladder, stairs, elevator) | Tiles 0x71/0x72 stairs, 0x73 elevator; sequence F2 after sewers 0–4, F5 after map 22, else F3/F4 (GAMEFLOW §5.2–5.3) | game screen `exit_sequence` | ✅ |
 | End-of-floor statistics | **None**: `ex_completed` (1823:0f6f, read in this audit) goes sequence → palette 3 → `ClearFloorItems` → `mapon++`, `health += 35` | same | ✅ (PLAYER.md corrected) |
@@ -55,7 +55,7 @@ Where the comparison and the code disagree, the code wins: OBCR reproduces the s
 | Follow: allies do not shoot | Follow runs the shared `T_Chase` whose class-5 attack entry is a bare return (ALLIES.md §3.2) | `allies.rs` → `actors::t_chase` | ✅ |
 | Disperse: roam and attack | `T_Ally` / `T_AllyShoot` (ALLIES.md §4) | `allies.rs` | ✅ |
 | Switch / stay & switch | Body swap by `CopyActorState`; S freezes the body left behind (ALLIES.md §5) | `allies.rs` | ✅ |
-| Ally kills | No score, **no kill count**, so they do not advance the 50 % quota (`allyfiring` DS:0x2BC8; ALLIES.md §4.4, KillActor tail) | `give_points`, `kill_actor` | ✅ ≠ (the comparison leaves this open) |
+| Ally kills | No score, **no kill count**, so they do not advance the 50 % quota (`allyfiring` DS:0x2BC8; ALLIES.md §4.4, KillActor tail) | `give_points`, `kill_actor`: no score, but they count toward the quota (ADR-018) | ✅ ≠ |
 | Player death with allies alive | **Game over.** *TakeDamage* `208c:0494` (read in this audit) sets `playstate = 2` at health ≤ 0 with no ally switch; body-switching is not a lives system | game screen death flow | ✅ |
 | Last ally dies | Event-box portrait, count 0, `NO ALLIES!` on A/S; nothing else | `hud.rs`, `allies.rs` | ✅ |
 | Allies between floors | None carried over: each floor spawns its own | level setup | ✅ |
@@ -177,7 +177,7 @@ All classes in ACTORS.md are ported with their state tables read from `COUNT.EXE
 |---|---|---|
 | T01–T02 | Exit needs `killcount >= killtotal / 2`, integer division: 31 enemies need 15 | Code (TryExit) |
 | T03 | All dead: lamp green; no bonus, no stats screen | Code |
-| T04 | Ally kills count neither as kills nor score, so they never help the quota | Code |
+| T04 | Ally kills count neither as kills nor score, so they never help the quota. OBCR counts them toward the quota, still without score (ADR-018) | Code |
 | T05 | The blocking wall is cleared (tile, info, collision), debris left; sight and movement update at once | Code |
 | T06 | The outer ring is immune | Code |
 | T07 | Actors use the live tilemap, so they path through new gaps | Code |
@@ -218,16 +218,16 @@ All classes in ACTORS.md are ported with their state tables read from `COUNT.EXE
 
 These are faithful to the original's code; ADR-008 keeps them in Classic play. Each could become an opt-in fix flag.
 
-- Kills by allies do not count toward the 50 % quota, so a squad that does most of the killing can leave the player short.
 - "Fuel Bottle" from a supply crate is applied only when it fills the fuel clips to the cap (PLAYER.md §4.2).
 
-### Fixed in OBCR (ADR-016)
+### Fixed in OBCR (ADR-016, ADR-018)
 
-Blasts could leave a floor with no way out in the original. OBCR changes this in every mode:
+The original could leave a floor with no way out. OBCR changes this in every mode:
 
 - Blasting a stairs (0x72) or elevator (0x73) exit scorched it. All three exit tiles are now spared.
 - A grenade near a door turned the door into a scorched wall, which could seal the only route to the exit. Nearby doors now keep working.
 - A door destroyed by a direct hit while open could later "close" into an invisible, unusable barrier. A destroyed door now never closes.
+- Kills by allies did not count toward the 50 % quota, so a squad that did most of the killing could leave the player short. They now count (still without score).
 
 ## 15. Remaining work from this audit
 

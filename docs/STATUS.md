@@ -63,6 +63,7 @@ Append one line per completed task or notable event: `YYYY-MM-DD — <task> — 
 
 - 2026-11-05 — fix — Blasts never leave a floor unfinishable (ADR-016): exits 0x72/0x73 and nearby doors are spared; a destroyed door never closes again — test `blasts_spare_exits_and_doors`.
 - 2026-11-05 — M13 — Multiplayer: the original's state-broadcast model reverse-engineered and ported (ADR-017); game types N, T, M; LAN discovery, calling an address, gossip, redundancy — `net_game` (8 tests incl. a 4-player soak with 10 % loss), `obc-net` (8 loopback tests); 2- and 4-process `obcr` runs: kills, deaths, respawn, exits and the KILLS table agree on every machine.
+- 2026-11-05 — fix — Ally kills count toward the exit quota, still without score (ADR-018) — test `ally_kills_count_toward_the_exit`.
 
 ## Known gaps (first episode)
 
