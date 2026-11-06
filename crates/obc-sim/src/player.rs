@@ -211,13 +211,18 @@ impl PlayerState {
     }
 }
 
+/// `Cmd_Use` for a remote player's replayed Use (net.rs).
+pub(crate) fn remote_cmd_use(w: &mut World) {
+    interact::cmd_use(w);
+}
+
 /// Emits a status-bar redraw request (the original's `Draw*` calls).
-fn hud(w: &mut World) {
+pub(crate) fn hud(w: &mut World) {
     w.emit(SimEvent::Hud);
 }
 
 /// `GameMessage(fmt, ...)` (ghidra 2f4d:12b5): shown for 125 tics.
-fn message(w: &mut World, text: impl Into<String>) {
+pub(crate) fn message(w: &mut World, text: impl Into<String>) {
     w.emit(SimEvent::Message(text.into()));
 }
 
@@ -235,7 +240,7 @@ fn trig_index(angle: i16) -> usize {
 /// tests (W, E, N, S) pick a cell but `208c:143d` overwrites it with the
 /// original start (K candidate), so only the "all four occupied" case moves
 /// the player, to a random free cell within ±24 tiles (`RandomNear` 2f4d:1388).
-/// Network spawning (`358f:0d7b`) is not ported (M13).
+/// In network games the first `NetFrame` places the player instead (`358f:0d7b`).
 #[doc(alias = "SpawnPlayer")]
 pub fn spawn_player(w: &mut World, x: u16, y: u16, dir: u16) {
     // `InitActorList` (1942:0c2f) allocates the player as objlist[0];
@@ -298,7 +303,10 @@ pub fn spawn_player(w: &mut World, x: u16, y: u16, dir: u16) {
         o.angle = angle;
         o.flags = fl::NEVERMARK;
     }
-    // TODO(M13): difficulty >= 4 calls the network spawn 358f:0d7b here.
+    // Network: the first NetFrame places the player (358f:0d7b).
+    if w.gamestate.difficulty >= 4 {
+        crate::net::request_respawn(w);
+    }
     movement::thrust(w, 0, 0);
     init_areas(w);
 }

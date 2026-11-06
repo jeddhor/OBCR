@@ -43,7 +43,17 @@ OBCR remembers the data directory (and finds a Steam install by itself). Setting
 
 Useful options: `--classic` (original 320×200), `--scale 2..8` and `--aspect 4:3|16:10|16:9|21:9` (Enhanced), `--fullscreen` / `--windowed`, `--play N` (start straight on floor N+1, for testing), `--nsr250` (the original's cheat parameter: in game, Alt+Left Shift+B turns on BOGUS MODE, then Alt+R restock, Alt+I invincible, Alt+H health, Alt+B bewitched, Alt+W warp to a floor; bogus games do not enter the high scores). Alt+Enter toggles fullscreen.
 
-In the main menu, **O** opens OPTIONS: display mode (Classic or Enhanced), resolution, aspect, fullscreen, smooth filter, integer scaling, smooth motion, control scheme, always run, mouse and pad speed, rumble, volumes, the number of sound voices (1 as the original, or 4 mixed) and the effects device (digitized, AdLib or PC speaker). The original menu items work as in the original game (GAME TYPE picks difficulty 1–3 or Random; START GAME begins on floor 1).
+In the main menu, **O** opens OPTIONS: display mode (Classic or Enhanced), resolution, aspect, fullscreen, smooth filter, integer scaling, smooth motion, control scheme, always run, mouse and pad speed, rumble, volumes, the number of sound voices (1 as the original, or 4 mixed) and the effects device (digitized, AdLib or PC speaker). The original menu items work as in the original game (GAME TYPE picks difficulty 1–3, Random, or the network types N, T and M; START GAME begins on floor 1).
+
+### Multiplayer
+
+Choose GAME TYPE **N** (network), **T** (network teams) or **M** (two-player direct connection), then START GAME. On the setup screen pick your character (or team) with ↑/↓ and press Enter. Up to 12 players. As in the original, each player starts alone and the others appear as they arrive. Taking an exit moves everyone on that floor to the next one, and the KILLS table shows who killed whom. Saving is off in network games, and opening the menu counts as a suicide.
+
+- **Same network (LAN):** nothing to set up. Players on the same UDP port find each other by broadcast. The default port is 16387 (the original's IPX socket 0x4003). Type four hex digits on the setup screen to use another port, so several games can run side by side.
+- **Over the Internet:** press **J** on the setup screen and type the other player's address (`host` or `host:port`). The player you call must let UDP port 16387 (or their chosen port) through their firewall or router. Once two players meet, everyone else they know is introduced automatically.
+- **M (direct):** one player waits and the other presses J and calls them.
+
+From the command line: `--net N|T|M` starts a network game at once (`--net-setup` opens the setup screen instead), with `--net-port P`, `--net-join HOST[:PORT]` (repeatable) and `--net-choice 0|1|2`.
 
 ### Controls
 

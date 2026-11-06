@@ -46,6 +46,11 @@ impl World {
         if !self.actorat(tx, ty).is_empty() {
             return;
         }
+        // Fix (ADR-016): a door destroyed by a blast has no door tile left;
+        // closing it would put an invisible, unusable barrier in the doorway.
+        if self.tilemap[Self::idx(tx, ty)] & 0x80 == 0 {
+            return;
+        }
         let p = *self.plr();
         if i32::from(p.tilex) == tx && i32::from(p.tiley) == ty {
             return;

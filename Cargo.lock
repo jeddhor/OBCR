@@ -567,10 +567,6 @@ dependencies = [
 [[package]]
 name = "obc-net"
 version = "0.1.0"
-dependencies = [
- "obc-core",
- "obc-sim",
-]
 
 [[package]]
 name = "obc-platform"
@@ -624,6 +620,7 @@ dependencies = [
  "obc-audio",
  "obc-core",
  "obc-formats",
+ "obc-net",
  "obc-render",
  "obc-sim",
  "obc-testdata",

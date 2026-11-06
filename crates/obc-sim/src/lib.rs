@@ -7,6 +7,7 @@ pub mod data;
 pub mod doors;
 pub mod events;
 pub mod level;
+pub mod net;
 pub mod player;
 pub mod playloop;
 pub mod save;

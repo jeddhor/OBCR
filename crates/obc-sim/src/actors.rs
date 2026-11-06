@@ -762,7 +762,14 @@ pub fn spawn_face_apparition(w: &mut World) {
 /// (or aimed at `target` by [`calc_angle`]). CONFIRMED.
 #[doc(alias = "SpawnFlame")]
 pub fn spawn_player_flame(w: &mut World, target: Option<ObjId>) {
-    let ob = *w.plr();
+    let p = w.player;
+    spawn_flame_from(w, p, target);
+}
+
+/// `SpawnFlame(ob, target)` (30d6:0493) from any object: network games fire
+/// remote players' flames from their puppets (358f:1283).
+pub fn spawn_flame_from(w: &mut World, from: ObjId, target: Option<ObjId>) {
+    let ob = *w.obj(from);
     let angle = match target {
         Some(t) => {
             let t = *w.obj(t);
@@ -1650,14 +1657,21 @@ pub fn kill_actor(w: &mut World, id: ObjId) {
     }
 
     if !network {
-        if !w.ally.allyfiring && o.obclass != class::ALLY {
+        // The original also skips kills made while `allyfiring` (1e43:161c),
+        // so a squad doing most of the killing can leave the floor short of
+        // its 50 % quota. OBCR counts them (ADR-018); they still score
+        // nothing (`give_points`).
+        if o.obclass != class::ALLY {
             w.gamestate.killcount = w.gamestate.killcount.wrapping_add(1);
             w.emit(SimEvent::Hud);
         }
         // `sprintf(DS:0x874C, "%d", killtotal - killcount)`: status bar text.
         w.emit(SimEvent::Hud);
     }
-    // Network: FUN_358f_18e7(ob, x, y) (not ported).
+    // Network: a dead remote player drops its weapon (358f:18e7).
+    if network {
+        crate::net::drop_weapon(w, id, tx as u8, ty as u8);
+    }
 
     if !network {
         let gs = w.gamestate;
@@ -1709,7 +1723,8 @@ fn update_kill_ratio(w: &mut World) {
 #[doc(alias = "DamageActor")]
 pub fn damage_actor(w: &mut World, id: ObjId, damage: i16) {
     if w.gamestate.difficulty >= 4 {
-        // FUN_358f_135a(ob): network hand-off (not ported).
+        // Network: a hit only shows pain; the victim decides (358f:135a).
+        crate::net::hit_puppet(w, id);
         return;
     }
     if w.gamestate.chosenweapon == 3 {
@@ -2321,8 +2336,12 @@ fn projectile_try_move(w: &World, id: ObjId) -> (bool, u8, u8) {
                         return (false, hx, hy);
                     }
                 }
-                // Network: the player on this tile blocks unless same team (not ported).
-                _ => {}
+                // Network: the local player's cell stops someone else's projectile.
+                _ => {
+                    if network && crate::net::player_blocks_projectile(w, id, x, y) {
+                        return (false, hx, hy);
+                    }
+                }
             }
         }
     }
@@ -2541,10 +2560,19 @@ pub fn explosion_tile_effects(w: &mut World, hitx: u8, hity: u8, ob: ObjId) {
                 continue;
             }
             let t = u16::from(t);
-            if t == 0x71 {
+            // Fix (ADR-016): the original spares only exit 0x71, so a blast
+            // could remove the stairs (0x72) or elevator (0x73) and leave no
+            // way off the floor. All three are spared here.
+            if (0x71..=0x73).contains(&t) {
                 continue;
             }
             let idx = World::idx(x, y);
+            // Fix (ADR-016): the original scorches doors near the blast into
+            // solid wall 0x4D, which can seal the only way to the exit. Doors
+            // other than the one hit are left working.
+            if t & 0x80 != 0 && !(hx == x && hy == y) {
+                continue;
+            }
             if (0x39..=0x3C).contains(&t) {
                 w.tilemap[idx] = 0x3C;
                 continue;

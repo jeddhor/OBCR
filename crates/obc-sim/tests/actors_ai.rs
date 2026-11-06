@@ -349,6 +349,25 @@ fn kill_scores_and_drops_item() {
     assert_eq!(w.act.kill_timer, 17);
 }
 
+/// ADR-018: an ally's kill counts toward the exit quota but scores nothing.
+#[test]
+fn ally_kills_count_toward_the_exit() {
+    let mut w = world_or_skip!();
+    put_player(&mut w, 2, 2, 0);
+    actors::spawn_stand(&mut w, 1, 20, 20, 0);
+    let id = last(&w);
+    actors::spawn_stand(&mut w, 1, 24, 20, 0);
+    let score = w.gamestate.score;
+    w.ally.allyfiring = true;
+    actors::damage_actor(&mut w, id, 1000);
+    w.ally.allyfiring = false;
+    assert_eq!(w.obj(id).state, st::SOLDIER_DIE);
+    assert_eq!(w.gamestate.killcount, 1);
+    assert_eq!(w.gamestate.score, score, "no points for an ally's kill");
+    // 1 of 2 dead: killtotal / 2 = 1 <= killcount, so the exit opens.
+    assert!(w.gamestate.killtotal >> 1 <= w.gamestate.killcount);
+}
+
 #[test]
 fn damage_pain_and_first_hit_doubles() {
     let mut w = world_or_skip!();
@@ -554,4 +573,44 @@ fn smoke_all_classes() {
             w.events.iter().filter(|e| matches!(e, SimEvent::Fault(_))).collect::<Vec<_>>()
         );
     }
+}
+
+/// ADR-016: a blast never leaves a floor without a way out. All three exit
+/// tiles survive, nearby doors keep working, and a destroyed door never
+/// closes again into an invisible barrier.
+#[test]
+fn blasts_spare_exits_and_doors() {
+    let mut w = world_or_skip!();
+    put_player(&mut w, 50, 50, 0);
+    actors::spawn_stand(&mut w, 1, 30, 30, 0);
+    let ob = last(&w);
+    // Hit wall is the stairs; the elevator and a door sit beside it.
+    for (x, y, t) in [(20, 20, 0x72), (21, 20, 0x73), (19, 20, 0x71), (20, 21, 0x80)] {
+        w.tilemap[World::idx(x, y)] = t;
+        w.set_actorat(x, y, Occ::Mark(u16::from(t)));
+    }
+    w.doors.push(Door { tilex: 20, tiley: 21, action: DoorAction::Closed, ..Door::default() });
+    actors::explosion_tile_effects(&mut w, 20, 20, ob);
+    assert_eq!(w.tile(20, 20), 0x72, "hit stairs survive");
+    assert_eq!(w.tile(21, 20), 0x73, "elevator survives");
+    assert_eq!(w.tile(19, 20), 0x71, "ladder survives");
+    assert_eq!(w.tile(20, 21), 0x80, "nearby door is not scorched");
+
+    // A door that is hit is destroyed; while open it must not close again.
+    w.tilemap[World::idx(20, 20)] = 0x81;
+    w.set_actorat(20, 20, Occ::Empty);
+    w.doors.push(Door {
+        tilex: 20,
+        tiley: 20,
+        action: DoorAction::Open,
+        position: 0xFFFF,
+        ..Door::default()
+    });
+    actors::explosion_tile_effects(&mut w, 20, 20, ob);
+    assert_eq!(w.tile(20, 20), 0, "hit door destroyed");
+    w.tics = 1;
+    for _ in 0..400 {
+        w.move_doors();
+    }
+    assert!(w.actorat(20, 20).is_empty(), "no invisible barrier");
 }

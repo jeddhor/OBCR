@@ -269,8 +269,8 @@ OBCR/
 | `obc-sim` | World state, level setup, player, actors, AI, allies, weapons, projectiles, doors, push walls, statics, areas, game rules, cheats' effects, events out (sound, HUD, palette flash, messages), trace emission | `obc-core`, `obc-formats` (for level data types) | Read the clock, touch files, call audio or render, use floating point, use `HashMap` iteration order for game logic |
 | `obc-render` | 3D view (raycaster, sprites, weapon), 2D drawing (pics, fonts, tiles, bars), palette effects, fades, screen shake; Classic and high-res paths | `obc-core`, `obc-formats`, `obc-sim` (read-only view of world) | Mutate simulation state |
 | `obc-audio` | Sound and music playback logic: priorities, channels, OPL, PC speaker, digitized, IMF, AUDIOMUS streaming, CD replacement, mixer | `obc-core`, `obc-formats` | Depend on SDL (it renders sample buffers; the platform layer delivers them) |
-| `obc-ui` | Application state machine: title, menus, game-type selection, load/save UI, help, intermission and floor change, sequences, high scores, credits, HUD composition, in-game messages | `obc-core`, `obc-formats`, `obc-sim`, `obc-render`, `obc-audio` (via command queue) | Block or loop waiting for input (see §7.6) |
-| `obc-net` | Lockstep session, input exchange, desync detection, lobby, transport | `obc-core`, `obc-sim` (input and hash types) | Leak network timing into simulation |
+| `obc-ui` | Application state machine: title, menus, game-type selection, load/save UI, help, intermission and floor change, sequences, high scores, credits, HUD composition, in-game messages, network setup and the KILLS table, moving packets between the transport and the simulation | `obc-core`, `obc-formats`, `obc-sim`, `obc-render`, `obc-audio` (via command queue), `obc-net` | Block or loop waiting for input (see §7.6) |
+| `obc-net` | UDP transport for network games (ADR-017): datagrams, discovery, peers, redundancy, time-outs | — (std only) | Know game rules; be used by `obc-sim` (the simulation sees packets only through `NetGame::inbox`/`outbox`) |
 | `obc-platform` | SDL3: window, renderer and texture, events to `InputState`, audio device and stream, high-resolution clock, clipboard, message box | `sdl3` | Contain game logic |
 | `obcr` | Composition root, CLI, config load, main loop | everything | — |
 
@@ -519,10 +519,10 @@ pub trait Screen {
 
 ### 7.8 Multiplayer (`obc-net`)
 
-- **Model**: deterministic **lockstep**. Every peer runs the full simulation; per tic, peers exchange `TicCmd`s; a tic executes when all commands for it have arrived. This mirrors how Wolf3D-era network games worked and needs no state replication. The original's model is to be confirmed in M13 RE.
-- **Transport**: UDP with sequence numbers, redundant input sends (last N tics per packet), configurable input delay, keepalives, timeouts. The protocol is versioned and checks the data-release id and gameplay options at handshake.
-- **Desync detection**: every N tics peers exchange a 64-bit hash of tracked simulation state. On mismatch, dump both traces for diagnosis.
-- **Mapping of original modes**: Network (IPX) becomes LAN discovery (UDP broadcast) and host/join by IP. Network Teams becomes the same, plus team assignment. Modem and serial become a direct two-player connection by IP or hostname. Player limits, characters, teams and kill rules follow the original.
+- **Model** (ADR-017, superseding the lockstep plan of ADR-009): the original's **state broadcast**. Every machine runs its own level and owns its player; once per frame it sends a 24-byte state packet with a one-shot event; other players are puppet actors; the victim's machine decides damage. Rules: [`re/NETWORK.md`](re/NETWORK.md); `obc-sim::net` ports them, and the platform moves packets through `NetGame::inbox`/`outbox`, so the simulation stays a pure function of its inputs.
+- **Transport** (`obc-net`): UDP datagrams carrying the 24-byte packets, each with a sequence number and the sender's last three packets, plus two delayed resends of the newest. The header is versioned and carries the data-release id and game type; machines that differ ignore each other.
+- **No desync detection**: as in the original, each machine owns its own state, so there is nothing global to compare.
+- **Mapping of original modes**: Network (IPX) becomes LAN discovery (UDP broadcast on the original's socket number 0x4003 as the port) plus calling an address, with peer-list gossip so everyone meets everyone. Network Teams is the same with team choice. Modem and serial become a two-player direct connection, one side calling the other's address. The 12-player limit, characters, teams and kill rules follow the original.
 - **Not in scope**: NAT punch-through, dedicated servers, matchmaking (possible post-1.0).
 
 ### 7.9 Rendered sequences and CD music

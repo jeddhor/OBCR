@@ -64,6 +64,32 @@ struct Cli {
     /// Headless: press and release a key at a tic, as `CODE@TIC` (hex scan code).
     #[arg(long)]
     shot_press: Vec<String>,
+    /// Headless: run at 70 tics per second instead of as fast as possible
+    /// (network tests need real time).
+    #[arg(long)]
+    shot_realtime: bool,
+    /// Start a network game directly: N (network), T (teams) or M (direct).
+    #[arg(long)]
+    net: Option<String>,
+    /// UDP port (the original's IPX socket; default 16387 = 0x4003).
+    #[arg(long)]
+    net_port: Option<u16>,
+    /// Address to call (repeatable), `host` or `host:port`.
+    #[arg(long)]
+    net_join: Vec<String>,
+    /// Character or team: 0 Agent / Team 1, 1 Terrorist 1 / Team 2,
+    /// 2 Terrorist 2 / Team 3.
+    #[arg(long, default_value_t = 0)]
+    net_choice: i16,
+    /// Testing: drop this percentage of outgoing datagrams.
+    #[arg(long, default_value_t = 0)]
+    net_loss: u8,
+    /// Developer: respawn at `X,Y,ANGLE` instead of a random spot.
+    #[arg(long)]
+    net_place: Option<String>,
+    /// Open the network setup screen for `--net` instead of starting at once.
+    #[arg(long)]
+    net_setup: bool,
 }
 
 /// One tic: 1/70 s (`TICRATE`).
@@ -136,7 +162,34 @@ fn run() -> Result<()> {
     )?;
     let assets = Assets::load(DataDir::open(&dir)?).context("loading game data")?;
 
+    if let Some(p) = cli.net_port {
+        settings.net.port = p;
+    }
+    settings.net.loss_percent = cli.net_loss.min(100);
+    let net_kind = match cli.net.as_deref().map(str::to_ascii_uppercase).as_deref() {
+        None => None,
+        Some("N") => Some(4),
+        Some("T") => Some(5),
+        Some("M") => Some(6),
+        Some(other) => anyhow::bail!("--net wants N, T or M, not {other}"),
+    };
     let first: Box<dyn Screen> = match (cli.viewer, cli.play) {
+        _ if net_kind.is_some() && cli.net_setup => {
+            Box::new(obc_ui::netui::SetupBoot { kind: net_kind.unwrap_or(4) })
+        }
+        _ if net_kind.is_some() => Box::new(obc_ui::netui::NetBoot {
+            kind: net_kind.unwrap_or(4),
+            choice: cli.net_choice.clamp(0, 2),
+            join: cli.net_join.clone(),
+            place: match &cli.net_place {
+                None => None,
+                Some(t) => {
+                    let v: Vec<i32> = t.split(',').filter_map(|s| s.trim().parse().ok()).collect();
+                    let [x, y, a] = v[..] else { anyhow::bail!("--net-place wants X,Y,ANGLE") };
+                    Some((x, y, a as i16))
+                }
+            },
+        }),
         (Some(slot), _) => Box::new(obc_ui::viewer::Viewer::new(&assets, slot)),
         (None, Some(mapon)) => Box::new(obc_ui::game::Boot { difficulty: cli.difficulty, mapon }),
         (None, None) => obc_ui::start(&assets),
@@ -302,7 +355,14 @@ fn headless_shot(
             .context("bad --shot-press code")?;
         presses.push((code, tic.parse::<u32>().context("bad --shot-press tic")?));
     }
+    let start = Instant::now();
     for t in 0..tics {
+        if cli.shot_realtime {
+            let due = start + TIC * t;
+            if let Some(wait) = due.checked_duration_since(Instant::now()) {
+                std::thread::sleep(wait);
+            }
+        }
         for &(code, at) in &presses {
             if at == t {
                 input.key(code, true, false);
@@ -336,6 +396,14 @@ fn headless_shot(
     enc.set_depth(png::BitDepth::Eight);
     enc.write_header()?.write_image_data(&rgba)?;
     println!("wrote {} ({}x{})", cli.shot_out.display(), frame.width, frame.height);
+    if let Some(line) = stack
+        .iter_mut()
+        .rev()
+        .find_map(|s| s.game_mut())
+        .and_then(|g| obc_ui::netui::summary(g.world()))
+    {
+        println!("{line}");
+    }
     Ok(())
 }
 

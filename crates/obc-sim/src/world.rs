@@ -382,6 +382,10 @@ pub struct World {
     pub ply: crate::player::PlayerState,
     /// State owned by `allies.rs`.
     pub ally: crate::allies::AlliesState,
+    /// Network game state (`net.rs`); `None` in single player. Network
+    /// games cannot be saved, so saves never carry it.
+    #[serde(skip)]
+    pub net: Option<Box<crate::net::NetGame>>,
 }
 
 fn empty_tables() -> Arc<Tables> {
@@ -455,6 +459,7 @@ impl World {
             act: Default::default(),
             ply: Default::default(),
             ally: Default::default(),
+            net: None,
         };
         w.init_actor_list();
         w

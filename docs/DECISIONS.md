@@ -71,7 +71,7 @@ Template:
 
 ## ADR-009 — Multiplayer by deterministic lockstep over UDP
 
-- **Status**: Accepted (2026-11-02), pending M13 RE of the original model
+- **Status**: Superseded by ADR-017 (2026-11-05): the M13 RE found the original is not lockstep
 - **Decision**: Peers exchange per-tic inputs over UDP; each runs the full simulation; periodic state hashes detect desyncs. IPX becomes LAN discovery plus direct IP; Modem becomes a direct two-player connection.
 - **Alternatives**: Client-server with state replication (more complex, unnecessary given a deterministic simulation).
 
@@ -110,3 +110,34 @@ Template:
 - **Status**: Accepted (2026-11-02)
 - **Decision**: With SMOOTH MOTION on (Enhanced only), the renderer blends the player pose and moving actors between the last two simulation frames at the display rate, using a fine view angle (`FINEANGLES` units) and float sine/cosine off whole degrees. Gameplay visibility, hit tests and everything else read the simulation state.
 - **Consequences**: Up to one frame (≈29 ms) of display latency; Classic keeps integer angles and the original tables.
+
+## ADR-016 — Blasts never leave a floor unfinishable
+
+- **Status**: Accepted (2026-11-05), at the owner's request
+- **Context**: In the original, `ExplosionTileEffects` spares only exit tile 0x71. A grenade can scorch or remove the stairs (0x72) and elevator (0x73) exits, and it scorches nearby doors into solid wall 0x4D. Either can leave the exit unreachable. A door destroyed by a direct hit keeps its door record, so if it was open it later "closes" into an invisible barrier.
+- **Decision**: An exception to ADR-008, in Classic and Enhanced alike: blasts spare all three exit tiles and every door except the one hit, and `CloseDoor` refuses once the door's tile is gone.
+- **Consequences**: Floors stay finishable after any blast. Recorded traces that blow up an exit or a nearby door diverge from the original at that point.
+
+## ADR-017 — Multiplayer reproduces the original's state broadcast, over UDP
+
+- **Status**: Accepted (2026-11-05); supersedes ADR-009
+- **Context**: The M13 RE ([re/NETWORK.md](re/NETWORK.md), [re/NETCOMMS.md](re/NETCOMMS.md)) shows the original is not lockstep. Every machine runs its own copy of the level and owns its player; once per frame it sends a 24-byte state packet with a one-shot event; other players are puppet actors; the victim's machine decides damage with the enemy-fire rules. The single-player port already contains the original's `difficulty >= 4` branches written for this model.
+- **Decision**:
+  - `obc-sim::net` ports segment 358f's rules. The transport stays outside the simulation: the platform fills `NetGame::inbox` before a frame and drains `NetGame::outbox` after it, so a frame is still a pure function of its inputs (now including received packets).
+  - New crate `obc-net` carries the packets over UDP. The IPX socket number becomes the UDP port (default 0x4003 = 16387). LAN discovery uses broadcast, like the original. Internet play works by joining an address, and peers share their peer lists. Each datagram carries the sender's last three packets with sequence numbers, so single losses are recovered and duplicates are dropped.
+  - Game type M (modem/serial) becomes a two-player direct UDP connection with the original's rules for type 6.
+- **OBCR changes to the original's behaviour** (all at the transport edge):
+  - Packets are queued per player instead of overwriting each other within a frame, so no event is lost.
+  - Puppets are found by slot, not by actor-list position.
+  - Ids are 1–254, chosen to avoid ids already heard, and a collision is resolved by re-rolling. The original used the last byte of the IPX node address and dropped colliding players' packets.
+  - A player who quits or times out is hidden instead of freezing in place.
+- **Alternatives**: Lockstep (ADR-009). It would need a multi-player rewrite of the simulation, add input delay to every movement, and would no longer play like the original.
+- **Consequences**: There is no global consistency to check, so there are no desync hashes. As in the original, items, fires and level state can differ between machines. Network games cannot be saved.
+
+## ADR-018 — Ally kills count toward the exit quota
+
+- **Status**: Accepted (2026-11-05), at the owner's request
+- **Context**: *KillActor* (`1e43:161c`) does not increment `killcount` while `allyfiring` is set (ALLIES.md §4.4). The exit needs `killcount >= killtotal / 2` (*TryExit*), so a squad that does most of the killing can leave the floor short, and the HUD kill count and lamp ignore the squad's work.
+- **Decision**: Another exception to ADR-008 in Classic and Enhanced alike, in the spirit of ADR-016: every enemy death counts in `killcount`, whoever caused it. Allies still earn no score (`GivePoints` keeps its `allyfiring` check), and killing an ally still does not count.
+- **Consequences**: The exit opens, and the kill number and lamp advance, when allies kill. Recorded traces with an ally kill diverge from the original in `killcount` and the unread kill timer (`DS:0xCD87`) from that point.
+

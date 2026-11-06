@@ -25,6 +25,11 @@ impl World {
         self.move_pwalls();
         self.move_anim_walls();
         player::heal_stations(self);
+        // 358f:0eea, the network hook (docs/re/NETWORK.md §4.2).
+        if self.gamestate.difficulty >= 4 {
+            crate::net::tick(self);
+            crate::net::net_frame(self);
+        }
 
         // Actors in list order, starting with the player.
         self.actorpos = [0; crate::world::MAXACTORS];

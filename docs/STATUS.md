@@ -2,8 +2,8 @@
 
 Live project state. Every agent reads this at the start of a session and updates it at the end (AGENT_GUIDE §3). Keep edits small: change your own rows, append to the log.
 
-**Current milestone: M12 — first-episode playtest (owner testing needed)**
-**Last updated: 2026-11-02**
+**Current milestone: M12 first-episode playtest and M13 multiplayer LAN test (owner testing needed)**
+**Last updated: 2026-11-05**
 
 ## Milestones
 
@@ -22,7 +22,7 @@ Live project state. Every agent reads this at the start of a session and updates
 | M10 | Game flow and front end | Done | Title, control panel, options, help, quit/credits, sequences F2/F3/F4/F6, death, floor change |
 | M11 | Persistence | Done | OBCR saves, AutoSave, QuickSave, high scores, settings |
 | M12 | Single-player parity certification | In progress | Needs DOSBox-X traces; owner playtest of maps 0–22 |
-| M13 | Multiplayer | Not started | |
+| M13 | Multiplayer | Review | RE of 358f/33bb (re/NETWORK.md, re/NETCOMMS.md); rules in obc-sim::net; UDP transport obc-net; setup screen, KILLS table; tested in process and with 2–4 `obcr` processes; needs an owner LAN test |
 | M14 | Enhanced mode | In progress | Widescreen, 2–8× scale, smooth motion, modern controls, gamepad done |
 | M15 | Release engineering | Not started | |
 
@@ -61,10 +61,14 @@ Append one line per completed task or notable event: `YYYY-MM-DD — <task> — 
 
 - 2026-11-05 — audit — Mechanics checked against the Wolf3D/OBC comparison (docs/MECHANICS_AUDIT.md); fixed F5/F6, message and H/C overlays, blackout, F10, tremor Esc rule, clock-seeded RNG, effects device option; weapon 0 renamed assault shotgun — 33 test suites pass.
 
+- 2026-11-05 — fix — Blasts never leave a floor unfinishable (ADR-016): exits 0x72/0x73 and nearby doors are spared; a destroyed door never closes again — test `blasts_spare_exits_and_doors`.
+- 2026-11-05 — M13 — Multiplayer: the original's state-broadcast model reverse-engineered and ported (ADR-017); game types N, T, M; LAN discovery, calling an address, gossip, redundancy — `net_game` (8 tests incl. a 4-player soak with 10 % loss), `obc-net` (8 loopback tests); 2- and 4-process `obcr` runs: kills, deaths, respawn, exits and the KILLS table agree on every machine.
+- 2026-11-05 — fix — Ally kills count toward the exit quota, still without score (ADR-018) — test `ally_kills_count_toward_the_exit`.
+
 ## Known gaps (first episode)
 
 - No DOSBox-X trace comparison yet: behaviour follows the disassembly, unverified against the original at run time.
 - Not shipped by the original release: sequences F1, F5, F7 (skipped, as the original does).
 - Debug keys (`vfr750hondarc45`, Backspace) not ported; the bogus-mode cheats are (`--nsr250`).
-- Multiplayer game types N, T, M (M13) not started; see docs/MECHANICS_AUDIT.md §11.
+- Multiplayer has been tested on one machine (several processes over localhost UDP), not yet across a real LAN or the Internet.
 - Healing stations are ported but, as in OBC-A, nothing can start them (PLAYER.md §9).

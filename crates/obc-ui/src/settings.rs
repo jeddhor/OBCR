@@ -11,14 +11,37 @@ pub struct Settings {
     pub audio: AudioSettings,
     pub input: InputSettings,
     pub game: GameSettings,
+    pub net: NetSettings,
     pub data_dir: Option<String>,
+}
+
+/// Network game settings (the original kept none; docs/re/NETCOMMS.md).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct NetSettings {
+    /// UDP port: the original's IPX socket number (default 0x4003).
+    pub port: u16,
+    /// The address last joined (play over the Internet), if any.
+    pub join: String,
+    /// Character or team last chosen (0–2).
+    pub choice: i16,
+    /// Simulated outgoing packet loss in percent (testing; not in a menu).
+    #[serde(skip)]
+    pub loss_percent: u8,
+}
+
+impl Default for NetSettings {
+    fn default() -> Self {
+        Self { port: obc_net::DEFAULT_PORT, join: String::new(), choice: 0, loss_percent: 0 }
+    }
 }
 
 /// Options the original kept in `CONFIG.DAT` (GAMEFLOW §10).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GameSettings {
-    /// GAME TYPE: 0–2 difficulty 1–3, 3 Random.
+    /// GAME TYPE: 0–2 difficulty 1–3, 3 Random, 4 Network, 5 Network
+    /// Teams, 6 Modem (direct connection).
     pub gametype: i16,
     /// VIEW SIZE: 12, 14, 16, 18 or 20.
     pub viewsize: u16,

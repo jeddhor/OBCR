@@ -47,6 +47,10 @@ const DEATH_BLACK: u32 = 50;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum After {
     NextLevel,
+    /// Network warp: the same `mapon`, reloaded.
+    Restart,
+    /// Back to DOS (the KILLS table first in network games).
+    Quit,
     /// Death or victory: the high-score check, then the menu.
     Scores,
     /// After the victory picture: F7, then the scores.
@@ -69,6 +73,8 @@ enum Phase {
     Sequence(After),
     /// Victory: hold the view for up to 1000 tics or a key.
     Victory(u32),
+    /// Network games: the KILLS table until a key (358f:13c5).
+    Kills(After),
 }
 
 pub struct Game {
@@ -113,6 +119,10 @@ pub struct Game {
     prev_pose: (i32, i32, i16),
     prev_objs: Vec<Option<(i32, i32)>>,
     interpolate: bool,
+    /// The transport of a network game.
+    net: Option<crate::netui::NetLink>,
+    /// Developer: where to put the player after each network respawn.
+    pub dev_place: Option<(i32, i32, i16)>,
 }
 
 impl Game {
@@ -124,6 +134,27 @@ impl Game {
     /// A new game starting at `mapon` (developer warp; the original's warp
     /// cheat keeps the player state instead).
     pub fn new_at(ctx: &mut Ctx, difficulty: i16, mapon: i16) -> Self {
+        let mut g = Self::build(ctx, difficulty, mapon);
+        g.start_level(ctx);
+        g
+    }
+
+    /// A network game (game types 4–6) from the setup screen: the first
+    /// NETLEVEL, the player placed by the first `NetFrame`.
+    pub fn new_net(
+        ctx: &mut Ctx,
+        kind: i16,
+        net: obc_sim::net::NetGame,
+        link: crate::netui::NetLink,
+    ) -> Self {
+        let mut g = Self::build(ctx, kind, obc_sim::net::FIRST_NETLEVEL);
+        g.world.net = Some(Box::new(net));
+        g.net = Some(link);
+        g.start_level(ctx);
+        g
+    }
+
+    fn build(ctx: &mut Ctx, difficulty: i16, mapon: i16) -> Self {
         let a = ctx.assets;
         let mut world = World::new(a.game.clone(), a.trig.clone());
         obc_sim::player::new_game(&mut world, difficulty);
@@ -135,7 +166,7 @@ impl Game {
             .map_or(0, |d| d.subsec_millis() / 10);
         world.rng = obc_core::rng::Rng::seeded(hundredths as u8);
         world.gamestate.mapon = mapon;
-        let mut g = Self {
+        Self {
             world,
             sound: {
                 let mut s = SoundManager::new(a, ctx.settings.audio.channels);
@@ -170,9 +201,14 @@ impl Game {
             prev_pose: (0, 0, 0),
             prev_objs: Vec::new(),
             interpolate: false,
-        };
-        g.start_level(ctx);
-        g
+            net: None,
+            dev_place: None,
+        }
+    }
+
+    /// True in a network game.
+    pub fn is_net(&self) -> bool {
+        self.net.is_some()
     }
 
     /// A loaded game: `GameLoop` skips `SetupGameLevel` (`loadedgame`), then
@@ -295,6 +331,10 @@ impl Game {
                     ctx.requests.rumble = Some((s, s * 0.6, 180));
                 }
                 SimEvent::BonusFlash => self.bonuscount = NUMWHITESHIFTS * WHITETICS,
+                // `Activity on %d` waits for the message line to be free
+                // (DS:0x46A4, docs/re/NETWORK.md §4.3).
+                SimEvent::Message(m)
+                    if m.starts_with("Activity on") && self.hud.message.is_some() => {}
                 SimEvent::Message(m) => self.hud.message(m),
                 SimEvent::ItemIcon(i) => self.hud.show_item(i),
                 SimEvent::AllyDied => self.hud.ally_died(),
@@ -317,7 +357,23 @@ impl Game {
     /// One original frame of play.
     fn play_frame(&mut self, ctx: &mut Ctx, cmd: &TicCmd) {
         let was_full = self.world.objlistfull;
+        if let Some(l) = &mut self.net {
+            l.receive(&mut self.world);
+        }
+        let respawning = self.world.net.as_deref().is_some_and(|n| n.respawn);
         self.world.frame(cmd, FRAME_TICS);
+        if let (true, Some((x, y, angle))) = (respawning, self.dev_place) {
+            let p = self.world.player;
+            let o = self.world.obj_mut(p);
+            o.tilex = x as u16;
+            o.tiley = y as u16;
+            o.x = (x << 16) | 0x8000;
+            o.y = (y << 16) | 0x8000;
+            o.angle = angle;
+        }
+        if let Some(l) = &mut self.net {
+            l.send(&mut self.world);
+        }
         self.drain_events(ctx);
         self.sound.update(ctx.audio, self.listener());
         self.hud.frame(FRAME_TICS);
@@ -394,6 +450,12 @@ impl Game {
             ex::WARPED => {
                 // The warp keeps the player's state (GAMEFLOW §5.6); no sequence.
                 ctx.audio.send(AudioCommand::StopMusic);
+                if self.net.is_some() && self.world.gamestate.mapon >= obc_sim::net::FIRST_NETLEVEL
+                {
+                    obc_sim::net::level_done(&mut self.world);
+                    self.phase = Phase::Kills(After::Restart);
+                    return;
+                }
                 self.start_level(ctx);
             }
             ex::COMPLETED => {
@@ -401,6 +463,7 @@ impl Game {
                 // AutoSave before `mapon` advances (GAMEFLOW §9.3).
                 let w = &self.world;
                 if w.gamestate.difficulty < 4
+                    && self.net.is_none()
                     && let Err(e) = crate::saves::write(
                         ctx.save_dir,
                         crate::saves::AUTOSAVE,
@@ -444,6 +507,16 @@ impl Screen for Game {
     fn tick(&mut self, ctx: &mut Ctx) -> Transition {
         ctx.requests.relative_mouse = Some(true);
         self.sound.advance(1);
+        // Network games keep the link alive while no frame runs.
+        if let Some(l) = &mut self.net
+            && (self.phase != Phase::Playing
+                || self.paused
+                || self.quit_prompt
+                || self.warp_prompt.is_some()
+                || self.blackout > 0)
+        {
+            l.idle();
+        }
         if self.in_menu {
             // Back from the control panel: StartMusic again (GAMEFLOW §11.3).
             self.in_menu = false;
@@ -463,6 +536,12 @@ impl Screen for Game {
             {
                 ctx.audio.send(AudioCommand::StopMusic);
                 self.sound.stop_all(ctx.audio);
+                self.quit_prompt = false;
+                if self.net.is_some() {
+                    // EXIT TO DOS shows the KILLS table first (1618:13cb).
+                    self.phase = Phase::Kills(After::Quit);
+                    return Transition::None;
+                }
                 return Transition::Reset(Box::new(crate::menu::QuitScreen::default()));
             }
             if input.pressed(obc_core::input::sc::N)
@@ -524,6 +603,12 @@ impl Screen for Game {
                 // Esc is ignored while a tremor shakes the screen with TREMORS on
                 // (DS:0x0D40 and DS:0x0D44, CheckKeys).
                 if ui.menu && !(self.world.shake > 0 && self.world.ply.tremors) {
+                    // Network: opening the menu is announced as a suicide (1618:061a).
+                    if let Some(l) = &mut self.net {
+                        let p = self.world.player;
+                        obc_sim::net::player_died(&mut self.world, Some(p));
+                        l.send(&mut self.world);
+                    }
                     ctx.audio.send(AudioCommand::StopMusic);
                     self.sound.stop_all(ctx.audio);
                     self.in_menu = true;
@@ -562,7 +647,7 @@ impl Screen for Game {
                     ctx.requests.text_input = Some(true);
                     return Transition::None;
                 }
-                if ui.quicksave && self.world.gamestate.difficulty <= 4 {
+                if ui.quicksave && self.world.gamestate.difficulty <= 4 && self.net.is_none() {
                     self.quick_save(ctx);
                 }
                 // F5 / F6 (1942:07a5, 07b2): textured floors and ceilings off / on
@@ -590,6 +675,18 @@ impl Screen for Game {
                     return Transition::None;
                 }
                 let wait = wait + FRAME_TICS as u32;
+                if self.net.is_some() && (wait >= SCREAM_WAIT || !self.sound.digi_playing()) {
+                    // GameLoop (1823:1060): respawn on the same floor, no reload.
+                    self.damagecount = 0;
+                    self.bonuscount = 0;
+                    obc_sim::net::respawn_after_death(&mut self.world);
+                    self.start_music(ctx);
+                    self.lighting = self.world.start_play_loop();
+                    self.capture_prev();
+                    self.phase = Phase::FadeIn(0);
+                    self.drain_events(ctx);
+                    return Transition::None;
+                }
                 self.phase = if wait >= SCREAM_WAIT || !self.sound.digi_playing() {
                     // FinishPaletteShifts, lighting mode 1.
                     self.damagecount = 0;
@@ -612,6 +709,12 @@ impl Screen for Game {
             }
             Phase::ExitFade(t) => {
                 let t = t + FRAME_TICS as u32;
+                if t >= FADE_OUT && self.net.is_some() {
+                    // NetLevelDone (358f:1720): forget the players, KILLS table.
+                    obc_sim::net::level_done(&mut self.world);
+                    self.phase = Phase::Kills(After::NextLevel);
+                    return Transition::None;
+                }
                 if t >= FADE_OUT {
                     let name = self.exit_sequence();
                     return self.push_sequence(ctx, name, After::NextLevel);
@@ -633,6 +736,26 @@ impl Screen for Game {
                 let entry = (!g.cheatmode).then_some((g.score, (g.mapon + 1) as u16));
                 Transition::Reset(Box::new(crate::menu::HighScores::new(ctx, entry)))
             }
+            Phase::Kills(after) => {
+                // IN_Ack: a fresh key or button press.
+                let input = ctx.input;
+                let pressed = input.events.iter().any(|e| e.down && !e.repeat)
+                    || input.pad.buttons & !input.pad_prev != 0;
+                if !pressed {
+                    return Transition::None;
+                }
+                match after {
+                    After::Quit => {
+                        return Transition::Reset(Box::new(crate::menu::QuitScreen::default()));
+                    }
+                    After::NextLevel => self.world.advance_level(),
+                    _ => {}
+                }
+                ctx.audio.send(AudioCommand::StopMusic);
+                self.start_level(ctx);
+                Transition::None
+            }
+            Phase::Sequence(After::Restart | After::Quit) => Transition::None,
             Phase::Victory(t) => {
                 let t = t + FRAME_TICS as u32;
                 if t >= 1000 || ui.menu || cmd.buttons.iter().any(|&b| b) {
@@ -657,6 +780,14 @@ impl Screen for Game {
     }
 
     fn draw(&mut self, a: &Assets, out: &mut Frame) {
+        if let (Phase::Kills(_), Some(n)) = (self.phase, self.world.net.as_deref()) {
+            out.frame.clear(0);
+            out.layer_key = None;
+            crate::netui::draw_kills(out.layer, a, n);
+            out.palette = a.gamepal;
+            out.scroll = 0;
+            return;
+        }
         let p = out.presentation;
         let l = layout(p, self.viewsize);
         if self.view.as_ref().is_none_or(|(vl, _)| *vl != l) {

@@ -298,8 +298,12 @@ impl Menu {
     fn active(&self, i: usize) -> bool {
         match i {
             GAME_TYPE | START_GAME => !self.in_game,
-            CONTINUE | ABORT_GAME | SAVE_GAME => self.in_game,
-            LOAD_GAME => !self.in_game,
+            CONTINUE | ABORT_GAME => self.in_game,
+            // Game types 4–6 cannot be saved or loaded (GAMEFLOW §4).
+            SAVE_GAME => {
+                self.in_game && self.world.as_ref().is_some_and(|w| w.gamestate.difficulty < 4)
+            }
+            LOAD_GAME => !self.in_game && self.gametype < 4,
             _ => true,
         }
     }
@@ -325,8 +329,12 @@ impl Menu {
             }
             AUDIO_MIX => return Transition::Push(Box::new(Options::new(true))),
             START_GAME => {
+                let gametype = ctx.settings.game.gametype.clamp(0, 6);
+                if gametype >= 4 {
+                    // NetSetup (358f:0959); Esc there returns to this menu.
+                    return Transition::Push(Box::new(crate::netui::NetSetup::new(ctx, gametype)));
+                }
                 ctx.audio.send(AudioCommand::StopMusic);
-                let gametype = ctx.settings.game.gametype.clamp(0, 3);
                 return Transition::Reset(Box::new(Game::new(ctx, gametype)));
             }
             CONTINUE => return Transition::Pop,
@@ -446,7 +454,7 @@ impl Menu {
             Mode::GameType => {
                 let g = &mut ctx.settings.game.gametype;
                 if input.pressed(sc::UP) || input.pad_pressed(pad::DPAD_UP) {
-                    *g = (*g + 1).min(3);
+                    *g = (*g + 1).min(6);
                 }
                 if input.pressed(sc::DOWN)
                     || input.pressed(sc::RIGHT)
@@ -534,7 +542,7 @@ impl Menu {
             let x = if vs.len() > 1 { 294 } else { 297 };
             let c = if self.mode == Mode::ViewSize { fg } else { red };
             draw_text(out.layer, font, vs.as_bytes(), x, 9, c);
-            let gt = ["1", "2", "3", "R"][self.gametype.clamp(0, 3) as usize];
+            let gt = ["1", "2", "3", "R", "N", "T", "M"][self.gametype.clamp(0, 6) as usize];
             let c = if self.mode == Mode::GameType { fg } else { red };
             draw_text(out.layer, font, gt.as_bytes(), 298, 23, c);
             if matches!(self.mode, Mode::ViewSize | Mode::GameType) {
