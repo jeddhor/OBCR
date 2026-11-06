@@ -144,9 +144,16 @@ All classes in ACTORS.md are ported with their state tables read from `COUNT.EXE
 
 | Mechanic | Original | OBCR | Status |
 |---|---|---|---|
-| Game types N (network), T (teams), M (modem) | `difficulty` 4–6; network code in segment `358f` (respawn, remote damage, team rule) | GAME TYPE menu offers 1, 2, 3, R only | ❌ (milestone M13: deterministic lockstep over UDP, ADR-009) |
-
-The team rule (same character = same team, no friendly kills), up to 12 players, character selection and IPX socket choice are documented by the manual; the `358f` segment has not been reverse-engineered yet. This is the largest mechanic not yet ported.
+| Game types N (network), T (teams), M (modem) | `difficulty` 4–6; rules in segment `358f`, serial driver in `33bb` ([re/NETWORK.md](re/NETWORK.md), [re/NETCOMMS.md](re/NETCOMMS.md)) | GAME TYPE offers N, T, M; `obc-sim::net` ports the rules; `obc-net` carries them over UDP (ADR-017) | ✅ ≠ (UDP instead of IPX and modem) |
+| Synchronisation | No lockstep: each machine owns its player and sends a 24-byte state packet per frame; others are puppets; damage decided by the victim | same | ✅ |
+| Players, characters, teams | Up to 12; CHOOSE A PLAYER (Agent, Terrorist 1, Terrorist 2) or CHOOSE A TEAM (Team 1–3); the choice sets the sprite others see and the starting weapons | same; M is two players | ✅ |
+| Team rule | In type T no damage from team-mates; team-mates share the highest score | same | ✅ |
+| Damage | Attacker's shot replayed as the puppet's enemy attack on the victim's machine; ×3 (×4 in M) while health ≥ 30; 800 health | same | ✅ |
+| Death and respawn | Death announced to all (kills table, frag to the killer); respawn at a random free cell on the same floor, no reload | same | ✅ |
+| Levels | NETLEVELs 50–59; an exit taken by one player ends the floor for everyone who receives the Use; the KILLS table between floors | same | ✅ |
+| Opening the menu | Announced as a suicide | same | ✅ |
+| Socket choice | Hex keys on the setup screen change the IPX socket (0x4003) | the same keys change the UDP port (16387 = 0x4003) | ✅ ≠ |
+| Joining over the Internet, lost packets, player ids | Not in the original (IPX LAN only; lost events are lost; ids from the node address) | call an address, gossip, redundancy, collision-free ids | 🔧 (added) |
 
 ## 12. Saving, difficulty, scoring (comparison §15–16)
 
@@ -199,7 +206,11 @@ The team rule (same character = same team, no friendly kills), up to 12 players,
 | T39–T42 | See §4 ammo row | Code |
 | T43–T44 | Placement moves only; enemy types and the map stay; the seed comes from the clock | Code |
 | T45–T47, T59 | Saves hold the whole world (blasted walls, fires, allies, lighting) | OBCR save tests |
-| T48–T52 | Not ported (multiplayer) | — |
+| T48 | Free-for-all: random spawns, victim-side damage, deaths announced; levels are not synchronised beyond replayed Use | Code; two `obcr` processes over UDP |
+| T49 | Team mode: no friendly damage, shared score | Code; `net_game` tests |
+| T50 | 12 players including yourself (the original never checks: a 12th remote player overwrites memory) | Code; OBCR enforces 11 remote |
+| T51 | Games on different sockets (ports) never see each other | Code |
+| T52 | Modem/serial: two players, 16-byte packets without score; OBCR uses a direct UDP connection | Code (NETCOMMS.md) |
 | T53, T58, T65 | Version questions; only OBC-A is supported | — |
 | T54–T57, T60–T64 | Covered by the data formats, renderer and difficulty notes | Code |
 
@@ -220,5 +231,5 @@ Blasts could leave a floor with no way out in the original. OBCR changes this in
 
 ## 15. Remaining work from this audit
 
-1. **Multiplayer (M13)**: reverse-engineer segment `358f` and the game-type rules, then implement lockstep play for types N, T and M.
+1. **Multiplayer (M13)**: done (ADR-017). A DOSBox-X two-machine IPX trace would confirm event timing.
 2. DOSBox-X traces for the items marked "trace advised" and for ACTORS.md §14.
