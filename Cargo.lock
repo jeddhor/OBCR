@@ -620,6 +620,7 @@ dependencies = [
  "obc-audio",
  "obc-core",
  "obc-formats",
+ "obc-net",
  "obc-render",
  "obc-sim",
  "obc-testdata",

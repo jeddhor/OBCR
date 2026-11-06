@@ -151,6 +151,10 @@ pub struct NetGame {
     pub slots: Vec<Slot>,
     /// `kills[killer slot][victim slot]` (segment 0x4127); slot 0 is local.
     pub kills: [[i16; MAXSLOTS]; MAXSLOTS],
+    /// Player id last seen in each slot (the records at DS:0xEC5B keep it
+    /// across floors, so the KILLS table still has its rows after
+    /// [`level_done`]); 0 = never used.
+    pub labels: [u16; MAXSLOTS],
     /// A dropped weapon of this kind is on the floor (DS:0xEF53).
     pub drops: [bool; 5],
     /// Respawn pending (DS:0xEF8D).
@@ -197,7 +201,10 @@ impl NetGame {
 
     /// The KILLS table label of a slot: the player id, or `None` if empty.
     pub fn slot_label(&self, slot: usize) -> Option<u16> {
-        if slot == 0 { Some(self.my_id) } else { self.slots.get(slot - 1).map(|s| s.id) }
+        match slot {
+            0 => Some(self.my_id),
+            s => self.labels.get(s).copied().filter(|&id| id != 0),
+        }
     }
 }
 
@@ -263,6 +270,7 @@ fn absorb_inbox(w: &mut World) {
                     continue;
                 }
                 n.slots.push(Slot { id: p.id, fresh: true, ..Slot::default() });
+                n.labels[n.slots.len()] = p.id;
                 n.slots.len() - 1
             }
         };

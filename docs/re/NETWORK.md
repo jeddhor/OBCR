@@ -169,7 +169,7 @@ On the receiving side `NetRemoteFire` (`358f:1283`) switches on the puppet's wea
 
 ### 6.3 Opening the menu
 
-*US_ControlPanel* (`1618:061a`) during a network game calls `NetPlayerDied(player)`: opening the menu counts as a suicide and respawns the player. The game does not pause. CONFIRMED.
+*US_ControlPanel* (`1618:061a`) during a network game calls `NetPlayerDied(player)`: opening the menu is announced as a suicide (KILLS `[0][0]`, event 2 with the local id as killer). Nothing happens locally: the player is not killed or moved, and on the other machines the puppet dies and stands up again where it was with the next packet. The game does not pause, and nothing is received while the menu is up (NETCOMMS.md). CONFIRMED.
 
 ### 6.4 Dropped weapons
 
@@ -189,7 +189,7 @@ On the receiving side `NetRemoteFire` (`358f:1283`) switches on the puppet's wea
 - Only the latest packet per player per frame is kept; lost or overwritten packets lose their events (a missed death means a missed kill; a missed Use means a door that opened on one machine only).
 - Doors, items, fires and pushed walls are local except through replayed Use events; picked-up items stay on other machines.
 - `NetRandomSpot` can place a player in a sealed-off part of the map.
-- Opening the menu kills you.
+- Opening the menu is announced as a suicide.
 - A remote player's Use of a medic wall heals the local player; their Use of an exit ends the level for everyone who receives it.
 
 ## 9. Open questions

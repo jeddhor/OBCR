@@ -72,8 +72,9 @@ const RULES: &[(&str, &[&str])] = &[
     ("obc-sim", &["obc-core", "obc-formats"]),
     ("obc-render", &["obc-core", "obc-formats", "obc-sim"]),
     ("obc-audio", &["obc-core", "obc-formats"]),
-    ("obc-ui", &["obc-core", "obc-formats", "obc-sim", "obc-render", "obc-audio"]),
-    ("obc-net", &["obc-core", "obc-sim"]),
+    ("obc-ui", &["obc-core", "obc-formats", "obc-sim", "obc-render", "obc-audio", "obc-net"]),
+    ("obc-net", &[]),
+    ("obc-sim", &["obc-core", "obc-formats"]),
     ("obc-platform", &["obc-core"]),
 ];
 
