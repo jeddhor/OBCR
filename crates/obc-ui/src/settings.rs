@@ -93,6 +93,18 @@ pub struct VideoSettings {
     pub integer_scale: bool,
     /// Enhanced: interpolate the view and actors between 35 Hz game frames.
     pub interpolate: bool,
+    /// Enhanced: xBRZ factor for walls, floors, sprites and the weapon
+    /// (2–6), or 0 for the original texels (ADR-020).
+    pub xbrz: usize,
+    /// Enhanced: xBRZ for the 2D screens: menus, title and intro pictures,
+    /// animated sequences, help and score pages.
+    pub xbrz_menus: bool,
+    /// Enhanced: xBRZ for the in-game status bar and overlays (small text
+    /// suffers, so off by default).
+    pub xbrz_hud: bool,
+    /// Enhanced: perspective-correct floors and ceilings without the
+    /// original's grout lines and per-tile shading (ADR-019).
+    pub smooth_floors: bool,
     pub window_width: u32,
     pub window_height: u32,
 }
@@ -134,6 +146,10 @@ impl Default for VideoSettings {
             smooth: false,
             integer_scale: false,
             interpolate: true,
+            xbrz: 4,
+            xbrz_menus: true,
+            xbrz_hud: false,
+            smooth_floors: true,
             window_width: 1280,
             window_height: 720,
         }
@@ -172,6 +188,23 @@ impl VideoSettings {
             _ => Aspect::Wide16x9,
         };
         Presentation { scale: self.scale.clamp(1, 8), aspect }
+    }
+
+    /// The xBRZ factor in effect for the 3D view: 1 (none) in Classic.
+    pub fn texture_scale(&self) -> usize {
+        if self.mode == "classic" || self.xbrz < 2 { 1 } else { self.xbrz.min(6) }
+    }
+
+    /// Whether a screen's 2D layer is upscaled with xBRZ: `hud` for the
+    /// in-game status bar and overlays, otherwise menus, pictures and
+    /// sequences.
+    pub fn layer_xbrz(&self, hud: bool) -> bool {
+        self.mode != "classic" && if hud { self.xbrz_hud } else { self.xbrz_menus }
+    }
+
+    /// Whether floors and ceilings use the smooth renderer.
+    pub fn smooth_floors(&self) -> bool {
+        self.mode != "classic" && self.smooth_floors
     }
 
     pub fn set_presentation(&mut self, p: Presentation) {

@@ -13,9 +13,8 @@ use obc_core::input::InputState;
 use obc_formats::{DataDir, datadir};
 use obc_platform::{AUDIO_RATE, AudioSource, Platform, VideoSettings};
 use obc_render::Framebuffer;
-use obc_render::palette::to_rgba;
 use obc_ui::assets::Assets;
-use obc_ui::present::{Aspect, Presentation, blit_layer};
+use obc_ui::present::{Aspect, LayerScaler, Presentation, blit_layer};
 use obc_ui::screen::{Ctx, Frame, Requests, Screen, Transition};
 use obc_ui::settings::Settings;
 
@@ -37,6 +36,18 @@ struct Cli {
     /// Enhanced aspect: 4:3, 16:10, 16:9, 21:9.
     #[arg(long)]
     aspect: Option<String>,
+    /// Enhanced xBRZ texture factor: 2–6, or 0 for the original texels.
+    #[arg(long)]
+    xbrz: Option<usize>,
+    /// Enhanced xBRZ for menus, pictures and animated sequences: on or off.
+    #[arg(long)]
+    xbrz_menus: Option<String>,
+    /// Enhanced xBRZ for the in-game status bar: on or off.
+    #[arg(long)]
+    xbrz_hud: Option<String>,
+    /// Enhanced floors and ceilings: smooth or original.
+    #[arg(long)]
+    floors: Option<String>,
     #[arg(long)]
     fullscreen: bool,
     #[arg(long)]
@@ -47,6 +58,9 @@ struct Cli {
     /// Developer: start a new game directly on this map (0-based).
     #[arg(long)]
     play: Option<i16>,
+    /// Developer: play a rendered sequence (F2, F3, F4 or F6), then quit.
+    #[arg(long)]
+    sequence: Option<String>,
     /// The original's cheat parameter: Alt+LShift+B in game turns on bogus mode.
     #[arg(long)]
     nsr250: bool,
@@ -149,6 +163,27 @@ fn run() -> Result<()> {
         settings.video.mode = "enhanced".into();
         settings.video.aspect = a.clone();
     }
+    if let Some(n) = cli.xbrz {
+        settings.video.xbrz = n;
+    }
+    let on_off = |flag: &str, v: &str| match v {
+        "on" => Ok(true),
+        "off" => Ok(false),
+        other => Err(anyhow::anyhow!("--{flag} wants on or off, not {other}")),
+    };
+    if let Some(v) = &cli.xbrz_menus {
+        settings.video.xbrz_menus = on_off("xbrz-menus", v)?;
+    }
+    if let Some(v) = &cli.xbrz_hud {
+        settings.video.xbrz_hud = on_off("xbrz-hud", v)?;
+    }
+    if let Some(v) = &cli.floors {
+        settings.video.smooth_floors = match v.as_str() {
+            "smooth" => true,
+            "original" => false,
+            other => anyhow::bail!("--floors wants smooth or original, not {other}"),
+        };
+    }
     if cli.fullscreen {
         settings.video.fullscreen = true;
     }
@@ -160,7 +195,8 @@ fn run() -> Result<()> {
     let dir = datadir::discover(cli.data.as_deref(), configured.as_deref()).context(
         "Operation Body Count data not found. Use --data <dir> or set OBC_DATA_DIR to your game directory.",
     )?;
-    let assets = Assets::load(DataDir::open(&dir)?).context("loading game data")?;
+    let mut assets = Assets::load(DataDir::open(&dir)?).context("loading game data")?;
+    assets.set_upscale(settings.video.texture_scale());
 
     if let Some(p) = cli.net_port {
         settings.net.port = p;
@@ -174,6 +210,13 @@ fn run() -> Result<()> {
         Some(other) => anyhow::bail!("--net wants N, T or M, not {other}"),
     };
     let first: Box<dyn Screen> = match (cli.viewer, cli.play) {
+        _ if cli.sequence.is_some() => {
+            let name = cli.sequence.as_deref().unwrap_or_default().to_ascii_uppercase();
+            Box::new(
+                obc_ui::sequence::Sequence::load(&assets, &name)
+                    .with_context(|| format!("sequence {name} not found in the game data"))?,
+            )
+        }
         _ if net_kind.is_some() && cli.net_setup => {
             Box::new(obc_ui::netui::SetupBoot { kind: net_kind.unwrap_or(4) })
         }
@@ -221,11 +264,13 @@ fn run() -> Result<()> {
     let mut input = InputState::default();
     let mut frame = Framebuffer::new(320, 200);
     let mut layer = Framebuffer::new(320, 200);
+    let mut scaler = LayerScaler::default();
     let mut rgba = Vec::new();
     let mut last = Instant::now();
     let mut acc = Duration::ZERO;
 
     'main: loop {
+        assets.set_upscale(settings.video.texture_scale());
         if !platform.pump(&mut input) {
             break;
         }
@@ -261,9 +306,10 @@ fn run() -> Result<()> {
 
         let p = presentation(&settings);
         let alpha = (acc.as_secs_f32() / TIC.as_secs_f32()).clamp(0.0, 1.0);
-        let palette = compose(&mut stack, &assets, p, &mut frame, &mut layer, alpha);
+        let mut target = Target { frame: &mut frame, layer: &mut layer, scaler: &mut scaler };
+        let palette = compose(&mut stack, &assets, &settings, &mut target, alpha);
         let (fw, fh) = (frame.width, frame.height);
-        to_rgba(&frame.pixels, &palette, &mut rgba);
+        frame.to_rgba(&palette, &mut rgba);
         platform
             .present(&rgba, fw as u32, fh as u32, p.aspect.ratio())
             .map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -299,37 +345,53 @@ fn tick(stack: &mut Vec<Box<dyn Screen>>, ctx: &mut Ctx) -> bool {
     !stack.is_empty()
 }
 
+/// What a frame is composed into.
+struct Target<'a> {
+    frame: &'a mut Framebuffer,
+    layer: &'a mut Framebuffer,
+    scaler: &'a mut LayerScaler,
+}
+
 /// Draws the visible screens and composites the 2D layer. Returns the palette.
 fn compose(
     stack: &mut [Box<dyn Screen>],
     assets: &Assets,
-    p: Presentation,
-    frame: &mut Framebuffer,
-    layer: &mut Framebuffer,
+    settings: &Settings,
+    t: &mut Target,
     alpha: f32,
 ) -> obc_render::palette::Palette {
+    let p = presentation(settings);
     let (fw, fh) = p.frame_size();
-    frame.resize(fw, fh);
+    t.frame.resize(fw, fh);
+    t.frame.begin_frame();
+    let smooth_floors = settings.video.smooth_floors();
     let mut palette = assets.gamepal;
     let mut scroll = 0;
     let first_visible = stack.iter().rposition(|s| s.opaque()).unwrap_or(0);
     for screen in &mut stack[first_visible..] {
-        let mut out =
-            Frame { presentation: p, frame, layer, layer_key: None, palette, scroll: 0, alpha };
+        let mut out = Frame {
+            presentation: p,
+            frame: t.frame,
+            layer: t.layer,
+            layer_key: None,
+            layer_hud: false,
+            palette,
+            scroll: 0,
+            alpha,
+            smooth_floors,
+        };
         screen.draw(assets, &mut out);
         palette = out.palette;
         scroll = out.scroll;
         let key = out.layer_key;
-        blit_layer(frame, layer, p, key);
+        if settings.video.layer_xbrz(out.layer_hud) {
+            t.scaler.blit(t.frame, t.layer, p, key, &palette);
+        } else {
+            blit_layer(t.frame, t.layer, p, key);
+        }
     }
     // Scroll up; the lines past the page show black.
-    let rows = (scroll * p.scale).min(frame.height);
-    if rows > 0 {
-        let w = frame.width;
-        frame.pixels.copy_within(rows * w.., 0);
-        let n = frame.pixels.len();
-        frame.pixels[n - rows * w..].fill(0);
-    }
+    t.frame.scroll_up(scroll * p.scale);
     palette
 }
 
@@ -384,12 +446,13 @@ fn headless_shot(
         }
         input.events.clear();
     }
-    let p = presentation(settings);
     let mut frame = Framebuffer::new(320, 200);
     let mut layer = Framebuffer::new(320, 200);
-    let palette = compose(stack, assets, p, &mut frame, &mut layer, 0.0);
+    let mut scaler = LayerScaler::default();
+    let mut target = Target { frame: &mut frame, layer: &mut layer, scaler: &mut scaler };
+    let palette = compose(stack, assets, settings, &mut target, 0.0);
     let mut rgba = Vec::new();
-    to_rgba(&frame.pixels, &palette, &mut rgba);
+    frame.to_rgba(&palette, &mut rgba);
     let file = std::io::BufWriter::new(std::fs::File::create(&cli.shot_out)?);
     let mut enc = png::Encoder::new(file, frame.width as u32, frame.height as u32);
     enc.set_color(png::ColorType::Rgba);

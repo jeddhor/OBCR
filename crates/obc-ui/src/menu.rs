@@ -1033,6 +1033,10 @@ enum Opt {
     Smooth,
     IntegerScale,
     Interpolate,
+    Textures,
+    Floors,
+    XbrzMenus,
+    XbrzHud,
     Controls,
     AlwaysRun,
     Mouse,
@@ -1045,7 +1049,7 @@ enum Opt {
     Effects,
 }
 
-const OPTS: [Opt; 17] = [
+const OPTS: [Opt; 21] = [
     Opt::Display,
     Opt::Scale,
     Opt::Aspect,
@@ -1053,6 +1057,10 @@ const OPTS: [Opt; 17] = [
     Opt::Smooth,
     Opt::IntegerScale,
     Opt::Interpolate,
+    Opt::Textures,
+    Opt::Floors,
+    Opt::XbrzMenus,
+    Opt::XbrzHud,
     Opt::Controls,
     Opt::AlwaysRun,
     Opt::Mouse,
@@ -1074,7 +1082,8 @@ pub struct Options {
 
 impl Options {
     pub fn new(audio_first: bool) -> Self {
-        Self { cur: if audio_first { 12 } else { 0 }, shown: Default::default() }
+        let audio = OPTS.iter().position(|&o| o == Opt::Master).unwrap_or(0);
+        Self { cur: if audio_first { audio } else { 0 }, shown: Default::default() }
     }
 
     fn label(o: Opt) -> &'static str {
@@ -1086,6 +1095,10 @@ impl Options {
             Opt::Smooth => "SMOOTH FILTER",
             Opt::IntegerScale => "INTEGER SCALING",
             Opt::Interpolate => "SMOOTH MOTION",
+            Opt::Textures => "TEXTURES",
+            Opt::Floors => "FLOORS",
+            Opt::XbrzMenus => "XBRZ MENUS",
+            Opt::XbrzHud => "XBRZ STATUS BAR",
             Opt::Controls => "CONTROLS",
             Opt::AlwaysRun => "ALWAYS RUN",
             Opt::Mouse => "MOUSE SPEED",
@@ -1111,6 +1124,13 @@ impl Options {
             Opt::Smooth => on(s.video.smooth),
             Opt::IntegerScale => on(s.video.integer_scale),
             Opt::Interpolate => on(s.video.interpolate),
+            Opt::Textures => match s.video.xbrz {
+                n @ 2..=6 => format!("XBRZ {n}X"),
+                _ => "ORIGINAL".into(),
+            },
+            Opt::Floors => if s.video.smooth_floors { "SMOOTH" } else { "ORIGINAL" }.into(),
+            Opt::XbrzMenus => on(s.video.xbrz_menus),
+            Opt::XbrzHud => on(s.video.xbrz_hud),
             Opt::Controls => s.input.profile.to_uppercase(),
             Opt::AlwaysRun => on(s.input.always_run),
             Opt::Mouse => pct(s.input.mouse_sensitivity),
@@ -1165,6 +1185,14 @@ impl Options {
                 ctx.requests.apply_video = true;
             }
             Opt::Interpolate => s.video.interpolate = !s.video.interpolate,
+            Opt::Textures => {
+                let all = [0usize, 2, 3, 4, 5, 6];
+                let cur = all.iter().position(|&n| n == s.video.xbrz).unwrap_or(0) as i32;
+                s.video.xbrz = all[(cur + d).rem_euclid(all.len() as i32) as usize];
+            }
+            Opt::Floors => s.video.smooth_floors = !s.video.smooth_floors,
+            Opt::XbrzMenus => s.video.xbrz_menus = !s.video.xbrz_menus,
+            Opt::XbrzHud => s.video.xbrz_hud = !s.video.xbrz_hud,
             Opt::Controls => {
                 s.input.profile =
                     if s.input.profile == "modern" { "original" } else { "modern" }.into();

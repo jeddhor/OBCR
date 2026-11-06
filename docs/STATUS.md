@@ -23,7 +23,7 @@ Live project state. Every agent reads this at the start of a session and updates
 | M11 | Persistence | Done | OBCR saves, AutoSave, QuickSave, high scores, settings |
 | M12 | Single-player parity certification | In progress | Needs DOSBox-X traces; owner playtest of maps 0–22 |
 | M13 | Multiplayer | Review | RE of 358f/33bb (re/NETWORK.md, re/NETCOMMS.md); rules in obc-sim::net; UDP transport obc-net; setup screen, KILLS table; tested in process and with 2–4 `obcr` processes; needs an owner LAN test |
-| M14 | Enhanced mode | In progress | Widescreen, 2–8× scale, smooth motion, modern controls, gamepad done |
+| M14 | Enhanced mode | In progress | Widescreen, 2–8× scale, smooth motion, modern controls, gamepad, smooth floors, xBRZ textures done |
 | M15 | Release engineering | Not started | |
 
 Status values: `Not started`, `Ready` (prerequisites met), `In progress`, `Blocked`, `Done`.
@@ -64,6 +64,8 @@ Append one line per completed task or notable event: `YYYY-MM-DD — <task> — 
 - 2026-11-05 — fix — Blasts never leave a floor unfinishable (ADR-016): exits 0x72/0x73 and nearby doors are spared; a destroyed door never closes again — test `blasts_spare_exits_and_doors`.
 - 2026-11-05 — M13 — Multiplayer: the original's state-broadcast model reverse-engineered and ported (ADR-017); game types N, T, M; LAN discovery, calling an address, gossip, redundancy — `net_game` (8 tests incl. a 4-player soak with 10 % loss), `obc-net` (8 loopback tests); 2- and 4-process `obcr` runs: kills, deaths, respawn, exits and the KILLS table agree on every machine.
 - 2026-11-05 — fix — Ally kills count toward the exit quota, still without score (ADR-018) — test `ally_kills_count_toward_the_exit`.
+- 2026-11-05 — M14.10/M14.11 — Enhanced smooth floors and ceilings (ADR-019: perspective-correct, gapless, smooth distance shading, rows drawn in parallel) and xBRZ 2×–6× textures (ADR-020: palette-index port of xBRZ 1.6, two-index blend plane in the framebuffer, optional for the HUD and menus); options TEXTURES, FLOORS, XBRZ HUD/MENUS and `--xbrz`, `--floors`, `--xbrz-screens` — 14 new unit tests (xbrz, framebuffer, layer, view3d: no gaps, every pixel drawn, Classic unchanged, same wall geometry); screenshots on maps 5 and 12; 8× 16:9 view: smooth floors 12 ms vs 28 ms original, +3 ms for xBRZ walls.
+- 2026-11-06 — M14.11 — xBRZ for the 2D screens split in two: XBRZ MENUS (default on: menus, title and intro pictures, animated sequences, help and score pages) and XBRZ STATUS BAR (default off); 2D xBRZ about 2.5× faster (padded kernel, per-pixel touched blocks), direct layer writes; developer flag `--sequence F2|F3|F4|F6` — screenshots of the intro, menu and F2 with the option on and off.
 
 ## Known gaps (first episode)
 

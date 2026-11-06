@@ -11,5 +11,6 @@ mod framebuffer;
 pub mod palette;
 pub use obc_core::trig as tables;
 pub mod view3d;
+pub mod xbrz;
 
 pub use framebuffer::Framebuffer;
