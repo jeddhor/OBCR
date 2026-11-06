@@ -79,8 +79,8 @@ Where the comparison and the code disagree, the code wins: OBCR reproduces the s
 | Mechanic | Original | OBCR | Status |
 |---|---|---|---|
 | Grenades destroy walls | The blocking wall is removed (tile, info, `actorat`; debris; 1/20 fire) unless info 0x7D (→ scorched 0x4D); other walls in the box: info 0x56/0x57/0x58/0x62 destroyed, 0x7D spared, the rest scorched to 0x4D | `explosion_tile_effects` | ✅ |
-| Protected tiles | Map border ring (x or y 0 or 63); info 0x59/0x62 walls; exit tile 0x71; animated walls in the box | same | ✅ (animated walls 🔧 wired) |
-| Doors and blasts | The door a grenade hits is destroyed; other doors in the box become scorched wall 0x4D | same | ✅ |
+| Protected tiles | Map border ring (x or y 0 or 63); info 0x59/0x62 walls; exit tile 0x71; animated walls in the box | same, plus exits 0x72/0x73 (ADR-016) | ✅ ≠ (animated walls 🔧 wired) |
+| Doors and blasts | The door a grenade hits is destroyed; other doors in the box become scorched wall 0x4D | The hit door is destroyed and never closes again; other doors keep working (ADR-016) | ✅ ≠ |
 | Pickups destroyed by blasts | Statics in the [−2,+1] box become debris | same | ✅ |
 | Breakable glass | 0x39–0x3C / 0x75–0x78: shots break panes in three frames (shootable-wall search), blasts set the broken tile; broken panes stay solid but see-through | `vis.rs` wall search, `post_actors` | ✅ |
 | Bullet marks | Chip walls (0x13…0x7D) advance one damage stage per frame while fire is held at them (RENDERER.md §9.1) | `vis.rs`, `start_wall_hit_at` | ✅ |
@@ -174,8 +174,8 @@ The team rule (same character = same team, no friendly kills), up to 12 players,
 | T05 | The blocking wall is cleared (tile, info, collision), debris left; sight and movement update at once | Code |
 | T06 | The outer ring is immune | Code |
 | T07 | Actors use the live tilemap, so they path through new gaps | Code |
-| T08 | Hit door destroyed; nearby doors scorched into walls | Code (trace advised) |
-| T09 | Only exit tile 0x71 is protected; **0x72 and 0x73 can be scorched**, leaving no exit (quirk) | Code |
+| T08 | Hit door destroyed; nearby doors scorched into walls. OBCR leaves nearby doors working (ADR-016) | Code (trace advised) |
+| T09 | Only exit tile 0x71 is protected; **0x72 and 0x73 can be scorched**, leaving no exit. OBCR protects all three (ADR-016) | Code |
 | T10 | Pickups in the box become debris | Code |
 | T11–T12 | Fire from burnable statics; spreads by walking and 1/256 per move; burns out randomly | Code |
 | T13 | Own flame cannot hit the player (no target, the player is not shootable); fire actors and blasts can | Code |
@@ -207,10 +207,16 @@ The team rule (same character = same team, no friendly kills), up to 12 players,
 
 These are faithful to the original's code; ADR-008 keeps them in Classic play. Each could become an opt-in fix flag.
 
-- Blasting a stairs (0x72) or elevator (0x73) exit scorches it, which can leave a floor with no way out.
 - Kills by allies do not count toward the 50 % quota, so a squad that does most of the killing can leave the player short.
-- A grenade near a door turns the door into a scorched wall.
 - "Fuel Bottle" from a supply crate is applied only when it fills the fuel clips to the cap (PLAYER.md §4.2).
+
+### Fixed in OBCR (ADR-016)
+
+Blasts could leave a floor with no way out in the original. OBCR changes this in every mode:
+
+- Blasting a stairs (0x72) or elevator (0x73) exit scorched it. All three exit tiles are now spared.
+- A grenade near a door turned the door into a scorched wall, which could seal the only route to the exit. Nearby doors now keep working.
+- A door destroyed by a direct hit while open could later "close" into an invisible, unusable barrier. A destroyed door now never closes.
 
 ## 15. Remaining work from this audit
 

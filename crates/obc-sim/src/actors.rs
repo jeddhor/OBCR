@@ -2541,10 +2541,19 @@ pub fn explosion_tile_effects(w: &mut World, hitx: u8, hity: u8, ob: ObjId) {
                 continue;
             }
             let t = u16::from(t);
-            if t == 0x71 {
+            // Fix (ADR-016): the original spares only exit 0x71, so a blast
+            // could remove the stairs (0x72) or elevator (0x73) and leave no
+            // way off the floor. All three are spared here.
+            if (0x71..=0x73).contains(&t) {
                 continue;
             }
             let idx = World::idx(x, y);
+            // Fix (ADR-016): the original scorches doors near the blast into
+            // solid wall 0x4D, which can seal the only way to the exit. Doors
+            // other than the one hit are left working.
+            if t & 0x80 != 0 && !(hx == x && hy == y) {
+                continue;
+            }
             if (0x39..=0x3C).contains(&t) {
                 w.tilemap[idx] = 0x3C;
                 continue;

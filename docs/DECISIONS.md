@@ -110,3 +110,10 @@ Template:
 - **Status**: Accepted (2026-11-02)
 - **Decision**: With SMOOTH MOTION on (Enhanced only), the renderer blends the player pose and moving actors between the last two simulation frames at the display rate, using a fine view angle (`FINEANGLES` units) and float sine/cosine off whole degrees. Gameplay visibility, hit tests and everything else read the simulation state.
 - **Consequences**: Up to one frame (≈29 ms) of display latency; Classic keeps integer angles and the original tables.
+
+## ADR-016 — Blasts never leave a floor unfinishable
+
+- **Status**: Accepted (2026-11-05), at the owner's request
+- **Context**: In the original, `ExplosionTileEffects` spares only exit tile 0x71. A grenade can scorch or remove the stairs (0x72) and elevator (0x73) exits, and it scorches nearby doors into solid wall 0x4D. Either can leave the exit unreachable. A door destroyed by a direct hit keeps its door record, so if it was open it later "closes" into an invisible barrier.
+- **Decision**: An exception to ADR-008, in Classic and Enhanced alike: blasts spare all three exit tiles and every door except the one hit, and `CloseDoor` refuses once the door's tile is gone.
+- **Consequences**: Floors stay finishable after any blast. Recorded traces that blow up an exit or a nearby door diverge from the original at that point.
