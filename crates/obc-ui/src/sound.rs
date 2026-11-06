@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use obc_audio::{AdlibSound, AudioCommand, DIGI_CHANNELS, MixerHandle, Pan};
+use obc_audio::{AdlibSound, AudioCommand, DIGI_CHANNELS, MixerHandle, Pan, PcSound};
 use obc_core::fixed::fixed_by_frac;
 use obc_core::trig::Tables;
 use obc_sim::data::GameData;
@@ -44,8 +44,30 @@ struct Voice {
     at: Option<(i32, i32)>,
 }
 
+/// Which device plays effects (`SoundMode`/`DigiMode`, set by SETUP in the
+/// original): digitized with AdLib fallback, AdLib only, or PC speaker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Effects {
+    #[default]
+    Digitized,
+    Adlib,
+    PcSpeaker,
+}
+
+impl Effects {
+    pub fn from_setting(s: &str) -> Self {
+        match s {
+            "adlib" => Self::Adlib,
+            "pc" => Self::PcSpeaker,
+            _ => Self::Digitized,
+        }
+    }
+}
+
 pub struct SoundManager {
     adlib: Vec<Option<Arc<AdlibSound>>>,
+    pc: Vec<Option<Arc<PcSound>>>,
+    pub effects: Effects,
     digi: Vec<Option<Arc<[u8]>>>,
     game: Arc<GameData>,
     trig: Arc<Tables>,
@@ -65,8 +87,11 @@ impl SoundManager {
         let digi = (0..NUMSOUNDS)
             .map(|i| a.digi.get(i).filter(|d| !d.is_empty()).map(|d| Arc::from(d.as_slice())))
             .collect();
+        let pc = (0..NUMSOUNDS).map(|i| a.audio.pc_sound(i).ok().map(Arc::new)).collect();
         Self {
             adlib,
+            pc,
+            effects: Effects::Digitized,
             digi,
             game: a.game.clone(),
             trig: a.trig.clone(),
@@ -97,11 +122,25 @@ impl SoundManager {
             return;
         }
         let i = usize::from(id);
+        if self.effects == Effects::PcSpeaker {
+            // SoundMode 1: the PC chunk supplies sound and priority; no digitized path.
+            let Some(Some(pc)) = self.pc.get(i).cloned() else { return };
+            if self.playing(&self.adlib_voice) && pc.priority < self.adlib_voice.priority {
+                return;
+            }
+            let ticks = pc.data.len() as u64;
+            self.adlib_voice =
+                Voice { priority: pc.priority, until: self.clock + ticks.div_ceil(2), at: None };
+            audio.send(AudioCommand::PlayPc(pc));
+            return;
+        }
         let Some(Some(adlib)) = self.adlib.get(i).cloned() else { return };
         let priority = adlib.priority;
         let pan = at.map_or(Pan::default(), |(x, y)| self.sound_loc(l, x, y));
 
-        if let Some(Some(samples)) = self.digi.get(i).cloned() {
+        if self.effects == Effects::Digitized
+            && let Some(Some(samples)) = self.digi.get(i).cloned()
+        {
             // Free voice first, then the lowest-priority one this sound may interrupt.
             let slot = (0..self.channels).find(|&c| !self.playing(&self.voices[c])).or_else(|| {
                 (0..self.channels)

@@ -1034,9 +1034,10 @@ enum Opt {
     Sfx,
     Music,
     Channels,
+    Effects,
 }
 
-const OPTS: [Opt; 16] = [
+const OPTS: [Opt; 17] = [
     Opt::Display,
     Opt::Scale,
     Opt::Aspect,
@@ -1053,6 +1054,7 @@ const OPTS: [Opt; 16] = [
     Opt::Sfx,
     Opt::Music,
     Opt::Channels,
+    Opt::Effects,
 ];
 
 /// The port's settings: Classic or Enhanced display, resolution, aspect,
@@ -1085,6 +1087,7 @@ impl Options {
             Opt::Sfx => "SOUND FX VOLUME",
             Opt::Music => "MUSIC VOLUME",
             Opt::Channels => "SOUND VOICES",
+            Opt::Effects => "SOUND EFFECTS",
         }
     }
 
@@ -1115,6 +1118,11 @@ impl Options {
                     format!("{} MIXED", s.audio.channels)
                 }
             }
+            Opt::Effects => match s.audio.effects.as_str() {
+                "adlib" => "ADLIB".into(),
+                "pc" => "PC SPEAKER".into(),
+                _ => "DIGITIZED".into(),
+            },
         }
     }
 
@@ -1161,6 +1169,11 @@ impl Options {
             Opt::Sfx => step(&mut s.audio.sfx, 0.0, 1.0, 0.1),
             Opt::Music => step(&mut s.audio.music, 0.0, 1.0, 0.1),
             Opt::Channels => s.audio.channels = if s.audio.channels <= 1 { 4 } else { 1 },
+            Opt::Effects => {
+                let all = ["digitized", "adlib", "pc"];
+                let cur = all.iter().position(|e| *e == s.audio.effects).unwrap_or(0) as i32;
+                s.audio.effects = all[(cur + d).rem_euclid(3) as usize].into();
+            }
         }
         let a = &s.audio;
         ctx.audio.send(AudioCommand::SetVolumes(Volumes {
@@ -1226,8 +1239,17 @@ impl Screen for Options {
         out.layer.bar(8, 4, 304, 192, nearest(&pal, [16, 16, 56]));
         let Some(font) = a.fonts.first() else { return };
         draw_text(out.layer, font, b"OPTIONS", 136, 7, hi);
-        for (i, &o) in OPTS.iter().enumerate() {
-            let y = 20 + i as i32 * 11;
+        // Twelve rows fit; the list scrolls with the cursor.
+        const ROWS: usize = 12;
+        let first = self.cur.saturating_sub(ROWS - 1).min(OPTS.len() - ROWS);
+        if first > 0 {
+            draw_text(out.layer, font, b"^", 304, 24, dim);
+        }
+        if first + ROWS < OPTS.len() {
+            draw_text(out.layer, font, b"v", 304, 180, dim);
+        }
+        for (i, &o) in OPTS.iter().enumerate().skip(first).take(ROWS) {
+            let y = 24 + (i - first) as i32 * 14;
             let c = if i == self.cur { hi } else { fg };
             draw_text(out.layer, font, Self::label(o).as_bytes(), 20, y, c);
             let v = Self::value(o, &self.shown);

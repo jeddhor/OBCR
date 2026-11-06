@@ -127,10 +127,21 @@ impl Game {
         let a = ctx.assets;
         let mut world = World::new(a.game.clone(), a.trig.clone());
         obc_sim::player::new_game(&mut world, difficulty);
+        // `US_Startup` calls `US_InitRndT(true)`: the index starts at the DOS
+        // clock's hundredths of a second, so each run (and Random-mode layout)
+        // differs. Saves keep the index, so loads stay deterministic.
+        let hundredths = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.subsec_millis() / 10);
+        world.rng = obc_core::rng::Rng::seeded(hundredths as u8);
         world.gamestate.mapon = mapon;
         let mut g = Self {
             world,
-            sound: SoundManager::new(a, ctx.settings.audio.channels),
+            sound: {
+                let mut s = SoundManager::new(a, ctx.settings.audio.channels);
+                s.effects = crate::sound::Effects::from_setting(&ctx.settings.audio.effects);
+                s
+            },
             hud: Hud::default(),
             controls: Controls::default(),
             view: None,
@@ -438,6 +449,7 @@ impl Screen for Game {
             self.in_menu = false;
             self.set_view_size(ctx.settings.game.viewsize);
             self.sound.set_channels(ctx.settings.audio.channels);
+            self.sound.effects = crate::sound::Effects::from_setting(&ctx.settings.audio.effects);
             self.start_music(ctx);
         }
         if self.blackout > 0 {

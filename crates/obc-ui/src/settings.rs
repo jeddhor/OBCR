@@ -83,6 +83,8 @@ pub struct AudioSettings {
     /// Digitized voices: 1 as the original (one Sound Blaster voice with
     /// priorities), up to 4 mixed.
     pub channels: usize,
+    /// Effects device: "digitized" (Sound Blaster), "adlib" or "pc" (speaker).
+    pub effects: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -117,7 +119,7 @@ impl Default for VideoSettings {
 
 impl Default for AudioSettings {
     fn default() -> Self {
-        Self { master: 0.8, sfx: 1.0, music: 0.7, channels: 4 }
+        Self { master: 0.8, sfx: 1.0, music: 0.7, channels: 4, effects: "digitized".into() }
     }
 }
 

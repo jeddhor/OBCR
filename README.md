@@ -18,6 +18,7 @@ OBCR contains no game data. You need your own copy of Operation Body Count (reta
 | [docs/AGENT_GUIDE.md](docs/AGENT_GUIDE.md) | Master AI agent development guide: workflow, reverse engineering, oracle, standards, definition of done |
 | [docs/MILESTONES.md](docs/MILESTONES.md) | Milestones M0–M15 with tasks and acceptance criteria |
 | [docs/STATUS.md](docs/STATUS.md) | Current progress, active tasks, blockers |
+| [docs/MECHANICS_AUDIT.md](docs/MECHANICS_AUDIT.md) | Every OBC mechanic, what the original's code does, and where OBCR implements it |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Architecture decision records |
 | [docs/re/](docs/re/README.md) | What we know about the original: formats, symbols, deltas from Wolf3D, open questions |
 | [CLAUDE.md](CLAUDE.md) | Rules every AI agent session loads |
@@ -42,7 +43,7 @@ OBCR remembers the data directory (and finds a Steam install by itself). Setting
 
 Useful options: `--classic` (original 320×200), `--scale 2..8` and `--aspect 4:3|16:10|16:9|21:9` (Enhanced), `--fullscreen` / `--windowed`, `--play N` (start straight on floor N+1, for testing), `--nsr250` (the original's cheat parameter: in game, Alt+Left Shift+B turns on BOGUS MODE, then Alt+R restock, Alt+I invincible, Alt+H health, Alt+B bewitched, Alt+W warp to a floor; bogus games do not enter the high scores). Alt+Enter toggles fullscreen.
 
-In the main menu, **O** opens OPTIONS: display mode (Classic or Enhanced), resolution, aspect, fullscreen, smooth filter, integer scaling, smooth motion, control scheme, always run, mouse and pad speed, rumble, volumes, and the number of sound voices (1 as the original, or 4 mixed). The original menu items work as in the original game (GAME TYPE picks difficulty 1–3 or Random; START GAME begins on floor 1).
+In the main menu, **O** opens OPTIONS: display mode (Classic or Enhanced), resolution, aspect, fullscreen, smooth filter, integer scaling, smooth motion, control scheme, always run, mouse and pad speed, rumble, volumes, the number of sound voices (1 as the original, or 4 mixed) and the effects device (digitized, AdLib or PC speaker). The original menu items work as in the original game (GAME TYPE picks difficulty 1–3 or Random; START GAME begins on floor 1).
 
 ### Controls
 

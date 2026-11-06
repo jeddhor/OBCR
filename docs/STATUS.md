@@ -59,9 +59,12 @@ Append one line per completed task or notable event: `YYYY-MM-DD — <task> — 
 
 - 2026-11-02 — M7/M8/M10 — Healing stations, shootable-wall search and overhead map (agent 6f10c71); grenade tremors fixed (actors had a private DS:0x09D8); enemies operate door-look walls; Tab map; bogus-mode cheats; F1/F2 toggles; victory screen; Enhanced smooth motion — 33 test suites pass.
 
+- 2026-11-05 — audit — Mechanics checked against the Wolf3D/OBC comparison (docs/MECHANICS_AUDIT.md); fixed F5/F6, message and H/C overlays, blackout, F10, tremor Esc rule, clock-seeded RNG, effects device option; weapon 0 renamed assault shotgun — 33 test suites pass.
+
 ## Known gaps (first episode)
 
 - No DOSBox-X trace comparison yet: behaviour follows the disassembly, unverified against the original at run time.
 - Not shipped by the original release: sequences F1, F5, F7 (skipped, as the original does).
 - Debug keys (`vfr750hondarc45`, Backspace) not ported; the bogus-mode cheats are (`--nsr250`).
+- Multiplayer game types N, T, M (M13) not started; see docs/MECHANICS_AUDIT.md §11.
 - Healing stations are ported but, as in OBC-A, nothing can start them (PLAYER.md §9).
