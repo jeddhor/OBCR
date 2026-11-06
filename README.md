@@ -35,7 +35,7 @@ cargo xtask test-data   # also the tests that need the game data
 
 ## Installing
 
-`OBCR-Setup-<version>-windows-x64.exe` and `OBCR-Setup-<version>-linux-x86_64` install OBCR for your user account: you point Setup at your Operation Body Count folder, it checks the files and copies the game plus the files it uses into one folder (`%LOCALAPPDATA%\Programs\OBCR`, or `~/.local/opt/OBCR` on Linux) with menu entries and an uninstaller. Build them with `installer/build-windows.ps1` or `installer/build-linux.sh`; see [installer/README.md](installer/README.md).
+The current version is **1.0.0-beta.1** (a pre-release; see [CHANGELOG.md](CHANGELOG.md)). `OBCR-Setup-<version>-windows-x64.exe` and `OBCR-Setup-<version>-linux-x86_64` install OBCR for your user account: you point Setup at your Operation Body Count folder, it checks the files and copies the game plus the files it uses into one folder (`%LOCALAPPDATA%\Programs\OBCR`, or `~/.local/opt/OBCR` on Linux) with menu entries and an uninstaller. Build them with `installer/build-windows.ps1` or `installer/build-linux.sh`; see [installer/README.md](installer/README.md).
 
 ## Playing
 
@@ -91,4 +91,4 @@ You leave a floor through its stairs, ladder or elevator once at least half of i
 
 ## Legal
 
-Operation Body Count is © its rights holders. OBCR is an unofficial, independent project and is not affiliated with or endorsed by them. OBCR's code is licensed under the GNU General Public License, version 3 or later ([LICENSE](LICENSE), [ADR-006](docs/DECISIONS.md#adr-006--license-gpl-30-or-later)).
+Operation Body Count is © its rights holders. OBCR is an unofficial, independent project and is not affiliated with or endorsed by them. OBCR's code is licensed under the GNU General Public License, version 3 or later ([LICENSE](LICENSE), [ADR-006](docs/DECISIONS.md#adr-006--license-gpl-30-or-later)). Third-party components and their licences are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
