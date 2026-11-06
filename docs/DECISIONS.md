@@ -161,3 +161,15 @@ Template:
 - **Licence**: xBRZ is distributed under the GPL version 3. `xbrz.rs` is a derivative and carries that licence; it is compatible with the project's GPL-3.0-or-later (ADR-006), and a binary that includes it is distributed under GPL-3.0.
 - **Consequences**: About 0.2 MB per texture at 4× and 0.4 MB at 6×, for the textures a session has shown. Distance shading on upscaled sprites and walls is still one step per post, as in the original.
 
+## ADR-021 — Per-user Qt 6 installer with a self-extracting launcher
+
+- **Status**: Accepted (2026-11-06), at the owner's request
+- **Context**: The owner asked for a Qt 6 installer for Windows and Linux that points at the user's own game copy, installs the prebuilt game into the user's home and copies the game files it needs, with an uninstaller. Game data must never be redistributed (ADR-005).
+- **Decision**:
+  - `installer/` is a C++ Qt 6 Widgets program (CMake): a wizard (welcome, game files, folder, install, finish), an uninstall dialog, and unattended modes. The release game is embedded as a Qt resource.
+  - The game files are checked by the bundled game itself (`obcr --check-data`), so the list of files and their SHA-256 sums stays in `obc-formats::release`. Only verified required files and sequences are copied, into `<folder>/data`, which `datadir::discover` already searches next to the executable.
+  - Per-user locations: `%LOCALAPPDATA%\Programs\OBCR` and `~/.local/opt/OBCR`; Start menu and *Apps* entries (HKCU) on Windows, `.desktop` entries and a `~/.local/bin/obcr` link on Linux. Everything created is listed in `install-manifest.txt`; the uninstaller removes exactly that, and keeps the game's settings and saves unless asked.
+  - Distribution is one file per platform: the `obcr-setup` launcher (Rust, std plus `miniz_oxide`) with the deployed Setup folder (Setup, Qt runtime, plugins) appended as a deflate archive; it unpacks to a temporary folder, runs Setup and cleans up. Qt is linked dynamically (LGPL). The Linux bundle carries Qt, ICU and xcb helper libraries and relies on the system for the C runtime, drivers, X11/Wayland core, fonts, GLib and D-Bus.
+  - Windows release builds of `obcr` use the GUI subsystem (no console window from shortcuts) and attach to the parent console when started from a terminal.
+- **Alternatives**: Qt Installer Framework (its maintenance tool and scripting add a second toolchain; custom data checks are awkward); a zip of the Qt folder (not a single file); static Qt (no prebuilt static MinGW kit).
+- **Consequences**: About 15 MB (Windows) and 27 MB (Linux) per installer. Linux builds should be made on an older distribution (Ubuntu 22.04). Neither file is code-signed, so Windows SmartScreen warns on first run.

@@ -52,6 +52,8 @@ Licensing, missing data only they can supply (CD or Steam release), behavior tha
 cargo xtask ci            # format, clippy -D warnings, tests, cargo deny
 cargo xtask test-data     # tests that need the original data (OBC_DATA_DIR or ..\OBC)
 cargo run -p obc-tool -- info
+powershell -File installer\build-windows.ps1   # Windows installer -> target\dist (Qt 6 MinGW kit)
+installer/build-linux.sh                       # Linux installer -> target/dist (run in WSL Ubuntu 22.04)
 ```
 
 Commands appear as milestone M0 lands; if one is missing, building it is a task.

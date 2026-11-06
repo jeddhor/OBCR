@@ -33,6 +33,10 @@ cargo xtask ci          # format, lints, tests, dependency licenses
 cargo xtask test-data   # also the tests that need the game data
 ```
 
+## Installing
+
+`OBCR-Setup-<version>-windows-x64.exe` and `OBCR-Setup-<version>-linux-x86_64` install OBCR for your user account: you point Setup at your Operation Body Count folder, it checks the files and copies the game plus the files it uses into one folder (`%LOCALAPPDATA%\Programs\OBCR`, or `~/.local/opt/OBCR` on Linux) with menu entries and an uninstaller. Build them with `installer/build-windows.ps1` or `installer/build-linux.sh`; see [installer/README.md](installer/README.md).
+
 ## Playing
 
 ```

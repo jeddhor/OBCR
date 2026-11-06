@@ -3,25 +3,88 @@
 //! - `ci`: format check, clippy with warnings denied, tests, license policy.
 //! - `lint`: crate dependency rules and a scan for committed original data.
 //! - `test-data`: tests including those that need the original data.
+//! - `pack-installer <launcher> <dir> <out>`: appends the deployed Setup
+//!   folder to the `obcr-setup` launcher, giving one self-extracting file
+//!   (format in `crates/obcr-setup/src/main.rs`).
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
 
 fn main() -> Result<()> {
-    let task = std::env::args().nth(1).unwrap_or_default();
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let task = args.first().cloned().unwrap_or_default();
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    // Paths given to pack-installer are relative to where it was started.
+    let cwd = std::env::current_dir()?;
     std::env::set_current_dir(&root)?;
     match task.as_str() {
         "ci" => ci(),
         "lint" => lint(&root),
         "test-data" => test_data(&root),
+        "pack-installer" if args.len() == 4 => {
+            pack_installer(&cwd.join(&args[1]), &cwd.join(&args[2]), &cwd.join(&args[3]))
+        }
         _ => {
-            eprintln!("usage: cargo xtask <ci|lint|test-data>");
+            eprintln!("usage: cargo xtask <ci|lint|test-data|pack-installer LAUNCHER DIR OUT>");
             bail!("unknown task {task:?}")
         }
     }
+}
+
+/// Writes `out` = `launcher` + an archive of every file under `dir`, each
+/// deflate-compressed, + trailer (archive length, `OBCRSFX2`).
+fn pack_installer(launcher: &Path, dir: &Path, out: &Path) -> Result<()> {
+    fn walk(dir: &Path, base: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
+        let mut entries: Vec<_> = std::fs::read_dir(dir)?.collect::<std::io::Result<_>>()?;
+        entries.sort_by_key(|e| e.file_name());
+        for e in entries {
+            let p = e.path();
+            if e.file_type()?.is_dir() {
+                walk(&p, base, files)?;
+            } else {
+                files.push(p.strip_prefix(base)?.to_path_buf());
+            }
+        }
+        Ok(())
+    }
+    let mut files = Vec::new();
+    walk(dir, dir, &mut files)?;
+    let mut archive = Vec::new();
+    for rel in &files {
+        let name =
+            rel.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
+        let path = dir.join(rel);
+        let data = std::fs::read(&path).with_context(|| path.display().to_string())?;
+        #[cfg(unix)]
+        let mode = {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::metadata(&path)?.permissions().mode()
+        };
+        #[cfg(not(unix))]
+        let mode = 0o644u32;
+        let packed = miniz_oxide::deflate::compress_to_vec(&data, 9);
+        archive.extend_from_slice(&u16::try_from(name.len())?.to_le_bytes());
+        archive.extend_from_slice(name.as_bytes());
+        archive.extend_from_slice(&mode.to_le_bytes());
+        archive.extend_from_slice(&(data.len() as u64).to_le_bytes());
+        archive.extend_from_slice(&(packed.len() as u64).to_le_bytes());
+        archive.extend_from_slice(&packed);
+    }
+    let mut f = std::fs::File::create(out).with_context(|| out.display().to_string())?;
+    f.write_all(&std::fs::read(launcher).with_context(|| launcher.display().to_string())?)?;
+    f.write_all(&archive)?;
+    f.write_all(&(archive.len() as u64).to_le_bytes())?;
+    f.write_all(b"OBCRSFX2")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(out, std::fs::Permissions::from_mode(0o755))?;
+    }
+    eprintln!("packed {} files ({} bytes) into {}", files.len(), archive.len(), out.display());
+    Ok(())
 }
 
 fn run(program: &str, args: &[&str]) -> Result<()> {
@@ -76,6 +139,7 @@ const RULES: &[(&str, &[&str])] = &[
     ("obc-net", &[]),
     ("obc-sim", &["obc-core", "obc-formats"]),
     ("obc-platform", &["obc-core"]),
+    ("obcr-setup", &[]),
 ];
 
 fn lint(root: &Path) -> Result<()> {
