@@ -66,15 +66,24 @@ impl NetLink {
     /// Before a frame: received records into the world (the receive handler).
     pub fn receive(&mut self, w: &mut World) {
         let events = self.transport.poll(Instant::now());
+        let mut new_id = None;
         let Some(n) = w.net.as_deref_mut() else { return };
         n.inbox.append(&mut self.pending);
         for e in events {
             match e {
                 Event::Record(r) => n.inbox.push(Packet::from_bytes(&r)),
                 Event::Left(id) => n.left.push(u16::from(id)),
-                Event::IdChanged(id) => n.my_id = u16::from(id),
+                Event::IdChanged(id) => {
+                    n.my_id = u16::from(id);
+                    new_id = Some(i16::from(id));
+                }
                 Event::Joined { .. } | Event::Mismatch(_) => {}
             }
+        }
+        // The player's owner tag (`temp2`) follows a changed id at once.
+        if let Some(id) = new_id {
+            let p = w.player;
+            w.obj_mut(p).temp2 = id;
         }
     }
 
