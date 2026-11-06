@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+miniz_oxide.workspace = true
 
 [lints]
 workspace = true

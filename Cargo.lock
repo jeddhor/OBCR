@@ -645,6 +645,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "obcr-setup"
+version = "0.1.0"
+dependencies = [
+ "miniz_oxide 0.8.9",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1186,6 +1193,7 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "miniz_oxide 0.8.9",
 ]
 
 [[package]]

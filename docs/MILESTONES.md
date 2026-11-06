@@ -582,7 +582,7 @@ Revised after the RE (ADR-017: the original broadcasts state; it is not lockstep
 
 | Id | Task |
 |---|---|
-| M15.1 | Packaging: Windows zip and installer, Linux AppImage (and optionally Flatpak), macOS app bundle (signing and notarization if the owner has accounts). |
+| M15.1 | Packaging: Windows zip and installer, Linux AppImage (and optionally Flatpak), macOS app bundle (signing and notarization if the owner has accounts). Done for Windows and Linux as a per-user Qt 6 installer (ADR-021, `installer/`); macOS and signing remain. |
 | M15.2 | First-run data setup: locate data (Steam detection), validate, explain what is missing; never redistribute data. |
 | M15.3 | THIRD_PARTY_NOTICES, LICENSE (per ADR-006), README and user manual. |
 | M15.4 | Crash reporting (local log plus instructions; no telemetry without opt-in). |

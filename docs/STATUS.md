@@ -24,7 +24,7 @@ Live project state. Every agent reads this at the start of a session and updates
 | M12 | Single-player parity certification | In progress | Needs DOSBox-X traces; owner playtest of maps 0–22 |
 | M13 | Multiplayer | Review | RE of 358f/33bb (re/NETWORK.md, re/NETCOMMS.md); rules in obc-sim::net; UDP transport obc-net; setup screen, KILLS table; tested in process and with 2–4 `obcr` processes; needs an owner LAN test |
 | M14 | Enhanced mode | In progress | Widescreen, 2–8× scale, smooth motion, modern controls, gamepad, smooth floors, xBRZ textures done |
-| M15 | Release engineering | Not started | |
+| M15 | Release engineering | In progress | Per-user Qt 6 installers for Windows and Linux (ADR-021); private GitHub repository jeddhor/OBCR |
 
 Status values: `Not started`, `Ready` (prerequisites met), `In progress`, `Blocked`, `Done`.
 
@@ -41,7 +41,7 @@ Task status values: `In progress`, `Paused`, `Blocked`, `Review`, `Done`. Remove
 | Id | Question | Needed by | Status |
 |---|---|---|---|
 | B-1 | License | M15 | Resolved 2026-11-02: GPL-3.0-or-later (ADR-006) |
-| B-2 | Remote for CI? | M0.7 | Resolved 2026-11-02: local builds only; `cargo xtask ci` is the gate |
+| B-2 | Remote for CI? | M0.7 | Resolved 2026-11-02: local builds only; `cargo xtask ci` is the gate. 2026-11-06: the owner added a private GitHub repository (`jeddhor/OBCR`, remote `origin`) for the code; builds stay local |
 | B-3 | Rendered sequences and CD audio data | M10.R9, M6.R2 | Resolved 2026-11-02: the owner's floppy install archives contain `F2.BC`, `F3.BC`, `F4.BC`, `F6.BC` (FLC animations). No CD audio is available. |
 | B-4 | Agent commit policy | M0 | Resolved 2026-11-02: confirmed as written in CLAUDE.md |
 
@@ -66,6 +66,8 @@ Append one line per completed task or notable event: `YYYY-MM-DD — <task> — 
 - 2026-11-05 — fix — Ally kills count toward the exit quota, still without score (ADR-018) — test `ally_kills_count_toward_the_exit`.
 - 2026-11-05 — M14.10/M14.11 — Enhanced smooth floors and ceilings (ADR-019: perspective-correct, gapless, smooth distance shading, rows drawn in parallel) and xBRZ 2×–6× textures (ADR-020: palette-index port of xBRZ 1.6, two-index blend plane in the framebuffer, optional for the HUD and menus); options TEXTURES, FLOORS, XBRZ HUD/MENUS and `--xbrz`, `--floors`, `--xbrz-screens` — 14 new unit tests (xbrz, framebuffer, layer, view3d: no gaps, every pixel drawn, Classic unchanged, same wall geometry); screenshots on maps 5 and 12; 8× 16:9 view: smooth floors 12 ms vs 28 ms original, +3 ms for xBRZ walls.
 - 2026-11-06 — M14.11 — xBRZ for the 2D screens split in two: XBRZ MENUS (default on: menus, title and intro pictures, animated sequences, help and score pages) and XBRZ STATUS BAR (default off); 2D xBRZ about 2.5× faster (padded kernel, per-pixel touched blocks), direct layer writes; developer flag `--sequence F2|F3|F4|F6` — screenshots of the intro, menu and F2 with the option on and off.
+- 2026-11-06 — repo — m14 merged into main; private GitHub repository `jeddhor/OBCR` created and main plus the task branches pushed (history audited: no game data or decompiled code).
+- 2026-11-06 — M15.1 — Per-user Qt 6 installer and uninstaller for Windows and Linux (ADR-021): `installer/` wizard, `obcr --check-data`, `obcr-setup` self-extracting launcher, `cargo xtask pack-installer`, build scripts; `obcr` is a GUI program on Windows — Windows (15 MB) and Linux (27 MB) packages each installed unattended, game ran from the installed folder, update in place and uninstall left nothing behind (no Qt on PATH on Windows; WSL Ubuntu 22.04 for Linux); wizard pages rendered on both.
 
 ## Known gaps (first episode)
 
