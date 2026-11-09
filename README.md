@@ -1,4 +1,4 @@
-# OBCR
+# Operation Body Count Reborn (OBCR)
 
 A modern, native source port of **Operation Body Count** (Capstone Software, 1994), the Wolfenstein 3D–engine shooter with allies, grenades, flame throwers and network play.
 
