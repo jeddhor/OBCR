@@ -1,0 +1,109 @@
+.TH OBCR 6 "November 2026" "OBCR 1.0.0-beta.2" "Games"
+.SH NAME
+obcr \- Operation Body Count source port
+.SH SYNOPSIS
+.B obcr
+[\fIoptions\fR]
+.br
+.B obcr \-\-check\-data
+\fIdir\fR|\fIimage\fR
+.br
+.B obcr \-\-extract\-data
+\fIsource\fR \fIdir\fR
+.SH DESCRIPTION
+.B obcr
+is a native source port of Operation Body Count (Capstone Software, 1994),
+written in Rust on SDL 3 and rebuilt from the original executable. It plays
+the original game tic for tic from the user's own copy of the game files,
+in the original 320\(mu200 picture (Classic) or at high resolution and in
+widescreen with smooth motion, xBRZ textures, modern controls, gamepads and
+UDP network play (Enhanced).
+.PP
+The game data is not included. Both the floppy release (\fBCOUNT.EXE\fR) and
+the CD release that Steam and GOG sell as a BIN/CUE image (\fBBCCD.EXE\fR)
+are recognized by the SHA\-256 of their files.
+.SH OPTIONS
+.TP
+.BI \-\-data " dir"
+The folder with the game files.
+.TP
+.BI \-\-check\-data " dir" | image
+Identify a copy of the game (a folder, or a \fI.cue\fR, \fI.bin\fR or
+\fI.iso\fR image), print one tab\-separated line per file, and exit with 0 if
+every required file matches a known release, 2 if not.
+.TP
+.BI \-\-extract\-data " source dir"
+Copy the files the game uses from a folder or CD image into \fIdir\fR,
+ripping the CD music (\fBTRACK02.QOA\fR to \fBTRACK05.QOA\fR) from an image.
+.TP
+.BI \-\-config " file"
+Use \fIfile\fR as the settings file; saved games go to \fIsaves\fR beside it.
+.TP
+.B \-\-classic
+The original 320\(mu200 picture.
+.TP
+.BI \-\-scale " n"
+Enhanced resolution multiple, 2 to 8.
+.TP
+.BI \-\-aspect " ratio"
+Enhanced aspect: \fB4:3\fR, \fB16:10\fR, \fB16:9\fR or \fB21:9\fR.
+.TP
+.BI \-\-xbrz " n"
+xBRZ factor for textures, 2 to 6, or 0 for the original texels.
+.TP
+.BR \-\-xbrz\-menus " on|off, " \-\-xbrz\-hud " on|off"
+xBRZ for menus, pictures and movies; for the status bar.
+.TP
+.BR \-\-floors " smooth|original"
+Floors and ceilings in true perspective, or as the original drew them.
+.TP
+.BR \-\-fullscreen ", " \-\-windowed
+Start fullscreen or in a window.
+.TP
+.B \-\-nsr250
+The original's cheat parameter: Alt+Left Shift+B in game turns on bogus mode.
+.TP
+.BR \-\-net " N|T|M"
+Start a network game: deathmatch, teams, or two players.
+.BR \-\-net\-join " host[:port]"
+calls a player (repeatable),
+.BI \-\-net\-port " port"
+sets the UDP port (default 16387),
+.BR \-\-net\-choice " 0|1|2"
+picks the character or team, and
+.B \-\-net\-setup
+opens the setup screen instead of starting at once.
+.TP
+.BI \-\-play " n"
+Start directly on map slot \fIn\fR (0\-based), with
+.BI \-\-difficulty " n"
+(0\(en2 difficulty 1\(en3, 3 Random).
+.TP
+.BI \-\-sequence " name"
+Play one animated sequence (\fBF1\fR to \fBF7\fR) and quit.
+.TP
+.BR \-\-help ", " \-\-version
+The full list of options, and the version.
+.SH ENVIRONMENT
+.TP
+.B OBC_DATA_DIR
+The game data folder, used when \fB\-\-data\fR is not given.
+.SH FILES
+.TP
+.I ~/.config/obcr/obcr.toml
+Settings, written on exit. See \fIdocs/options.md\fR.
+.TP
+.I ~/.local/share/obcr/saves/
+Saved games.
+.TP
+.I ~/.local/opt/OBCR/
+Where OBCR Setup installs the game, with the game files in \fIdata/\fR.
+.SH SEE ALSO
+The README and the guides in \fIdocs/\fR: \fIgame\-guide.md\fR,
+\fIoptions.md\fR, \fIcd\-release.md\fR, \fImultiplayer.md\fR.
+.br
+https://github.com/jeddhor/OBCR
+.SH NOTES
+Operation Body Count and its data are the property of their rights holders
+and are not distributed with OBCR. OBCR is licensed under the GNU General
+Public License, version 3 or later.
