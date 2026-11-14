@@ -347,9 +347,34 @@ pub fn key_name(code: u8) -> Option<&'static str> {
 }
 
 /// Every action's inputs.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 #[serde(transparent)]
 pub struct Bindings(pub BTreeMap<Action, Vec<Bind>>);
+
+/// Reading is lenient: an unknown action or input name (a typo in a hand-edited
+/// `obcr.toml`, or a file from a newer version) is skipped instead of making the
+/// whole settings file unreadable, which would reset every setting.
+impl<'de> Deserialize<'de> for Bindings {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Entry {
+            Names(Vec<String>),
+            Other(serde::de::IgnoredAny),
+        }
+        let raw = BTreeMap::<String, Entry>::deserialize(d)?;
+        let mut m = BTreeMap::new();
+        for (action, entry) in raw {
+            let action = Action::deserialize(serde::de::value::StrDeserializer::<
+                serde::de::value::Error,
+            >::new(&action));
+            if let (Ok(action), Entry::Names(names)) = (action, entry) {
+                m.insert(action, names.iter().filter_map(|n| Bind::parse(n)).collect());
+            }
+        }
+        Ok(Self(m))
+    }
+}
 
 impl Bindings {
     /// The defaults of a control scheme (`modern` or `original`).
@@ -557,5 +582,26 @@ mod tests {
         assert!(text.contains("fire = [\"CTRL\", \"MOUSE LEFT\", \"PAD RT\"]"), "{text}");
         let back: W = toml::from_str(&text).unwrap();
         assert_eq!(back.bindings, Bindings::defaults("modern"));
+    }
+
+    #[test]
+    fn unknown_names_are_skipped_not_fatal() {
+        #[derive(Deserialize)]
+        struct W {
+            bindings: Bindings,
+        }
+        let w: W = toml::from_str(
+            "[bindings]
+fire = [\"CTRL\", \"MOUSE 9\", \"PAD RT\"]
+teleport = [\"T\"]
+use = 3
+",
+        )
+        .unwrap();
+        assert_eq!(
+            w.bindings.get(Action::Fire),
+            &[Bind::Key(obc_core::input::sc::CONTROL), Bind::Pad(pad::RIGHT_TRIGGER)]
+        );
+        assert_eq!(w.bindings.0.len(), 1, "unknown action and wrong type dropped");
     }
 }

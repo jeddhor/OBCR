@@ -1,98 +1,461 @@
-# Operation Body Count Reborn (OBCR)
+# OBCR — Operation Body Count Reborn
 
-A modern, native source port of **Operation Body Count** (Capstone Software, 1994), the Wolfenstein 3D–engine shooter with allies, grenades, flame throwers and network play.
+**OBCR is a native source port of *Operation Body Count* (Capstone Software, 1994), written from scratch in Rust on SDL 3 and rebuilt from the original executable.**
 
-OBCR is written in Rust on SDL3. It plays exactly like the original by default (tic-accurate simulation, pixel-exact 320×200 view) and offers opt-in modern enhancements: high resolution, widescreen, smooth motion, modern controls, Internet multiplayer.
+It plays the original game, floor for floor and tic for tic, from your own copy of the game files. You can play it in the original 320×200 picture, or in a modern one: high resolution and widescreen, smooth motion, xBRZ-upscaled textures, mouse and gamepad controls, and network play over the Internet.
 
-> **Status: playable, in testing.** The whole single-player game runs; the first episode (floors 1–23, Sewer 1 to UN Building 1 Top) is in owner playtesting. Behaviour follows the disassembly but has not yet been checked against the original at run time. See [docs/STATUS.md](docs/STATUS.md).
+> **Status: beta, in testing.** The whole single-player game and network play run. Behaviour follows the disassembly of the original, but it has not yet been compared frame by frame with the original running in DOSBox-X. The current version is **1.0.0-beta.2** ([CHANGELOG.md](CHANGELOG.md), [releases](https://github.com/jeddhor/OBCR/releases)); progress is tracked in [docs/STATUS.md](docs/STATUS.md).
 
-## You need the original game
+> ### 🎮 The controls are modern by default
+>
+> **W A S D** to move, the **mouse** to turn and fire, **Space** or **E** to open doors and push walls, **Shift** to run, **Q / Z / F** for your allies.
+>
+> That is *not* what Operation Body Count shipped with in 1994: the original moved with the **arrow keys**, sidestepped with **Alt** and opened things with **Space**. Pick the original scheme under *OPTIONS → CONTROL SCHEME*, and change any key under *OPTIONS → KEY BINDINGS*. See [Controls](#controls).
 
-OBCR contains no game data. You need your own copy of Operation Body Count: the floppy release (`COUNT.EXE`), or the CD release that Steam and GOG sell as a BIN/CUE image (`BCCD.EXE`). OBCR reads the original files (`GFXTILES.BC`, `MAPTEMP.BC`, `VGAGRAPH.BC`, `AUDIOT.BC`, …) at run time.
+---
 
-From the CD image, Setup (or `obcr --extract-data BODYCOUNT.cue <folder>`) extracts the game files and also rips the four CD music tracks. The CD release then plays as `BCCD.EXE` did: its opening, map 22 and victory movies, its CD music (Alt+P play, Alt+S stop, Alt+F next track) and its gameplay changes ([docs/re/CD_RELEASE.md](docs/re/CD_RELEASE.md)). OPTIONS has MUSIC SOURCE (CD audio or AdLib) and CD TRACK END (next track, or the original's silence until the next floor).
+## Contents
+
+- [Why does this exist?](#why-does-this-exist)
+- [About Operation Body Count](#about-operation-body-count)
+- [What OBCR adds, and what it keeps](#what-obcr-adds-and-what-it-keeps)
+- [Documentation](#documentation)
+- [Getting the game data](#getting-the-game-data)
+- [Installing](#installing)
+- [Running it](#running-it)
+- [Controls](#controls)
+- [Multiplayer](#multiplayer)
+- [When it goes wrong](#when-it-goes-wrong)
+- [Building from source](#building-from-source)
+- [How it is built](#how-it-is-built)
+- [Testing](#testing)
+- [Known deviations](#known-deviations)
+- [Credits](#credits)
+- [Legal](#legal)
+
+---
+
+## Why does this exist?
+
+Operation Body Count is one of the stranger children of Wolfenstein 3D: a licensed Wolf3D engine pushed into a whole extra set of systems, including squads of allies you can swap bodies with, a flamethrower that sets rooms on fire, grenades that blow holes in walls, floors with lights you can switch off, swamp creatures that splatter your visor with slime, and network deathmatch in 1994.
+
+Its source code was never released. Today Steam and GOG sell it as the original DOS program running inside DOSBox, which works, but keeps it at 320×200 with DOS-era controls and no modern network play.
+
+OBCR is a port without source code. Every behaviour comes from the original executable: the Wolfenstein 3D source code (which id Software released) serves as a starting hypothesis, and each function is checked against the disassembly of `COUNT.EXE`, with the differences written down as it goes. The knowledge base in [`docs/re/`](docs/re/README.md) records what was found, where in the executable it was found, and how sure we are of it.
+
+The project is developed by AI coding agents (Anthropic's Claude) under the owner's direction, following written rules for evidence, testing and fidelity ([CLAUDE.md](CLAUDE.md), [docs/AGENT_GUIDE.md](docs/AGENT_GUIDE.md)). Nothing from the original game is included in this repository: no data, no extracted art or sound, no decompiled code.
+
+---
+
+## About Operation Body Count
+
+> *The Government has launched a top-secret military offensive against the foreign troops occupying the U.N. towers. Code name…*
+>
+> — the original's opening screen
+
+You go in through the sewers beneath the United Nations, fight up through the maintenance level and every floor of the first UN tower, cross to the second tower and fight to its roof, where the man behind it all waits. As the original's manual supplement put it: *"Game victory? Kill Victor."*
+
+What sets it apart from its Wolfenstein 3D ancestry:
+
+- **40 floors** in four stretches: five sewer levels, a maintenance level, the 17 floors of UN Building 1 from the lobby to the top, then the 17 floors of Building 2. Ten more floors are network arenas.
+- **A body count, not a key hunt.** A floor's exit (stairs, a ladder or an elevator) only lets you leave once **half of the floor's enemies** are dead. A lamp on the status bar turns from red to yellow at half and to green when everyone is dead; trying to leave early earns you *UNFINISHED BUSINESS*.
+- **Allies.** Friendly soldiers wait on many floors. Tell them to follow you or to spread out and fight. Or *switch* into one of them, taking over their body and health while keeping your guns, and optionally leave your old body standing guard.
+- **Five weapons**: an assault shotgun, an Uzi, a Galil, a flamethrower that sets whatever it touches alight, and a grenade launcher whose blasts break walls (and hurt you, if you stand too close).
+- **A destructible, living building**: walls that crack and break, fires that spread and burn out, booby traps, generators whose switches plunge a floor into darkness, push walls hiding secret rooms, tremors that shake the screen, and splats of blood and slime across your visor that you have to wipe off.
+- **Enemies from soldiers to sewer things**: rats and giant rats, soldiers who ambush you from stools, toilets and the floor, men in black suits, swamp creatures, fat men who climb out of manholes, saucer drones, red giants, and finally Victor.
+- **Network play** in 1994: deathmatch, team play and two-player modem games on floors built for it.
+
+The full player's guide is [docs/game-guide.md](docs/game-guide.md).
+
+### Technical profile of the original
+
+| | |
+|---|---|
+| Year, publisher | 1994, Capstone Software (IntraCorp) |
+| Engine | A licensed and heavily modified Wolfenstein 3D engine |
+| Executable | `COUNT.EXE` (floppy release, 235,440 bytes) or `BCCD.EXE` (CD release, 237,056 bytes): Borland C++, 16-bit real mode, not packed |
+| Data files | Wolf3D's family of files with a `.BC` extension |
+| Maps | `MAPTEMP.BC` and `MAPHEAD.BC`: 61 map slots, 64×64 tiles, RLEW compression only (no Carmack layer) |
+| Walls, sprites, sounds | `GFXTILES.BC`, Wolf3D's VSWAP page file: 680 sprites on the floppy, 668 on the CD |
+| Screens, fonts, status bar | `VGAHEAD.BC`, `VGADICT.BC`, `VGAGRAPH.BC` |
+| Music and effects | `AUDIOHED.BC`, `AUDIOT.BC`: AdLib music (IMF) and AdLib/PC-speaker effects |
+| Digitized sound | `AUDIOMUS.BC`: 99 sounds at 9,009 Hz, in the same layout as Corridor 7's |
+| Animated sequences | FLC animations `F1.BC`–`F7.BC`; `F1`, `F5` and `F7` exist only on the CD |
+| CD music | Four Red Book audio tracks on the CD |
+| Palettes | Stored inside the executable |
+
+---
+
+## What OBCR adds, and what it keeps
+
+**It keeps the game.** The simulation runs at the original's 70 Hz tic rate with its integer arithmetic, its random-number table and its quirks. **Classic** mode shows the original 320×200 picture with the original's renderer: the per-tile floors and ceilings with their grout lines, the shading, the see-through walls and the two-part hand weapon.
+
+**It adds, in Enhanced mode** (the default):
+
+- **Resolution and shape**: 2× to 8× the original resolution, at 4:3, 16:10, 16:9 or 21:9 (wider views show more to the sides, as Wolf3D ports do), windowed or fullscreen, with optional integer scaling and a smoothing filter.
+- **Smooth motion**: the view and every actor are drawn between game tics, so the picture moves at your monitor's refresh rate while the game still runs at 70 Hz.
+- **xBRZ textures**: walls, doors, floors, ceilings, enemies, items and the weapon upscaled 2× to 6× with xBRZ. Shading, damage flashes and fades still work, because the upscale is done on palette indices. The menus, pictures and animated sequences can be upscaled too.
+- **Smooth floors**: floors and ceilings drawn in true perspective and continuous across tiles, without the original's banding.
+- **Modern controls**: WASD and the mouse, gamepads with analogue movement and rumble, and full rebinding of every action for keyboard, mouse and gamepad.
+- **Sound**: up to four digitized voices mixed instead of the original's single Sound Blaster voice; the original AdLib and PC-speaker effects remain available.
+- **The CD release in full**: install straight from the Steam or GOG disc image, with its movies, its gameplay changes and its CD music ripped from the image ([docs/cd-release.md](docs/cd-release.md)).
+- **Network play over UDP**, on a LAN or across the Internet, for up to 12 players ([docs/multiplayer.md](docs/multiplayer.md)).
+- **Settings in one readable file** (`obcr.toml`), saved games in your user profile, and the original's ten save slots, AutoSave and F9 quick save.
+
+**It fixes two things that could leave a floor unfinishable**, as deliberate departures from the original ([DECISIONS.md](docs/DECISIONS.md)): grenades and fires no longer destroy a floor's exits or seal its doors (ADR-016), and kills by your allies count toward the exit's quota (ADR-018), though they still earn no points.
+
+Every option is described in [docs/options.md](docs/options.md).
+
+---
 
 ## Documentation
 
-| Document | For |
+**For players**
+
+| Document | What it is |
 |---|---|
-| [docs/DESIGN.md](docs/DESIGN.md) | Master design guide: goals, fidelity model, architecture, subsystem designs, verification |
-| [docs/AGENT_GUIDE.md](docs/AGENT_GUIDE.md) | Master AI agent development guide: workflow, reverse engineering, oracle, standards, definition of done |
-| [docs/MILESTONES.md](docs/MILESTONES.md) | Milestones M0–M15 with tasks and acceptance criteria |
-| [docs/STATUS.md](docs/STATUS.md) | Current progress, active tasks, blockers |
-| [docs/MECHANICS_AUDIT.md](docs/MECHANICS_AUDIT.md) | Every OBC mechanic, what the original's code does, and where OBCR implements it |
-| [docs/DECISIONS.md](docs/DECISIONS.md) | Architecture decision records |
-| [docs/re/](docs/re/README.md) | What we know about the original: formats, symbols, deltas from Wolf3D, open questions |
-| [CLAUDE.md](CLAUDE.md) | Rules every AI agent session loads |
+| [docs/game-guide.md](docs/game-guide.md) | The player's guide: floors, the body count, weapons, items, enemies, allies, hazards and the original's own tips. |
+| [docs/options.md](docs/options.md) | Every menu option, every command-line option, the settings file, and where OBCR keeps things. |
+| [docs/cd-release.md](docs/cd-release.md) | Playing the Steam/GOG CD release: installing from the disc image, the movies, the CD music and how the CD version plays differently. |
+| [docs/multiplayer.md](docs/multiplayer.md) | Network play: game types, setting up a LAN or Internet game, ports and routers, the rules, troubleshooting. |
+| [installer/README.md](installer/README.md) | OBCR Setup: what it installs, where, the command line, and how the installers are built. |
+| [docs/obcr.6](docs/obcr.6) | A manual page (`man -l docs/obcr.6`). |
+| [CHANGELOG.md](CHANGELOG.md) | What changed in each release. |
 
-## Building
+**For developers and the curious**
 
-Requirements: Rust (the version in `rust-toolchain.toml` installs itself through rustup), CMake and a C compiler (SDL3 is built from source and linked statically). On Windows, Visual Studio's bundled CMake works; point `CMAKE` at it in a machine-local `.cargo/config.toml` if `cmake` on the PATH is too old.
+| Document | What it is |
+|---|---|
+| [docs/DESIGN.md](docs/DESIGN.md) | The design: goals, the fidelity model, architecture, every subsystem, verification. |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | Architecture decision records: every significant choice and why (ADR-001 onward). |
+| [docs/MECHANICS_AUDIT.md](docs/MECHANICS_AUDIT.md) | Every Operation Body Count mechanic, what the original's code does, and where OBCR implements it. |
+| [docs/re/](docs/re/README.md) | The reverse-engineering knowledge base: file formats, the executable's layout, actors, player, allies, renderer, audio, game flow, network, the CD release, and open questions. Every claim carries a confidence grade and a citation. |
+| [docs/ci.md](docs/ci.md) | The test gates, what GitHub Actions runs and cannot run, and how a release is cut. |
+| [docs/STATUS.md](docs/STATUS.md), [docs/MILESTONES.md](docs/MILESTONES.md) | Where the project stands, and the milestone plan it follows. |
+| [docs/AGENT_GUIDE.md](docs/AGENT_GUIDE.md), [CLAUDE.md](CLAUDE.md) | The rules the AI agents that develop OBCR work by. |
+| [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | Third-party components and their licences. |
+
+---
+
+## Getting the game data
+
+**This repository contains no Operation Body Count data.** You need your own copy. OBCR recognizes two releases by the SHA-256 of their files:
+
+| Release | Where you get it | What OBCR needs |
+|---|---|---|
+| **The CD release** (`BCCD.EXE`) | Steam and GOG sell it; both ship the CD as a BIN/CUE disc image | The **`.cue` file** (with its `.bin` beside it). Setup takes the files, the movies and the music straight off the image. |
+| **The floppy release** (`COUNT.EXE`, files dated 1996-12-24) | Old retail floppies and their copies | The folder with the game files. |
+
+The CD image is the best source: it is the only one with the opening, map 22 and victory movies and the CD music. A Steam installation's `C/BCCD` folder holds the CD release's files too and works as a folder, but without the music.
+
+These are the files OBCR uses. Everything else in an installation (`SETUP.EXE`, `INSTALL.EXE`, `README.EXE`, the batch files, `GFXINFOV.BC`, `CONFIG.DAT` and DOS saved games) is ignored:
 
 ```
-cargo build --release
-cargo xtask ci          # format, lints, tests, dependency licenses
-cargo xtask test-data   # also the tests that need the game data
+COUNT.EXE  or  BCCD.EXE    the executable: OBCR reads its tables and palettes      required
+GFXTILES.BC                walls, sprites and some digitized sounds                required
+MAPHEAD.BC, MAPTEMP.BC     the maps                                                required
+VGAHEAD.BC, VGADICT.BC,    screens, fonts, status bar and menu art                 required
+VGAGRAPH.BC
+AUDIOHED.BC, AUDIOT.BC     AdLib music and AdLib/PC-speaker effects                required
+AUDIOMUS.BC                the 99 digitized sounds                                 required
+F2.BC F3.BC F4.BC F6.BC    animated sequences (floor changes, death)               optional
+F1.BC F5.BC F7.BC          the CD's movies (opening, map 22, victory)              optional, CD only
+TRACK02.QOA .. TRACK05.QOA the CD music, ripped from the image by Setup            optional, CD only
 ```
+
+The executable is required because Operation Body Count keeps its behaviour tables (every enemy's animation states, the weapons' timing, the items) and its palettes inside it. OBCR reads them at start-up; nothing is copied into OBCR itself. A missing sequence is skipped silently, as the original does.
+
+The files must match a known release exactly. Patched, cracked or otherwise modified executables are refused, because the tables would not be where OBCR looks for them. The shareware release has not been examined yet and is not recognized.
+
+---
 
 ## Installing
 
-The current version is **1.0.0-beta.2** (a pre-release; see [CHANGELOG.md](CHANGELOG.md)). `OBCR-Setup-<version>-windows-x64.exe` and `OBCR-Setup-<version>-linux-x86_64` install OBCR for your user account: you point Setup at your Operation Body Count folder or CD image (`.cue`), it checks the files and copies the game plus the files it uses into one folder (`%LOCALAPPDATA%\Programs\OBCR`, or `~/.local/opt/OBCR` on Linux) with menu entries and an uninstaller. Build them with `installer/build-windows.ps1` or `installer/build-linux.sh`; see [installer/README.md](installer/README.md).
+| If you want | Use |
+|---|---|
+| the usual way, on Windows or Linux | [OBCR Setup](#obcr-setup), the graphical installer |
+| a scripted or unattended install | [Setup from a terminal](#setup-from-a-terminal) |
+| no installer at all | [The game on its own](#the-game-on-its-own) |
+| to compile it yourself | [Building from source](#building-from-source) |
 
-## Playing
+Whichever route you take, OBCR keeps your settings and saved games in your user profile, never in the game folder (see [Running it](#running-it)).
+
+### OBCR Setup
+
+Download the installer for your system from the [releases page](https://github.com/jeddhor/OBCR/releases):
+
+- **Windows** (64-bit): `OBCR-Setup-<version>-windows-x64.exe`. It is not code-signed, so SmartScreen warns the first time: choose *More info → Run anyway*.
+- **Linux** (x86-64, glibc 2.35 or newer, such as Ubuntu 22.04 and later): `OBCR-Setup-<version>-linux-x86_64`. Make it executable (`chmod +x`) and run it. It carries its own Qt; the graphics drivers, X11 or Wayland and the sound system come from your desktop.
+
+Setup installs for your user account only and never asks for administrator rights. Its pages:
+
+1. **Your game files.** Choose **CD image…** and pick the `.cue` of the Steam or GOG edition, or **Folder…** for a folder with the game files. Setup suggests the images and folders it finds in the usual Steam and GOG locations. It checks every file against the known releases and tells you what it found: the release, how many files it will copy, how many animated sequences, and from a CD image how many music tracks it will rip.
+2. **Installation folder.** By default `%LOCALAPPDATA%\Programs\OBCR` on Windows and `~/.local/opt/OBCR` on Linux. It must be new, empty, or an earlier OBCR installation (which is then updated). Choose whether you want menu entries, a desktop shortcut and, on Linux, an `obcr` command in `~/.local/bin`.
+3. **Installing.** The game, the game files it uses and, from a CD image, the ripped music (about 57 MB, about 15 seconds) go into the folder, with an uninstaller.
+
+The result:
 
 ```
-target/release/obcr --data <your Operation Body Count directory>
+<folder>/obcr[.exe]          the game
+<folder>/data/               your game files (and TRACK02.QOA .. from a CD image)
+<folder>/uninstall/          the uninstaller
+<folder>/install-manifest.txt   everything Setup created, for the uninstaller
 ```
 
-OBCR remembers the data directory (and finds a Steam install by itself). Settings go to `obcr.toml` in your user config directory and saved games to your user data directory, never into the game directory.
+On Windows OBCR appears in the Start menu and in *Settings → Apps*; on Linux in your applications menu. Running Setup again offers to update or remove the installation.
 
-Useful options: `--classic` (original 320×200), `--scale 2..8` and `--aspect 4:3|16:10|16:9|21:9` (Enhanced), `--xbrz 0|2..6`, `--floors smooth|original`, `--xbrz-menus on|off` and `--xbrz-hud on|off` (Enhanced textures, see below), `--fullscreen` / `--windowed`, `--play N` (start straight on floor N+1, for testing), `--nsr250` (the original's cheat parameter: in game, Alt+Left Shift+B turns on BOGUS MODE, then Alt+R restock, Alt+I invincible, Alt+H health, Alt+B bewitched, Alt+W warp to a floor; bogus games do not enter the high scores). Alt+Enter toggles fullscreen.
+### Setup from a terminal
 
-In the main menu, **O** opens OPTIONS: display mode (Classic or Enhanced), resolution, aspect, fullscreen, smooth filter, integer scaling, smooth motion, textures, floors, xBRZ for menus and for the status bar, control scheme, always run, mouse and pad speed, rumble, volumes, the number of sound voices (1 as the original, or 4 mixed) and the effects device (digitized, AdLib or PC speaker). The original menu items work as in the original game (GAME TYPE picks difficulty 1–3, Random, or the network types N, T and M; START GAME begins on floor 1).
+```sh
+OBCR-Setup --unattended --data /path/to/BODYCOUNT.cue
+OBCR-Setup --unattended --data /path/to/game/folder --target ~/Games/OBCR --desktop-shortcut
+OBCR-Setup --uninstall --unattended
+```
 
-### Enhanced textures and floors
+Unattended runs print their progress and exit with 0 on success, 1 on failure and 2 when the game files are incomplete. All options: [installer/README.md](installer/README.md).
 
-These apply in Enhanced mode only; Classic always shows the original picture.
+### The game on its own
 
-- **TEXTURES**: `XBRZ 2X` to `XBRZ 6X` upscale walls, doors, floors, ceilings, enemies, items and the weapon with xBRZ, which rounds off the blocky texels while keeping edges sharp. `ORIGINAL` shows the original texels. Default 4×. Shading, damage flashes and fades still work as in the original. Higher factors take more memory: textures are built when first needed, about 0.2 MB each at 4× and 0.4 MB at 6×.
-- **FLOORS**: `SMOOTH` draws floors and ceilings in true perspective, aligned to the map grid and continuous across tiles, with the light fading smoothly with distance. `ORIGINAL` keeps the original's look: each tile drawn separately with the texture pasted flat on screen, a grout line between tiles and one brightness per tile. Default smooth.
-- **XBRZ MENUS**: upscales the menus, title and intro pictures, animated sequences (cutscenes), help and score pages with xBRZ, at the resolution multiple (up to 6×). Default on.
-- **XBRZ STATUS BAR**: upscales the in-game status bar and overlays too. Default off: xBRZ distorts its small lettering.
+The game is a single executable with no installation step. Build it ([Building from source](#building-from-source)) or take `obcr` from an installation, and point it at the game files:
 
-### Multiplayer
+```sh
+obcr --data /path/to/game/folder
+```
 
-Choose GAME TYPE **N** (network), **T** (network teams) or **M** (two-player direct connection), then START GAME. On the setup screen pick your character (or team) with ↑/↓ and press Enter. Up to 12 players. As in the original, each player starts alone and the others appear as they arrive. Taking an exit moves everyone on that floor to the next one, and the KILLS table shows who killed whom. Saving is off in network games, and opening the menu counts as a suicide.
+From a CD image, extract the files first. This does exactly what Setup does, music included:
 
-- **Same network (LAN):** nothing to set up. Players on the same UDP port find each other by broadcast. The default port is 16387 (the original's IPX socket 0x4003). Type four hex digits on the setup screen to use another port, so several games can run side by side.
-- **Over the Internet:** press **J** on the setup screen and type the other player's address (`host` or `host:port`). The player you call must let UDP port 16387 (or their chosen port) through their firewall or router. Once two players meet, everyone else they know is introduced automatically.
-- **M (direct):** one player waits and the other presses J and calls them.
+```sh
+obcr --extract-data /path/to/BODYCOUNT.cue ~/Games/OBC-data
+obcr --data ~/Games/OBC-data
+```
 
-From the command line: `--net N|T|M` starts a network game at once (`--net-setup` opens the setup screen instead), with `--net-port P`, `--net-join HOST[:PORT]` (repeatable) and `--net-choice 0|1|2`.
+Without `--data`, OBCR looks in this order: the `OBC_DATA_DIR` environment variable; `data_dir` in the settings file; the folders `OBC`, `data` or the executable's own folder next to the executable; Steam's default `Operation Body Count/C/BCCD` folder.
 
-### Controls
+### Uninstalling
 
-Every key, mouse button and gamepad button can be changed in **OPTIONS > KEY BINDINGS** (also shown after the help page: press H in the main menu). Each action takes up to three keyboard or mouse inputs and two gamepad buttons; Left/Right switches between the keyboard and gamepad lists, Enter (A) waits for the new input, Del (X) clears. Changing the CONTROL SCHEME restores that scheme's defaults. The sticks always move and turn, Esc and Start always open the menu. The defaults:
+Use *Settings → Apps* (Windows), the *Uninstall OBCR* menu entry, `<folder>/uninstall/OBCR-Uninstall`, or Setup itself. It removes exactly what the installation created. Your settings and saved games stay unless you tick the box to remove them too (`--purge` from a terminal).
+
+---
+
+## Running it
+
+Start OBCR from the menu entry, or run `obcr`. You get the original's opening (the CD release's movie first, then the story page and the title), then the main menu:
+
+| Main menu | |
+|---|---|
+| **START GAME** | Begin on floor 1 with the current game type |
+| **GAME TYPE** | Difficulty 1–3, Random, or the network types N, T and M |
+| **VIEW SIZE** | The size of the 3D view |
+| **LOAD GAME / SAVE GAME** | Ten slots; the last holds the AutoSave written before every floor |
+| **AUDIO MIX** | OBCR's OPTIONS, opened at the sound settings |
+| **HIGH SCORES**, **CONTINUE**, **ABORT GAME**, **EXIT TO DOS** | As in the original |
+| **O** | OBCR's **OPTIONS**: display, textures, controls, key bindings, sound and music |
+| **H** | The original's help page, followed by the key bindings |
+
+| Where things go | Windows | Linux |
+|---|---|---|
+| Settings (`obcr.toml`) | `%APPDATA%\OBCR\config\` | `~/.config/obcr/` |
+| Saved games | `%APPDATA%\OBCR\data\saves\` | `~/.local/share/obcr/saves/` |
+| The game files | wherever you installed them; OBCR never writes there | the same |
+
+`--config FILE` puts the settings file elsewhere, with saved games in a `saves` folder beside it. Useful command-line options:
+
+```sh
+obcr --classic                       # the original 320x200 picture
+obcr --scale 6 --aspect 21:9         # Enhanced at 6x, ultra-wide
+obcr --fullscreen
+obcr --xbrz 0 --floors original      # Enhanced resolution, original-looking textures
+obcr --play 6 --difficulty 2         # straight onto floor 7 (map slot 6), difficulty 3
+obcr --nsr250                        # the original's cheat parameter (see the game guide)
+obcr --help                          # all of them
+```
+
+The complete list, the settings file and every menu option are in [docs/options.md](docs/options.md). Alt+Enter toggles fullscreen at any time.
+
+---
+
+## Controls
+
+**The defaults are modern, not the original's.** Out of the box you move with **W A S D**, turn with the mouse and open things with **Space** or **E**. Operation Body Count in 1994 moved with the **arrow keys**, sidestepped by holding **Alt**, and opened things with **Space**. Switch with *OPTIONS → CONTROL SCHEME*. Each scheme comes with its own defaults.
 
 | Action | Modern (default) | Original | Gamepad |
 |---|---|---|---|
-| Move | W / S, arrows | ↑ / ↓ | left stick |
-| Turn | mouse, ← / → | ← / →, mouse | right stick |
-| Strafe | A / D | Alt + ← / → | left stick |
+| Move forward / back | W / S, ↑ / ↓ | ↑ / ↓ | left stick, D-pad up |
+| Turn | mouse, ← / → | ← / →, mouse | right stick, D-pad left/right |
+| Sidestep | A / D | hold Alt and turn | left stick |
 | Fire | left mouse, Ctrl | Ctrl, left mouse | right trigger |
-| Use / open | Space, E, right mouse | Space, middle mouse | A |
-| Run | Shift (inverted by Always run) | Shift, right mouse | left trigger, L3 |
-| Weapons | 1–5, mouse wheel | 1–5 | LB / RB |
-| Ally: switch / stay & switch / follow-disperse | Q / Z / F | A / S / F | X / B / Y |
-| Wipe visor | V | W | D-pad down |
-| Map (Tab overlay) | Tab | Tab | Back |
+| Open, use, push | Space, E, right mouse | Space, middle mouse | A |
+| Run | Shift | Shift, right mouse | left trigger, left stick click |
+| Weapons | 1–5, mouse wheel | 1–5, mouse wheel | LB / RB |
+| Ally: switch / switch and stay / follow or disperse | Q / Z / F | A / S / F | X / B / Y |
+| Wipe the visor | V | W | D-pad down |
+| Overhead map | Tab | Tab | Back |
 | Menu | Esc | Esc | Start |
-| Quick save | F9 | F9 | — |
-| Tremors on/off, textured floors off / on, pause | F8, F5 / F6, Pause | same | — |
-| Exact health, crosshair, sound/music toggles, quit | H, C, F1/F2, F10 | same | — |
 
-You leave a floor through its stairs, ladder or elevator once at least half of its enemies are dead: the kill lamp on the status bar is red, turns yellow at half and green when every enemy is dead. Kills by allies earn no points but do count. There are no extra lives: save often (F9 saves to the slot you last saved from the menu; an AutoSave is written before every floor change).
+The rest is the same in both schemes:
+
+| Key | Action |
+|---|---|
+| F9 | Quick save, to the slot you last saved to from the menu |
+| H / C | Exact health overlay / crosshair |
+| F1 / F2 | Sound on or off / music on or off |
+| F5 / F6 | Textured floors and ceilings off / on |
+| F8 | Tremors (screen shake) on or off |
+| Pause | Pause |
+| F10 | Back to DOS (quit) |
+| Alt+P / Alt+S / Alt+F | CD music: play / stop / next track (CD release) |
+| Alt+Enter | Fullscreen |
+
+**Rebinding.** *OPTIONS → KEY BINDINGS* (also shown after the help page) lists every action. Each takes up to three keyboard or mouse inputs (mouse buttons 4 and 5 and the wheel included) and two gamepad buttons (triggers included). Left and Right switch between the keyboard-and-mouse list and the gamepad list. Enter (A) waits for the new input, Backspace or Delete (X) clears a row, and the last row restores the scheme's defaults. An input bound to another action moves to the new one, and the screen says so. Esc and Start always open the menu; the sticks always move and turn.
+
+**Always run** (OPTIONS) inverts the run key. **Mouse speed** and **pad turn speed** are in OPTIONS too; rumble can be switched off.
+
+---
+
+## Multiplayer
+
+Operation Body Count had network and modem play; OBCR brings it back over UDP, on a LAN or across the Internet, for up to 12 players.
+
+Set **GAME TYPE** to **N** (every player for themselves), **T** (three teams) or **M** (two players, the old modem game), then **START GAME**. On the setup screen pick your character or team and press Enter. Players on the same network find each other by themselves. To play across the Internet, press **J** and type the other player's address; the player you call must let UDP port 16387 through their router. From the command line:
+
+```sh
+obcr --net N                                  # deathmatch, find LAN players
+obcr --net T --net-choice 1                   # teams, join team 2
+obcr --net N --net-join example.org:16387     # call a player over the Internet
+```
+
+Network games are not compatible with the DOS original, and floppy and CD copies cannot play together. So far network play has been tested with several copies on one machine, not yet across a real network. Everything else, including the rules, scoring, the KILLS table, ports and troubleshooting, is in [docs/multiplayer.md](docs/multiplayer.md).
+
+---
+
+## When it goes wrong
+
+| Symptom | Cause and fix |
+|---|---|
+| *"Operation Body Count data not found"* | OBCR could not find the game files. Pass `--data <folder>`, set `OBC_DATA_DIR`, or reinstall with Setup. |
+| *"missing or unrecognized files: …"* | The named files are missing or are not exactly a known release's. Use the original files: patched or cracked executables are refused. |
+| Setup says the folder is *"not a complete copy of the supported release"* | Choose the folder that contains `GFXTILES.BC`, or the `.cue` of the disc image (not the `.bin`, although a `.bin` with its `.cue` beside it works too). |
+| No CD music | The music is ripped only when installing from the CD image. Check *OPTIONS → MUSIC SOURCE* is CD AUDIO; ADLIB plays the FM music instead. |
+| No opening movie | `F1.BC` exists only on the CD image; the floppy release never had it. |
+| The music stops partway through a floor | *OPTIONS → CD TRACK END* is set to ORIGINAL, which keeps the original's silence until the next floor. NEXT TRACK moves on. |
+| A saved game will not load (*"saved with data release …"*) | Saved games belong to the release they were made with. Floppy saves need the floppy files, and CD saves need the CD files. |
+| SmartScreen blocks Setup | The installers are not code-signed. Choose *More info → Run anyway*. |
+| Linux Setup will not start | It needs glibc 2.35 or newer. Run it from a terminal to see the error. |
+| The picture looks too soft or too sharp | Toggle *TEXTURES* (xBRZ), *SMOOTH FILTER* and *INTEGER SCALING* in OPTIONS, or use `--classic`. |
+| Text on the status bar looks distorted | *XBRZ STATUS BAR* is on; it is off by default for that reason. |
+
+If something looks like a bug rather than a setting, please [open an issue](https://github.com/jeddhor/OBCR/issues). Include the release you play (floppy or CD), what you did, and a screenshot if possible.
+
+---
+
+## Building from source
+
+You need **Rust** (the version pinned in `rust-toolchain.toml` installs itself through rustup), **CMake** and a C compiler. SDL 3 is built from source and linked statically, so there is nothing else to install on Windows. On Linux, install SDL 3's build dependencies first. On Ubuntu:
+
+```sh
+sudo apt install build-essential cmake ninja-build libx11-dev libxext-dev libxrandr-dev \
+    libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev \
+    libwayland-dev wayland-protocols libdecor-0-dev libegl1-mesa-dev libgl1-mesa-dev \
+    libgles2-mesa-dev libdrm-dev libgbm-dev libasound2-dev libpulse-dev \
+    libpipewire-0.3-dev libdbus-1-dev libudev-dev libibus-1.0-dev
+```
+
+Then:
+
+```sh
+cargo build --release                # target/release/obcr
+cargo run --release -- --data /path/to/game/folder
+```
+
+On Windows, the CMake bundled with Visual Studio works; if an older `cmake` on the PATH gets in the way, point the `CMAKE` environment variable at a newer one (for example in a machine-local `.cargo/config.toml`).
+
+The installers are built with `installer/build-windows.ps1` (Qt 6 MinGW kit) and `installer/build-linux.sh` (on Ubuntu 22.04, so the result runs on newer systems); see [installer/README.md](installer/README.md). GitHub Actions builds both for every release ([docs/ci.md](docs/ci.md)).
+
+---
+
+## How it is built
+
+OBCR is a Cargo workspace of small crates with one-way dependencies:
+
+| Crate | What it does |
+|---|---|
+| `obc-core` | Fixed-point maths, angles, the original's random-number table, constants and input state |
+| `obc-formats` | Parsers for every original file (VSWAP, maps, VGAGRAPH, audio, FLC, palettes, the executable's tables), release identification, the CD image reader and the QOA codec |
+| `obc-sim` | The game itself: a deterministic simulation with no I/O, no clock, no floating point and no randomness except the original's table |
+| `obc-render` | The software renderer: the original's ray caster and its Enhanced extensions, xBRZ |
+| `obc-audio` | AdLib synthesis (Nuked OPL3), PC speaker, digitized sound mixing, IMF music, CD-audio streaming |
+| `obc-net` | The UDP transport for network games |
+| `obc-platform` | SDL 3: window, presentation, audio device, keyboard, mouse, gamepads, rumble |
+| `obc-ui` | Screens, menus, the status bar, game flow, settings, saved games |
+| `obcr` | The executable that ties it together, and the installer's helpers |
+| `obcr-setup` | The self-extracting launcher for the Qt installer in `installer/` |
+| `tools/obc-tool` | Inspect and export the original data (for development; exports stay out of the repository) |
+| `xtask` | Build automation: `cargo xtask ci`, `test-data`, `pack-installer` |
+
+The simulation mirrors the original's control flow function by function, with its integer widths, its overflow and its random-number call order, and it cites the address of the original function it ports. Because it is deterministic, a saved game continues bit-for-bit as if it had never been saved, and every network peer computes the same game. The design is in [docs/DESIGN.md](docs/DESIGN.md).
+
+---
+
+## Testing
+
+```sh
+cargo xtask ci          # formatting, clippy with warnings as errors, all tests, licence and dependency checks
+cargo xtask test-data   # also the tests that need the original game data (OBC_DATA_DIR)
+```
+
+The tests that need no game data cover the parsers (including property tests against malformed input), the simulation's rules, the QOA codec, the disc reader, the mixer, the controls and the network transport (including a four-player game with 10% packet loss). The data-gated tests load the real files and play them:
+
+- **Soak tests** play every single-player floor at every difficulty for 2,500 frames with scripted input, on the floppy and on the CD release, failing on any panic, arithmetic overflow or simulation fault.
+- **Game-flow tests** drive the real screens through floor changes, saving and loading (which must continue identically), death and the high-score entry.
+- **Release tests** check that the floppy and CD executables' tables line up, and that the CD image identifies and its music survives encoding.
+
+GitHub Actions runs `cargo xtask ci` on Linux and Windows for every push. The data-gated tests cannot run there, because the game data is never uploaded. See [docs/ci.md](docs/ci.md).
+
+---
+
+## Known deviations
+
+OBCR aims to play exactly like the original. Where it does not, it says so:
+
+- **Not yet checked at run time.** Behaviour comes from reading the disassembly, and the soak and flow tests guard against crashes, not against subtle differences. A frame-by-frame comparison with the original running in DOSBox-X is planned and has not been done.
+- **Two deliberate fixes** keep floors finishable: blasts spare exits and doors (ADR-016), and ally kills count toward the exit quota (ADR-018).
+- **CD release**: one value cannot be read from the code. A flame's direct hit passes an uninitialised value as its damage, so OBCR uses the floppy formula's average instead (Q-036). The CD-only movies play at about 12 frames a second; the original played them as fast as the CD drive could read them.
+- **CD music** moves on to the next track by default when one ends; the original fell silent until the next floor (*CD TRACK END → ORIGINAL* restores that).
+- **Saved games** are OBCR's own format; DOS saved games cannot be loaded.
+- **Network play** uses OBCR's own UDP transport and cannot play against the DOS original. The rules are the original's.
+- **Not ported**: the developers' debug keys. The healing stations are ported but, as in the original, nothing on the floppy release's floors can start them.
+
+The full mechanic-by-mechanic comparison is [docs/MECHANICS_AUDIT.md](docs/MECHANICS_AUDIT.md), and the unknowns are listed in [docs/re/OPEN_QUESTIONS.md](docs/re/OPEN_QUESTIONS.md).
+
+---
+
+## Credits
+
+**Operation Body Count** © 1994 Capstone Software / IntraCorp. From the game's own credits screen:
+
+| Role | Credit |
+|---|---|
+| Executive Producer | David Turner |
+| Producer | Amy Smith Boylan |
+| Assistant Producer | Katheryn Gangi |
+| Programmers | Les Bird, Jeff Schulz, Rafael Paiz |
+| Art | Ruben Cabrera, Scott Nixon |
+| 3-D Animation | Carlos Ibarra, Ernesto Roque |
+| Manual | Richard Henning |
+| Level Design | Ruben Cabrera, Richard Henning, Rafael Paiz, Scott Nixon |
+| Music & Sound | Joe Abbati |
+| Quality Assurance | James Wheeler |
+
+**Wolfenstein 3D** © id Software: the engine Operation Body Count licensed, and whose released source code is OBCR's starting point.
+
+**OBCR** stands on open-source work: SDL 3, the Nuked OPL3 emulator, xBRZ by Zenju, Qt 6 for the installer, and the Rust crates listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). [ECWolf](https://maniacsvault.net/ecwolf/) and the owner's Corridor 7 port, EC7Wolf, were references for the Capstone engine family; Operation Body Count shares Corridor 7's engine lineage.
+
+**OBCR is an unofficial preservation project. It is not affiliated with or endorsed by Capstone Software, IntraCorp, id Software, or the current rights holders of Operation Body Count.**
+
+---
 
 ## Legal
 
-Operation Body Count is © its rights holders. OBCR is an unofficial, independent project and is not affiliated with or endorsed by them. OBCR's code is licensed under the GNU General Public License, version 3 or later ([LICENSE](LICENSE), [ADR-006](docs/DECISIONS.md#adr-006--license-gpl-30-or-later)). Third-party components and their licences are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+- **OBCR's code** is licensed under the GNU General Public License, version 3 or later ([LICENSE](LICENSE), [ADR-006](docs/DECISIONS.md)). Binaries that include xBRZ are distributed under GPL-3.0.
+- **Third-party components** and their licences: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+- **Operation Body Count** and all of its data (maps, art, sound, music, movies, the executables and the tables and palettes in them) remain the property of their rights holders. None of it is included in, embedded in or distributed with OBCR; you supply it from your own copy.
