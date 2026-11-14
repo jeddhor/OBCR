@@ -70,6 +70,8 @@ From the command line: `--net N|T|M` starts a network game at once (`--net-setup
 
 ### Controls
 
+Every key, mouse button and gamepad button can be changed in **OPTIONS > KEY BINDINGS** (also shown after the help page: press H in the main menu). Each action takes up to three keyboard or mouse inputs and two gamepad buttons; Left/Right switches between the keyboard and gamepad lists, Enter (A) waits for the new input, Del (X) clears. Changing the CONTROL SCHEME restores that scheme's defaults. The sticks always move and turn, Esc and Start always open the menu. The defaults:
+
 | Action | Modern (default) | Original | Gamepad |
 |---|---|---|---|
 | Move | W / S, arrows | ↑ / ↓ | left stick |
@@ -84,10 +86,10 @@ From the command line: `--net N|T|M` starts a network game at once (`--net-setup
 | Map (Tab overlay) | Tab | Tab | Back |
 | Menu | Esc | Esc | Start |
 | Quick save | F9 | F9 | — |
-| Tremors on/off, textured floors off/on, pause | F8, F5/F6, Pause | same | — |
+| Tremors on/off, textured floors off / on, pause | F8, F5 / F6, Pause | same | — |
 | Exact health, crosshair, sound/music toggles, quit | H, C, F1/F2, F10 | same | — |
 
-You leave a floor through its stairs, ladder or elevator once at least half of its enemies are dead: the kill lamp on the status bar is red, turns yellow at half and green when every enemy is dead. Kills by allies earn nothing and do not count. There are no extra lives: save often (F9 saves to the slot you last saved from the menu; an AutoSave is written before every floor change).
+You leave a floor through its stairs, ladder or elevator once at least half of its enemies are dead: the kill lamp on the status bar is red, turns yellow at half and green when every enemy is dead. Kills by allies earn no points but do count. There are no extra lives: save often (F9 saves to the slot you last saved from the menu; an AutoSave is written before every floor change).
 
 ## Legal
 

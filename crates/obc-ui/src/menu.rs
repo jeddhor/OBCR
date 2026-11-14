@@ -35,7 +35,7 @@ mod pic {
 }
 
 /// Menu sound (`SD_PlaySound(85)` per cursor step).
-const MOVE_SOUND: u16 = 85;
+pub(crate) const MOVE_SOUND: u16 = 85;
 /// `TicDelay(20)` between repeated cursor steps.
 const REPEAT_TICS: u32 = 20;
 
@@ -46,7 +46,7 @@ pub fn nearest(pal: &Palette, rgb: [u8; 3]) -> u8 {
     (0..256).min_by_key(|&i| d(&pal[i])).unwrap_or(0) as u8
 }
 
-fn play_digi(ctx: &Ctx, id: u16) {
+pub(crate) fn play_digi(ctx: &Ctx, id: u16) {
     if let Some(d) = ctx.assets.digi.get(usize::from(id)).filter(|d| !d.is_empty()) {
         ctx.audio.send(AudioCommand::PlayDigi {
             channel: 0,
@@ -250,9 +250,8 @@ enum Mode {
     ViewSize,
     GameType,
     Confirm(usize),
-    /// Pic 3 (the original keys), then OBCR's bindings for the current profile.
+    /// Pic 3 (the original keys), then the KEY BINDINGS screen.
     Help(u32),
-    Keys(bool),
     FadeIn(u32),
 }
 
@@ -481,16 +480,12 @@ impl Menu {
                 }
             }
             Mode::Help(t) => {
-                self.mode = if t > 5 && any_key(input) {
-                    Mode::Keys(ctx.settings.input.profile != "original")
-                } else {
-                    Mode::Help(t + 1)
-                };
-            }
-            Mode::Keys(_) => {
-                if any_key(input) {
+                // Then OBCR's own controls: the live bindings, editable.
+                if t > 5 && any_key(input) {
                     self.mode = Mode::Items;
+                    return Transition::Push(Box::new(crate::rebind::Rebind::new()));
                 }
+                self.mode = Mode::Help(t + 1);
             }
         }
         Transition::None
@@ -498,10 +493,6 @@ impl Menu {
 
     fn draw_menu(&mut self, a: &Assets, out: &mut Frame) {
         let pal = a.picpal;
-        if let Mode::Keys(modern) = self.mode {
-            draw_keys(out, a, modern);
-            return;
-        }
         if let Mode::Help(t) = self.mode {
             show_pic(out, a, pic::MENU);
             if let Some(h) = a.pics.get(pic::HELP) {
@@ -561,59 +552,6 @@ impl Menu {
             _ => pal,
         };
     }
-}
-
-/// The second help page: OBCR's bindings (keyboard profile and gamepad).
-fn draw_keys(out: &mut Frame, a: &Assets, modern: bool) {
-    out.frame.clear(0);
-    out.layer.clear(0);
-    out.layer_key = None;
-    let pal = a.gamepal;
-    out.layer.bar(4, 2, 312, 196, nearest(&pal, [16, 16, 56]));
-    let Some(font) = a.fonts.first() else { return };
-    let (hi, fg) = (nearest(&pal, [255, 220, 0]), nearest(&pal, [255, 255, 255]));
-    let title: &[u8] = if modern { b"MODERN CONTROLS" } else { b"ORIGINAL CONTROLS" };
-    draw_text(out.layer, font, title, 160 - text_width(font, title) / 2, 5, hi);
-    let rows: &[(&str, &str, &str)] = if modern {
-        &[
-            ("MOVE", "W S  ARROWS", "LEFT STICK"),
-            ("TURN", "MOUSE  ARROWS", "RIGHT STICK"),
-            ("STRAFE", "A D", "LEFT STICK"),
-            ("FIRE", "LMB  CTRL", "R TRIGGER"),
-            ("USE", "SPACE E RMB", "A"),
-            ("RUN", "SHIFT", "L TRIGGER"),
-            ("WEAPON", "1-5  WHEEL", "LB RB"),
-            ("ALLY SWITCH", "Q", "X"),
-            ("STAY+SWITCH", "Z", "B"),
-            ("ALLY MODE", "F", "Y"),
-            ("WIPE VISOR", "V", "DPAD DOWN"),
-            ("MAP", "TAB", "BACK"),
-            ("MENU", "ESC", "START"),
-        ]
-    } else {
-        &[
-            ("MOVE", "UP DOWN", "LEFT STICK"),
-            ("TURN", "LEFT RIGHT MOUSE", "RIGHT STICK"),
-            ("STRAFE", "ALT", "LEFT STICK"),
-            ("FIRE", "CTRL  LMB", "R TRIGGER"),
-            ("USE", "SPACE  MMB", "A"),
-            ("RUN", "SHIFT  RMB", "L TRIGGER"),
-            ("WEAPON", "1-5", "LB RB"),
-            ("ALLY SWITCH", "A", "X"),
-            ("STAY+SWITCH", "S", "B"),
-            ("ALLY MODE", "F", "Y"),
-            ("WIPE VISOR", "W", "DPAD DOWN"),
-            ("MAP", "TAB", "BACK"),
-            ("MENU", "ESC", "START"),
-        ]
-    };
-    for (i, (what, keys, pad)) in rows.iter().enumerate() {
-        let y = 22 + 13 * i as i32;
-        draw_text(out.layer, font, what.as_bytes(), 10, y, hi);
-        draw_text(out.layer, font, keys.as_bytes(), 110, y, fg);
-        draw_text(out.layer, font, pad.as_bytes(), 226, y, fg);
-    }
-    out.palette = pal;
 }
 
 // ---------------------------------------------------------------- load / save
@@ -1038,6 +976,7 @@ enum Opt {
     XbrzMenus,
     XbrzHud,
     Controls,
+    KeyBindings,
     AlwaysRun,
     Mouse,
     PadTurn,
@@ -1049,7 +988,7 @@ enum Opt {
     Effects,
 }
 
-const OPTS: [Opt; 21] = [
+const OPTS: [Opt; 22] = [
     Opt::Display,
     Opt::Scale,
     Opt::Aspect,
@@ -1062,6 +1001,7 @@ const OPTS: [Opt; 21] = [
     Opt::XbrzMenus,
     Opt::XbrzHud,
     Opt::Controls,
+    Opt::KeyBindings,
     Opt::AlwaysRun,
     Opt::Mouse,
     Opt::PadTurn,
@@ -1099,7 +1039,8 @@ impl Options {
             Opt::Floors => "FLOORS",
             Opt::XbrzMenus => "XBRZ MENUS",
             Opt::XbrzHud => "XBRZ STATUS BAR",
-            Opt::Controls => "CONTROLS",
+            Opt::Controls => "CONTROL SCHEME",
+            Opt::KeyBindings => "KEY BINDINGS",
             Opt::AlwaysRun => "ALWAYS RUN",
             Opt::Mouse => "MOUSE SPEED",
             Opt::PadTurn => "PAD TURN SPEED",
@@ -1132,6 +1073,7 @@ impl Options {
             Opt::XbrzMenus => on(s.video.xbrz_menus),
             Opt::XbrzHud => on(s.video.xbrz_hud),
             Opt::Controls => s.input.profile.to_uppercase(),
+            Opt::KeyBindings => "CHANGE...".into(),
             Opt::AlwaysRun => on(s.input.always_run),
             Opt::Mouse => pct(s.input.mouse_sensitivity),
             Opt::PadTurn => pct(s.input.gamepad_turn_speed),
@@ -1196,7 +1138,10 @@ impl Options {
             Opt::Controls => {
                 s.input.profile =
                     if s.input.profile == "modern" { "original" } else { "modern" }.into();
+                // A scheme comes with its own default bindings.
+                s.input.bindings = crate::bindings::Bindings::defaults(&s.input.profile);
             }
+            Opt::KeyBindings => {}
             Opt::AlwaysRun => s.input.always_run = !s.input.always_run,
             Opt::Mouse => step(&mut s.input.mouse_sensitivity, 0.25, 4.0, 0.25),
             Opt::PadTurn => step(&mut s.input.gamepad_turn_speed, 0.25, 3.0, 0.25),
@@ -1255,6 +1200,9 @@ impl Screen for Options {
         } else {
             0
         };
+        if OPTS[self.cur] == Opt::KeyBindings && d != 0 {
+            return Transition::Push(Box::new(crate::rebind::Rebind::new()));
+        }
         if d != 0 {
             Self::change(OPTS[self.cur], d, ctx);
         }

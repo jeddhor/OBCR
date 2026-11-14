@@ -281,6 +281,13 @@ impl Platform {
                 }
             }
         }
+        // The triggers also act as buttons, so they can be bound like one.
+        if st.left_trigger > 0.5 {
+            st.buttons |= pad::LEFT_TRIGGER;
+        }
+        if st.right_trigger > 0.5 {
+            st.buttons |= pad::RIGHT_TRIGGER;
+        }
         st
     }
 

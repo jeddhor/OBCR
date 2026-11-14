@@ -133,6 +133,11 @@ pub struct InputSettings {
     pub gamepad_deadzone: f32,
     pub gamepad_turn_speed: f32,
     pub rumble: bool,
+    /// Keyboard, mouse and gamepad bindings (issue #2); missing actions take
+    /// the control scheme's defaults when loaded (an empty default here, so
+    /// an old file gets its own scheme's bindings, not the modern ones).
+    #[serde(default)]
+    pub bindings: crate::bindings::Bindings,
 }
 
 impl Default for VideoSettings {
@@ -172,6 +177,7 @@ impl Default for InputSettings {
             gamepad_deadzone: 0.2,
             gamepad_turn_speed: 1.0,
             rumble: true,
+            bindings: crate::bindings::Bindings::defaults("modern"),
         }
     }
 }
@@ -220,7 +226,13 @@ impl VideoSettings {
 
 impl Settings {
     pub fn load(path: &std::path::Path) -> Self {
-        std::fs::read_to_string(path).ok().and_then(|s| toml::from_str(&s).ok()).unwrap_or_default()
+        let mut s: Self = std::fs::read_to_string(path)
+            .ok()
+            .and_then(|s| toml::from_str(&s).ok())
+            .unwrap_or_default();
+        let scheme = s.input.profile.clone();
+        s.input.bindings.complete(&scheme);
+        s
     }
 
     pub fn save(&self, path: &std::path::Path) -> std::io::Result<()> {
