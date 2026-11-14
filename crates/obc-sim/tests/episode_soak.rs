@@ -8,7 +8,7 @@ use obc_core::trig::Tables;
 use obc_formats::DataDir;
 use obc_formats::exe::MzExe;
 use obc_formats::maps::{Compression, MapArchive};
-use obc_sim::data::GameData;
+use obc_sim::data::{GameData, OBC_CD};
 use obc_sim::events::SimEvent;
 use obc_sim::player;
 use obc_sim::world::{TicCmd, World, bt, ex};
@@ -16,9 +16,17 @@ use obc_sim::world::{TicCmd, World, bt, ex};
 const FRAMES: u32 = 2500;
 
 fn load() -> Option<(Arc<GameData>, Arc<Tables>, MapArchive)> {
-    let dir = DataDir::open(obc_testdata::data_dir()?).ok()?;
-    let exe = MzExe::parse(dir.read("COUNT.EXE").ok()?).ok()?;
-    let data = Arc::new(GameData::load(&exe).ok()?);
+    load_from(obc_testdata::data_dir()?, false)
+}
+
+fn load_from(
+    dir: std::path::PathBuf,
+    cd: bool,
+) -> Option<(Arc<GameData>, Arc<Tables>, MapArchive)> {
+    let dir = DataDir::open(dir).ok()?;
+    let exe = MzExe::parse(dir.read(if cd { "BCCD.EXE" } else { "COUNT.EXE" }).ok()?).ok()?;
+    let data =
+        Arc::new(if cd { GameData::load_with(&exe, &OBC_CD) } else { GameData::load(&exe) }.ok()?);
     let maps = MapArchive::parse(
         &dir.read("MAPHEAD.BC").ok()?,
         dir.read("MAPTEMP.BC").ok()?,
@@ -52,9 +60,31 @@ fn first_episode_maps_run_without_panics_or_faults() {
         eprintln!("skipped: OBC_DATA_DIR not set");
         return;
     };
+    soak(&data, &trig, &maps, 0..=22);
+}
+
+/// The CD release's tables and code differences (CD_RELEASE.md) over every
+/// single-player floor: nothing reaches the states the CD dropped.
+#[test]
+fn cd_release_maps_run_without_panics_or_faults() {
+    let Some((data, trig, maps)) = obc_testdata::cd_data_dir().and_then(|d| load_from(d, true))
+    else {
+        eprintln!("skipped: OBC_CD_DATA_DIR not set");
+        return;
+    };
+    assert!(data.cd);
+    soak(&data, &trig, &maps, 0..=39);
+}
+
+fn soak(
+    data: &Arc<GameData>,
+    trig: &Arc<Tables>,
+    maps: &MapArchive,
+    floors: std::ops::RangeInclusive<i16>,
+) {
     let mut faults = Vec::new();
     for difficulty in 0..=3 {
-        for mapon in 0..=22i16 {
+        for mapon in floors.clone() {
             let map = maps.map(mapon as usize).unwrap().unwrap();
             let mut w = World::new(data.clone(), trig.clone());
             player::new_game(&mut w, difficulty);

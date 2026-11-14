@@ -70,8 +70,10 @@ impl World {
         player::post_actors(self);
 
         // Random event (1942:18c1): while the face has not appeared (or in
-        // bogus mode), a 1-in-256 × 1-in-15 roll with fire released.
-        if (self.gamestate.cheatmode || !self.act.face_spawned)
+        // bogus mode), a 1-in-256 × 1-in-15 roll with fire released. Gone
+        // from the CD release, rolls included (CD_RELEASE.md §3.11).
+        if !self.data.cd
+            && (self.gamestate.cheatmode || !self.act.face_spawned)
             && self.rnd() == 0
             && self.rnd() % 15 == 0
             && !self.buttonheld[0]

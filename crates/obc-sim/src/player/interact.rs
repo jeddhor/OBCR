@@ -144,6 +144,10 @@ fn set_tile(w: &mut World, x: i32, y: i32, tile: u8) {
 pub(super) fn try_exit(w: &mut World) {
     let ok = (w.gamestate.killtotal >> 1) <= w.gamestate.killcount;
     if w.gamestate.mapon == 39 {
+        // The CD says so (cd:32f1:0008, CD_RELEASE.md §3.7).
+        if w.data.cd {
+            message(w, "LAST FLOOR");
+        }
         return;
     }
     if ok {

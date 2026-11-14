@@ -1,8 +1,13 @@
-//! Behavior tables read from the user's `COUNT.EXE` at startup (ADR-005):
+//! Behavior tables read from the user's executable at startup (ADR-005):
 //! actor state records, the player attack table and static-object info.
 //!
 //! Function pointers in state records are far pointers into code segments;
 //! they are resolved to [`Func`] by their Ghidra address (docs/re/ACTORS.md §11-12).
+//!
+//! The CD release's `BCCD.EXE` holds the same tables at other offsets
+//! ([`ExeLayout`], docs/re/CD_RELEASE.md §2). State records keep OBC-A's DS
+//! offsets as their identity in both releases: the CD's are translated when
+//! loaded, so the simulation names states one way.
 
 use std::collections::BTreeMap;
 
@@ -11,6 +16,129 @@ use obc_formats::exe::MzExe;
 
 /// File offset of DGROUP (DS:0000) in `COUNT.EXE` (release OBC-A).
 pub const DGROUP_FILE: usize = 0x35580;
+
+/// Where one release's executable keeps the tables [`GameData`] reads.
+#[derive(Debug)]
+pub struct ExeLayout {
+    /// File offset of DGROUP (DS:0000).
+    pub dgroup_file: usize,
+    pub pan_right: u16,
+    pub pan_left: u16,
+    pub songs: u16,
+    pub ramps: u16,
+    /// `Rindex`; `Findex`, `Rclr` and `Fclr` follow at +51 bytes each.
+    pub rindex: u16,
+    pub attackinfo: u16,
+    pub statinfo: u16,
+    pub floor_sets: u16,
+    /// State-record ranges `(first, last, OBC-A first)`, DS offsets inclusive.
+    pub states: [(u16, u16, u16); 3],
+    /// Far-pointer targets (Ghidra addresses) of the functions states use.
+    pub funcs: &'static [(u32, Func)],
+    /// True for `BCCD.EXE`, whose code differs in places (CD_RELEASE.md §3).
+    pub cd: bool,
+}
+
+/// `COUNT.EXE`, release OBC-A.
+pub static OBC_A: ExeLayout = ExeLayout {
+    dgroup_file: DGROUP_FILE,
+    pan_right: 0x0594,
+    pan_left: 0x0756,
+    songs: 0x098A,
+    ramps: 0x09A4,
+    rindex: 0x09E6,
+    attackinfo: 0x0F66,
+    statinfo: 0x11DA,
+    floor_sets: 0x33BE,
+    states: [(0x0F46, 0x0F56, 0x0F46), (0x12EE, 0x296E, 0x12EE), (0x2A26, 0x2BB6, 0x2A26)],
+    funcs: &[
+        (0x2390_1d1d, Func::TStand),
+        (0x2390_2047, Func::TPath),
+        (0x2390_1d2d, Func::TChase),
+        (0x2390_179b, Func::TBossChase),
+        (0x2390_1966, Func::TFatChase),
+        (0x2390_1b31, Func::TSwampChase),
+        (0x2390_0125, Func::TProjectile),
+        (0x2390_1620, Func::TFireBurnout),
+        (0x2390_28d1, Func::TBossDead),
+        (0x208c_1bfb, Func::TPlayer),
+        (0x208c_18dc, Func::TAttack),
+        (0x2634_07b8, Func::TAlly),
+        (0x2390_2321, Func::AShoot),
+        (0x2390_2506, Func::TShoot),
+        (0x2390_21b7, Func::AIdleSound),
+        (0x2390_0c59, Func::ADeathScream),
+        (0x2390_0c4a, Func::ARemove),
+        (0x2390_2a49, Func::ANop),
+        (0x2390_1508, Func::ASlimeThrow),
+        (0x2390_1b17, Func::AManholeCover),
+        (0x2390_1274, Func::ADebugSparkle),
+        (0x2634_0214, Func::AAlly),
+    ],
+    cd: false,
+};
+
+/// `BCCD.EXE`, release OBC-CD. Tables found by content and state records
+/// aligned one-to-one with OBC-A's (CD_RELEASE.md §2): the CD drops the 12
+/// face-apparition and sparkle states at the end of the second range, so
+/// the allies' range starts 186 bytes earlier. Function addresses come from
+/// pairing the aligned records' far pointers.
+pub static OBC_CD: ExeLayout = ExeLayout {
+    dgroup_file: 0x35C20,
+    pan_right: 0x056C,
+    pan_left: 0x072E,
+    songs: 0x0962,
+    ramps: 0x097C,
+    rindex: 0x09BE,
+    attackinfo: 0x0F6C,
+    statinfo: 0x11E0,
+    floor_sets: 0x32D8,
+    states: [(0x0F4C, 0x0F5C, 0x0F46), (0x12F4, 0x28B4, 0x12EE), (0x296C, 0x2AFC, 0x2A26)],
+    funcs: &[
+        (0x23b5_19d8, Func::TStand),
+        (0x23b5_1d01, Func::TPath),
+        (0x23b5_19e8, Func::TChase),
+        (0x23b5_1470, Func::TBossChase),
+        (0x23b5_163b, Func::TFatChase),
+        (0x23b5_17ec, Func::TSwampChase),
+        (0x23b5_0121, Func::TProjectile),
+        (0x23b5_12f5, Func::TFireBurnout),
+        (0x23b5_2567, Func::TBossDead),
+        (0x20b2_1be7, Func::TPlayer),
+        (0x20b2_18c8, Func::TAttack),
+        (0x2623_07ae, Func::TAlly),
+        (0x23b5_1fdb, Func::AShoot),
+        (0x23b5_21c0, Func::TShoot),
+        (0x23b5_1e71, Func::AIdleSound),
+        (0x23b5_0c1b, Func::ADeathScream),
+        (0x23b5_0c0c, Func::ARemove),
+        (0x23b5_26df, Func::ANop),
+        (0x23b5_11dd, Func::ASlimeThrow),
+        (0x2623_020a, Func::AAlly),
+    ],
+    cd: true,
+};
+
+impl ExeLayout {
+    /// The layout for a release id (`obc_formats::release`); OBC-A otherwise.
+    pub fn for_release(id: &str) -> &'static ExeLayout {
+        if id == "OBC-CD" { &OBC_CD } else { &OBC_A }
+    }
+
+    /// OBC-A's DS offset for a state record at `ds` in this executable.
+    pub fn canonical_state(&self, ds: u16) -> StateId {
+        for (first, last, canon) in self.states {
+            if (first..=last).contains(&ds) {
+                return ds - first + canon;
+            }
+        }
+        ds
+    }
+
+    fn func(&self, addr: u32) -> Func {
+        self.funcs.iter().find(|(a, _)| *a == addr).map_or(Func::Unknown(addr), |&(_, f)| f)
+    }
+}
 
 /// A state record's identity: its DS offset (`statetype *`). 0 is NULL.
 pub type StateId = u16;
@@ -44,33 +172,9 @@ pub enum Func {
 }
 
 impl Func {
-    /// Maps a Ghidra address (`segment << 16 | offset`) to a function.
+    /// Maps an OBC-A Ghidra address (`segment << 16 | offset`) to a function.
     pub fn from_addr(addr: u32) -> Self {
-        match addr {
-            0x2390_1d1d => Func::TStand,
-            0x2390_2047 => Func::TPath,
-            0x2390_1d2d => Func::TChase,
-            0x2390_179b => Func::TBossChase,
-            0x2390_1966 => Func::TFatChase,
-            0x2390_1b31 => Func::TSwampChase,
-            0x2390_0125 => Func::TProjectile,
-            0x2390_1620 => Func::TFireBurnout,
-            0x2390_28d1 => Func::TBossDead,
-            0x208c_1bfb => Func::TPlayer,
-            0x208c_18dc => Func::TAttack,
-            0x2634_07b8 => Func::TAlly,
-            0x2390_2321 => Func::AShoot,
-            0x2390_2506 => Func::TShoot,
-            0x2390_21b7 => Func::AIdleSound,
-            0x2390_0c59 => Func::ADeathScream,
-            0x2390_0c4a => Func::ARemove,
-            0x2390_2a49 => Func::ANop,
-            0x2390_1508 => Func::ASlimeThrow,
-            0x2390_1b17 => Func::AManholeCover,
-            0x2390_1274 => Func::ADebugSparkle,
-            0x2634_0214 => Func::AAlly,
-            a => Func::Unknown(a),
-        }
+        OBC_A.func(addr)
     }
 }
 
@@ -138,48 +242,50 @@ pub struct GameData {
     /// differ from Wolf3D's (`WOLFSRC/WL_GAME.C:77`, maximum 8).
     pub pan_right: Vec<u8>,
     pub pan_left: Vec<u8>,
+    /// Loaded from `BCCD.EXE` (CD_RELEASE.md §3 lists where its code differs).
+    pub cd: bool,
 }
 
-/// State-record ranges (DS offsets, inclusive): player, enemies/effects, allies.
-const STATE_RANGES: [(u16, u16); 3] = [(0x0F46, 0x0F56), (0x12EE, 0x296E), (0x2A26, 0x2BB6)];
-
-fn ds(exe: &MzExe, off: u16, len: usize) -> Result<&[u8]> {
-    exe.file(DGROUP_FILE + off as usize, len)
-}
-
-fn far_ptr(bytes: &[u8]) -> Option<Func> {
+fn far_ptr(layout: &ExeLayout, bytes: &[u8]) -> Option<Func> {
     let off = u16::from_le_bytes([bytes[0], bytes[1]]);
     let seg = u16::from_le_bytes([bytes[2], bytes[3]]);
     if off == 0 && seg == 0 {
         return None;
     }
     // Stored segments are image-relative; Ghidra's base adds 0x1000.
-    Some(Func::from_addr((u32::from(seg) + 0x1000) << 16 | u32::from(off)))
+    Some(layout.func((u32::from(seg) + 0x1000) << 16 | u32::from(off)))
 }
 
 impl GameData {
+    /// Reads `COUNT.EXE` (release OBC-A).
     pub fn load(exe: &MzExe) -> Result<Self> {
+        Self::load_with(exe, &OBC_A)
+    }
+
+    /// Reads the tables from `exe` laid out as `layout`.
+    pub fn load_with(exe: &MzExe, layout: &ExeLayout) -> Result<Self> {
+        let ds = |off: u16, len: usize| exe.file(layout.dgroup_file + off as usize, len);
         let mut states = BTreeMap::new();
-        for (first, last) in STATE_RANGES {
+        for (first, last, _) in layout.states {
             let mut off = first;
             while off <= last {
-                let r = ds(exe, off, 16)?;
+                let r = ds(off, 16)?;
                 let w = |i: usize| i16::from_le_bytes([r[i], r[i + 1]]);
                 states.insert(
-                    off,
+                    layout.canonical_state(off),
                     State {
                         rotate: w(0) as u16,
                         shape: w(2),
                         tics: w(4),
-                        think: far_ptr(&r[6..10]),
-                        action: far_ptr(&r[10..14]),
-                        next: w(14) as u16,
+                        think: far_ptr(layout, &r[6..10]),
+                        action: far_ptr(layout, &r[10..14]),
+                        next: layout.canonical_state(w(14) as u16),
                     },
                 );
                 off += 16;
             }
         }
-        let raw = ds(exe, 0x0F66, 5 * 15 * 4)?;
+        let raw = ds(layout.attackinfo, 5 * 15 * 4)?;
         let mut attackinfo = [[AttackStep::default(); 15]; 5];
         for (w, row) in attackinfo.iter_mut().enumerate() {
             for (k, step) in row.iter_mut().enumerate() {
@@ -188,7 +294,7 @@ impl GameData {
             }
         }
         // statinfo runs until the attackinfo-adjacent tables; 63 entries cover codes 23..85.
-        let raw = ds(exe, 0x11DA, 64 * 4)?;
+        let raw = ds(layout.statinfo, 64 * 4)?;
         let statinfo = raw
             .chunks_exact(4)
             .map(|c| StatInfo {
@@ -197,17 +303,17 @@ impl GameData {
             })
             .collect();
         let levels = LevelTables {
-            rindex: ds(exe, 0x09E6, 51)?.to_vec(),
-            findex: ds(exe, 0x0A19, 51)?.to_vec(),
-            rclr: ds(exe, 0x0A4C, 51)?.to_vec(),
-            fclr: ds(exe, 0x0A7F, 51)?.to_vec(),
-            ramps: ds(exe, 0x09A4, 13 * 4)?.chunks_exact(4).map(|c| (c[0], c[2])).collect(),
+            rindex: ds(layout.rindex, 51)?.to_vec(),
+            findex: ds(layout.rindex + 51, 51)?.to_vec(),
+            rclr: ds(layout.rindex + 102, 51)?.to_vec(),
+            fclr: ds(layout.rindex + 153, 51)?.to_vec(),
+            ramps: ds(layout.ramps, 13 * 4)?.chunks_exact(4).map(|c| (c[0], c[2])).collect(),
             floor_sets: {
-                let b = ds(exe, 0x33BE, 20)?;
+                let b = ds(layout.floor_sets, 20)?;
                 std::array::from_fn(|i| (b[2 * i], b[2 * i + 1]))
             },
             songs: {
-                let b = ds(exe, 0x098A, 20)?;
+                let b = ds(layout.songs, 20)?;
                 std::array::from_fn(|i| u16::from_le_bytes([b[2 * i], b[2 * i + 1]]))
             },
         };
@@ -216,8 +322,9 @@ impl GameData {
             states,
             attackinfo,
             statinfo,
-            pan_right: ds(exe, 0x0594, 450)?.to_vec(),
-            pan_left: ds(exe, 0x0756, 450)?.to_vec(),
+            pan_right: ds(layout.pan_right, 450)?.to_vec(),
+            pan_left: ds(layout.pan_left, 450)?.to_vec(),
+            cd: layout.cd,
         })
     }
 

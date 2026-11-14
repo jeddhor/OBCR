@@ -558,6 +558,8 @@ fn cheat_keys(w: &mut World, cheat: Cheat) {
             w.gamestate.health = (w.gamestate.health + 10).min(cap);
             message(w, "HEALTH HELP");
         }
+        // The CD release has no Alt+B (CD_RELEASE.md §3.9).
+        Cheat::Bewitched if w.data.cd => {}
         Cheat::Bewitched => {
             w.bewitched = !w.bewitched;
             message(w, if w.bewitched { "BEWITCHED" } else { "BEWITCHED OFF" });
@@ -574,7 +576,8 @@ fn cheat_keys(w: &mut World, cheat: Cheat) {
 /// The player resets at the start of `PlayLoop` (ghidra 1942:1315–151e,
 /// CONFIRMED): `playstate`, `anglefrac`, buttons, wall-break and knock-back
 /// state, BEWITCHED, god mode and the ThermoSensor are cleared, the visor
-/// splats are wiped; map 23 greets with `UN BUILDING 2`.
+/// splats are wiped; map 23 greets with `UN BUILDING 2` (not in the CD
+/// release, CD_RELEASE.md §3.11).
 pub fn play_loop_start(w: &mut World) {
     w.playstate = ex::STILLPLAYING;
     w.anglefrac = 0;
@@ -587,7 +590,7 @@ pub fn play_loop_start(w: &mut World) {
     w.godmode = false;
     w.thermosensor = false;
     clear_screen_splats(w);
-    if w.gamestate.mapon == 23 {
+    if w.gamestate.mapon == 23 && !w.data.cd {
         message(w, "UN BUILDING 2");
     }
 }
