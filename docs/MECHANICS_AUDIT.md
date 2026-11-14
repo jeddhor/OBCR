@@ -135,7 +135,7 @@ All classes in ACTORS.md are ported with their state tables read from `COUNT.EXE
 |---|---|---|---|
 | Digitized effects, AdLib music | AUDIOMUS at 9,009 Hz with SB Pro panning; IMF music per floor (AUDIO.md) | `obc-audio`, `sound.rs` | ✅ |
 | Floor sequences F2, F3, F4, F6 | FLC players with sound cues | `sequence.rs` | ✅ |
-| F1, F5, F7, CD FMV | Not shipped in OBC-A | skipped as the original does | n/a |
+| F1, F5, F7, CD FMV | Not shipped in OBC-A; on the CD release | played when present (intro, map 22, victory); the CD's pacing and cues (CD_RELEASE.md §3.17) | n/a |
 | CD music and its mixer rows | Never used by OBC-A | — | n/a |
 | AUDIO MIX menu | Two rows: FM music volume, sound-effect volume | OPTIONS screen (master, effects, music) | ✅ ≠ (different screen, same controls) |
 | Sound device choice (PC speaker / AdLib / digitized) | Set by SETUP and CONFIG.DAT | OPTIONS → SOUND EFFECTS | 🔧 (added) |

@@ -7,7 +7,9 @@
 // window; `attach_console` restores output when started from a terminal.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
-use std::path::{Path, PathBuf};
+mod install;
+
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
@@ -28,12 +30,17 @@ struct Cli {
     /// Game data directory.
     #[arg(long)]
     data: Option<PathBuf>,
-    /// Check a directory of game files and exit (used by the installer):
-    /// prints `release`, then one `file` line per known file (role, status,
-    /// name, path), then `complete yes|no`, tab separated. Exit code 0 when
-    /// every required file matches, 2 when not.
-    #[arg(long, value_name = "DIR")]
+    /// Check a copy of the game and exit (used by the installer): a folder,
+    /// or a CD image (.cue, .bin, .iso). Prints `release`, `source`, one
+    /// `file` line per known file (role, status, name, path, size), one
+    /// `audio` line per CD track, then `complete yes|no`, tab separated.
+    /// Exit code 0 when every required file matches, 2 when not.
+    #[arg(long, value_name = "DIR|IMAGE")]
     check_data: Option<PathBuf>,
+    /// Copy the game files OBCR needs from a folder or CD image into DIR,
+    /// ripping the CD music, and exit (used by the installer).
+    #[arg(long, num_args = 2, value_names = ["SOURCE", "DIR"])]
+    extract_data: Option<Vec<PathBuf>>,
     /// Settings file (default: the OS config directory).
     #[arg(long)]
     config: Option<PathBuf>,
@@ -181,43 +188,13 @@ fn attach_console() {
     }
 }
 
-/// `--check-data`: identifies the game files in `dir` for the installer.
-fn check_data(dir: &Path) -> i32 {
-    use obc_formats::release::{self, FileStatus, Role};
-    let data = match DataDir::open(dir) {
-        Ok(d) => d,
-        Err(e) => {
-            println!("error\t{e}");
-            return 1;
-        }
-    };
-    let id = release::identify(&data);
-    println!("release\t{}\t{}", id.release.id, id.release.description);
-    for c in &id.checks {
-        let role = match c.file.role {
-            Role::Required => "required",
-            Role::Sequence => "sequence",
-            Role::UserState => "user",
-            Role::Extra => "extra",
-        };
-        let status = match c.status {
-            FileStatus::Ok => "ok",
-            FileStatus::Missing => "missing",
-            FileStatus::Present => "present",
-            FileStatus::Mismatch { .. } => "mismatch",
-        };
-        let path = data.path(c.file.name).map(|p| p.display().to_string()).unwrap_or_default();
-        println!("file\t{role}\t{status}\t{}\t{path}", c.file.name);
-    }
-    let complete = id.is_complete();
-    println!("complete\t{}", if complete { "yes" } else { "no" });
-    if complete { 0 } else { 2 }
-}
-
 fn run() -> Result<()> {
     let cli = Cli::parse();
     if let Some(dir) = &cli.check_data {
-        std::process::exit(check_data(dir));
+        std::process::exit(install::check_data(dir));
+    }
+    if let Some([from, to]) = cli.extract_data.as_deref() {
+        std::process::exit(install::extract_data(from, to));
     }
     let cfg_path = config_path(&cli);
     let saves = save_dir(&cli);
@@ -397,6 +374,7 @@ fn run() -> Result<()> {
 /// Runs one tic of the top screen and applies its transition. Returns false to quit.
 fn tick(stack: &mut Vec<Box<dyn Screen>>, ctx: &mut Ctx) -> bool {
     let Some(top) = stack.last_mut() else { return false };
+    obc_ui::cdaudio::service(ctx);
     match top.tick(ctx) {
         Transition::None => {}
         Transition::Push(s) => stack.push(s),

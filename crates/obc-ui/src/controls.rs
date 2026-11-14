@@ -31,6 +31,9 @@ const RUNMOVE: i32 = 70;
 mod key {
     pub const B: u8 = 0x30;
     pub const R: u8 = 0x13;
+    pub const P: u8 = 0x19;
+    pub const S: u8 = 0x1F;
+    pub const F: u8 = 0x21;
 }
 
 /// Presentation-side keys (not part of the simulation).
@@ -49,6 +52,11 @@ pub struct UiKeys {
     pub warp: bool,
     /// The `BACK TO DOS` prompt.
     pub quit: bool,
+    /// CD release, Alt+P / Alt+S / Alt+F: play, stop, next track
+    /// (CheckKeys cd:19cd:0003, CD_RELEASE.md §3.9).
+    pub cd_play: bool,
+    pub cd_stop: bool,
+    pub cd_next: bool,
 }
 
 #[derive(Debug, Default)]
@@ -93,6 +101,12 @@ impl Controls {
                 self.cheat = Cheat::Bewitched;
             } else if p(sc::W) {
                 self.ui.warp = true;
+            } else if p(key::P) {
+                self.ui.cd_play = true;
+            } else if p(key::S) {
+                self.ui.cd_stop = true;
+            } else if p(key::F) {
+                self.ui.cd_next = true;
             }
             return;
         }

@@ -3,14 +3,15 @@
 //! The game thread decides *what* plays (priorities and channel rules live in
 //! the deterministic game state) and sends [`AudioCommand`]s to a [`Mixer`]
 //! running on the audio thread, which synthesizes PC speaker sounds, AdLib
-//! effects and IMF music (through an OPL emulator) and digitized samples.
+//! effects and IMF music (through an OPL emulator) and digitized samples,
+//! and streams the CD release's Red Book music from ripped QOA files.
 
 mod mixer;
 mod synth;
 
 use std::sync::Arc;
 
-pub use mixer::{Mixer, MixerHandle};
+pub use mixer::{CdDrive, Mixer, MixerHandle};
 pub use obc_formats::audio::{AdlibSound, ImfCommand, PcSound};
 
 /// Service rates in ticks per second. Wolf3D: PC speaker and AdLib effects at
@@ -77,8 +78,12 @@ pub enum AudioCommand {
     StartMusic(Arc<[ImfCommand]>),
     StopMusic,
     /// `SD_MusicOff` / `SD_MusicOn` for Pause: silences the OPL and holds the
-    /// song position; resuming continues from there.
+    /// song position; resuming continues from there. CD audio is not affected.
     PauseMusic(bool),
+    /// Plays a CD audio track (a QOA file's bytes) from the start, once,
+    /// replacing any track playing; [`CdDrive::busy`] is set until it ends.
+    PlayCd(Arc<[u8]>),
+    StopCd,
     SetVolumes(Volumes),
     SetRates(Rates),
 }

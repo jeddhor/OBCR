@@ -8,7 +8,9 @@ OBCR is written in Rust on SDL3. It plays exactly like the original by default (
 
 ## You need the original game
 
-OBCR contains no game data. You need your own copy of Operation Body Count (retail or the Steam release). OBCR reads the original files (`GFXTILES.BC`, `MAPTEMP.BC`, `VGAGRAPH.BC`, `AUDIOT.BC`, `COUNT.EXE`, …) at run time.
+OBCR contains no game data. You need your own copy of Operation Body Count: the floppy release (`COUNT.EXE`), or the CD release that Steam and GOG sell as a BIN/CUE image (`BCCD.EXE`). OBCR reads the original files (`GFXTILES.BC`, `MAPTEMP.BC`, `VGAGRAPH.BC`, `AUDIOT.BC`, …) at run time.
+
+From the CD image, Setup (or `obcr --extract-data BODYCOUNT.cue <folder>`) extracts the game files and also rips the four CD music tracks. The CD release then plays as `BCCD.EXE` did: its opening, map 22 and victory movies, its CD music (Alt+P play, Alt+S stop, Alt+F next track) and its gameplay changes ([docs/re/CD_RELEASE.md](docs/re/CD_RELEASE.md)). OPTIONS has MUSIC SOURCE (CD audio or AdLib) and CD TRACK END (next track, or the original's silence until the next floor).
 
 ## Documentation
 
@@ -35,7 +37,7 @@ cargo xtask test-data   # also the tests that need the game data
 
 ## Installing
 
-The current version is **1.0.0-beta.1** (a pre-release; see [CHANGELOG.md](CHANGELOG.md)). `OBCR-Setup-<version>-windows-x64.exe` and `OBCR-Setup-<version>-linux-x86_64` install OBCR for your user account: you point Setup at your Operation Body Count folder, it checks the files and copies the game plus the files it uses into one folder (`%LOCALAPPDATA%\Programs\OBCR`, or `~/.local/opt/OBCR` on Linux) with menu entries and an uninstaller. Build them with `installer/build-windows.ps1` or `installer/build-linux.sh`; see [installer/README.md](installer/README.md).
+The current version is **1.0.0-beta.1** (a pre-release; see [CHANGELOG.md](CHANGELOG.md)). `OBCR-Setup-<version>-windows-x64.exe` and `OBCR-Setup-<version>-linux-x86_64` install OBCR for your user account: you point Setup at your Operation Body Count folder or CD image (`.cue`), it checks the files and copies the game plus the files it uses into one folder (`%LOCALAPPDATA%\Programs\OBCR`, or `~/.local/opt/OBCR` on Linux) with menu entries and an uninstaller. Build them with `installer/build-windows.ps1` or `installer/build-linux.sh`; see [installer/README.md](installer/README.md).
 
 ## Playing
 

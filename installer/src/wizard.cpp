@@ -123,15 +123,17 @@ bool IntroPage::validatePage() {
 DataPage::DataPage(SetupWizard *w) : QWizardPage(w), wizard_(w) {
     setTitle(QStringLiteral("Your game files"));
     setSubTitle(QStringLiteral(
-        "Choose the folder of your Operation Body Count copy: the one with COUNT.EXE and the "
-        ".BC files."));
+        "Choose your Operation Body Count copy: the CD image the Steam and GOG editions ship "
+        "(.cue), or a folder with COUNT.EXE or BCCD.EXE and the .BC files."));
     auto *layout = new QVBoxLayout(this);
     auto *row = new QHBoxLayout;
     dir_ = new QLineEdit(this);
-    dir_->setPlaceholderText(QStringLiteral("Folder with COUNT.EXE, GFXTILES.BC, ..."));
-    auto *browse = new QPushButton(QStringLiteral("Browse..."), this);
+    dir_->setPlaceholderText(QStringLiteral("BODYCOUNT.cue, or a folder with GFXTILES.BC, ..."));
+    auto *browse = new QPushButton(QStringLiteral("Folder..."), this);
+    auto *image = new QPushButton(QStringLiteral("CD image..."), this);
     row->addWidget(dir_);
     row->addWidget(browse);
+    row->addWidget(image);
     layout->addLayout(row);
     status_ = paragraph(QString(), this);
     status_->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -151,6 +153,12 @@ DataPage::DataPage(SetupWizard *w) : QWizardPage(w), wizard_(w) {
         const QString d = QFileDialog::getExistingDirectory(
             this, QStringLiteral("Operation Body Count folder"), dir_->text());
         if (!d.isEmpty()) setDir(d);
+    });
+    connect(image, &QPushButton::clicked, this, [this] {
+        const QString f = QFileDialog::getOpenFileName(
+            this, QStringLiteral("Operation Body Count CD image"), dir_->text(),
+            QStringLiteral("CD images (*.cue *.bin *.iso);;All files (*)"));
+        if (!f.isEmpty()) setDir(f);
     });
 }
 
@@ -176,16 +184,22 @@ void DataPage::check() {
         const auto files = c.toCopy();
         int sequences = 0;
         for (const auto &f : files) {
-            bytes += QFileInfo(f.path).size();
+            bytes += c.disc ? f.size : QFileInfo(f.path).size();
             if (f.role == QLatin1String("sequence")) ++sequences;
         }
-        QString text = QStringLiteral("<p><b>Found:</b> %1.</p><p>%2 files (%3) will be copied")
+        QString text = QStringLiteral("<p><b>Found:</b> %1.</p><p>%2 files (%3) will be %4")
                            .arg(c.release.toHtmlEscaped())
                            .arg(files.size())
-                           .arg(mb(bytes));
+                           .arg(mb(bytes))
+                           .arg(c.disc ? QStringLiteral("extracted from the CD image")
+                                       : QStringLiteral("copied"));
         text += sequences ? QStringLiteral(", including %1 animated sequences.</p>").arg(sequences)
                           : QStringLiteral(". No animated sequences (F2.BC ...) were found; the "
                                            "game skips them, as the original does.</p>");
+        if (c.audioTracks > 0)
+            text += QStringLiteral("<p>The CD's %1 music tracks will be ripped (about %2).</p>")
+                        .arg(c.audioTracks)
+                        .arg(mb(c.audioBytes));
         status_->setText(text);
     } else {
         const QStringList problems = c.problems();

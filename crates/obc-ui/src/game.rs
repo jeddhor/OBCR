@@ -290,10 +290,15 @@ impl Game {
         self.world.ply.set_view_size(v * 16, v * 8);
     }
 
-    /// `StartMusic` (1942:0d2d): one `US_RndT` on maps ≥ 10.
+    /// `StartMusic` (1942:0d2d): one `US_RndT` on maps ≥ 10. With CD music
+    /// the current CD track instead (cdaudio).
     fn start_music(&mut self, ctx: &Ctx) {
         let song = self.world.level_song();
         if !self.music {
+            return;
+        }
+        if crate::cdaudio::active(ctx) {
+            crate::cdaudio::start_music(ctx);
             return;
         }
         match ctx.assets.audio.music(300 + usize::from(song)) {
@@ -633,7 +638,16 @@ impl Screen for Game {
                     let m = if self.sound.enabled { "SOUND  ON" } else { "SOUND  OFF" };
                     self.hud.message(m.into());
                 }
-                if ui.music_toggle {
+                if ui.music_toggle && crate::cdaudio::active(ctx) {
+                    // OBCR: F2 stops and restarts the CD track.
+                    self.music = !self.music;
+                    if self.music {
+                        crate::cdaudio::next_track(ctx, false);
+                    } else {
+                        crate::cdaudio::stop(ctx);
+                    }
+                    self.hud.message(if self.music { "MUSIC ON" } else { "MUSIC OFF" }.into());
+                } else if ui.music_toggle {
                     self.music = !self.music;
                     if self.music {
                         // SD_MusicOn resumes the current song.
@@ -642,6 +656,20 @@ impl Screen for Game {
                         ctx.audio.send(AudioCommand::PauseMusic(true));
                     }
                     self.hud.message(if self.music { "MUSIC ON" } else { "MUSIC OFF" }.into());
+                }
+                if crate::cdaudio::active(ctx) {
+                    if ui.cd_play {
+                        self.hud.message("CD : PLAY".into());
+                        crate::cdaudio::next_track(ctx, false);
+                    }
+                    if ui.cd_stop {
+                        crate::cdaudio::stop(ctx);
+                        self.hud.message("CD : STOP".into());
+                    }
+                    if ui.cd_next {
+                        self.hud.message("CD : ADVANCE TRACK".into());
+                        crate::cdaudio::next_track(ctx, true);
+                    }
                 }
                 if ui.warp && self.world.gamestate.cheatmode {
                     self.warp_prompt = Some(String::new());
@@ -726,6 +754,7 @@ impl Screen for Game {
             Phase::Sequence(After::NextLevel) => {
                 // ClearFloorItems, mapon++, health += 35.
                 self.world.advance_level();
+                crate::cdaudio::floor_done(ctx);
                 self.start_level(ctx);
                 Transition::None
             }
@@ -749,7 +778,10 @@ impl Screen for Game {
                     After::Quit => {
                         return Transition::Reset(Box::new(crate::menu::QuitScreen::default()));
                     }
-                    After::NextLevel => self.world.advance_level(),
+                    After::NextLevel => {
+                        self.world.advance_level();
+                        crate::cdaudio::floor_done(ctx);
+                    }
                     _ => {}
                 }
                 ctx.audio.send(AudioCommand::StopMusic);

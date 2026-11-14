@@ -120,6 +120,11 @@ pub struct AudioSettings {
     pub channels: usize,
     /// Effects device: "digitized" (Sound Blaster), "adlib" or "pc" (speaker).
     pub effects: String,
+    /// Music: "cd" (the CD release's audio tracks, when ripped) or "adlib".
+    pub music_source: String,
+    /// Enhanced: when a CD track ends, play the next one (the original
+    /// waits for the next floor and plays the same track again).
+    pub cd_next_track: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -163,7 +168,15 @@ impl Default for VideoSettings {
 
 impl Default for AudioSettings {
     fn default() -> Self {
-        Self { master: 0.8, sfx: 1.0, music: 0.7, channels: 4, effects: "digitized".into() }
+        Self {
+            master: 0.8,
+            sfx: 1.0,
+            music: 0.7,
+            channels: 4,
+            effects: "digitized".into(),
+            music_source: "cd".into(),
+            cd_next_track: true,
+        }
     }
 }
 

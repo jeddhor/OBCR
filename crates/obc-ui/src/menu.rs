@@ -57,7 +57,11 @@ pub(crate) fn play_digi(ctx: &Ctx, id: u16) {
     }
 }
 
+/// `StartCPMusic(song)` (1618:1efc); returns at once with `cdmusic`.
 fn start_cp_music(ctx: &Ctx, song: usize) {
+    if crate::cdaudio::active(ctx) {
+        return;
+    }
     if let Ok(m) = ctx.assets.audio.music(300 + song) {
         ctx.audio.send(AudioCommand::StartMusic(Arc::from(m)));
     }
@@ -118,6 +122,8 @@ pub struct Title {
     stage: u8,
     t: u32,
     splats: Vec<(i32, i32, u32)>,
+    /// `PlaySequence("F1")` has run (`introshown`).
+    f1: bool,
 }
 
 /// Fades in `DemoLoop` (`VL_FadeOut(…, 80)` unless stated).
@@ -143,7 +149,7 @@ impl Title {
                 _ => 0,
             } + 4;
         }
-        Self { stage: 0, t: 0, splats }
+        Self { stage: 0, t: 0, splats, f1: false }
     }
 }
 
@@ -159,8 +165,13 @@ impl Screen for Title {
     }
 
     fn tick(&mut self, ctx: &mut Ctx) -> Transition {
-        if self.stage == 0 && self.t == 0 {
+        if self.stage == 0 && self.t == 0 && !self.f1 {
             start_cp_music(ctx, 8);
+            // DemoLoop step 4: PlaySequence("F1"), the CD's opening movie.
+            self.f1 = true;
+            if let Some(s) = crate::sequence::Sequence::load(ctx.assets, "F1") {
+                return Transition::Push(Box::new(s));
+            }
         }
         let key = any_key(ctx.input);
         self.t += 1;
@@ -748,12 +759,11 @@ impl Screen for SlotMenu {
 
 // ---------------------------------------------------------------- high scores
 
-/// The default table in `COUNT.EXE` (file 0x383E4; DATA_FORMATS §7).
-const DEFAULT_SCORES: usize = 0x383E4;
-
+/// The default table in the executable (`COUNT.EXE` file 0x383E4,
+/// DATA_FORMATS §7; `BCCD.EXE` 0x38994).
 fn default_scores(a: &Assets) -> Vec<crate::settings::Score> {
     a.exe
-        .file(DEFAULT_SCORES, 7 * 28)
+        .file(a.release.release.scores_offset, 7 * 28)
         .ok()
         .and_then(|b| obc_formats::config::parse_high_scores(b).ok())
         .unwrap_or_default()
@@ -984,11 +994,13 @@ enum Opt {
     Master,
     Sfx,
     Music,
+    MusicSource,
+    CdTrackEnd,
     Channels,
     Effects,
 }
 
-const OPTS: [Opt; 22] = [
+const OPTS: [Opt; 24] = [
     Opt::Display,
     Opt::Scale,
     Opt::Aspect,
@@ -1009,6 +1021,8 @@ const OPTS: [Opt; 22] = [
     Opt::Master,
     Opt::Sfx,
     Opt::Music,
+    Opt::MusicSource,
+    Opt::CdTrackEnd,
     Opt::Channels,
     Opt::Effects,
 ];
@@ -1048,12 +1062,14 @@ impl Options {
             Opt::Master => "MASTER VOLUME",
             Opt::Sfx => "SOUND FX VOLUME",
             Opt::Music => "MUSIC VOLUME",
+            Opt::MusicSource => "MUSIC SOURCE",
+            Opt::CdTrackEnd => "CD TRACK END",
             Opt::Channels => "SOUND VOICES",
             Opt::Effects => "SOUND EFFECTS",
         }
     }
 
-    fn value(o: Opt, s: &crate::settings::Settings) -> String {
+    fn value(o: Opt, s: &crate::settings::Settings, cd_audio: bool) -> String {
         let on = |b: bool| if b { "ON".to_string() } else { "OFF".to_string() };
         let pct = |v: f32| format!("{}", (v * 100.0).round() as i32);
         let p = s.video.presentation();
@@ -1081,6 +1097,11 @@ impl Options {
             Opt::Master => pct(s.audio.master),
             Opt::Sfx => pct(s.audio.sfx),
             Opt::Music => pct(s.audio.music),
+            Opt::MusicSource if !cd_audio => "ADLIB (NO CD)".into(),
+            Opt::MusicSource => {
+                if s.audio.music_source == "adlib" { "ADLIB" } else { "CD AUDIO" }.into()
+            }
+            Opt::CdTrackEnd => if s.audio.cd_next_track { "NEXT TRACK" } else { "ORIGINAL" }.into(),
             Opt::Channels => {
                 if s.audio.channels <= 1 {
                     "1 ORIGINAL".into()
@@ -1097,6 +1118,7 @@ impl Options {
     }
 
     fn change(o: Opt, d: i32, ctx: &mut Ctx) {
+        let mut source = false;
         let s = &mut *ctx.settings;
         let step = |v: &mut f32, lo: f32, hi: f32, st: f32| {
             *v = ((*v + st * d as f32) * 20.0).round() / 20.0;
@@ -1149,6 +1171,14 @@ impl Options {
             Opt::Master => step(&mut s.audio.master, 0.0, 1.0, 0.1),
             Opt::Sfx => step(&mut s.audio.sfx, 0.0, 1.0, 0.1),
             Opt::Music => step(&mut s.audio.music, 0.0, 1.0, 0.1),
+            Opt::MusicSource => {
+                if ctx.assets.has_cd_audio() {
+                    s.audio.music_source =
+                        if s.audio.music_source == "adlib" { "cd" } else { "adlib" }.into();
+                    source = true;
+                }
+            }
+            Opt::CdTrackEnd => s.audio.cd_next_track = !s.audio.cd_next_track,
             Opt::Channels => s.audio.channels = if s.audio.channels <= 1 { 4 } else { 1 },
             Opt::Effects => {
                 let all = ["digitized", "adlib", "pc"];
@@ -1162,6 +1192,9 @@ impl Options {
             sfx: a.sfx,
             music: a.music,
         }));
+        if source {
+            crate::cdaudio::source_changed(ctx);
+        }
     }
 }
 
@@ -1236,7 +1269,7 @@ impl Screen for Options {
             let y = 24 + (i - first) as i32 * 14;
             let c = if i == self.cur { hi } else { fg };
             draw_text(out.layer, font, Self::label(o).as_bytes(), 20, y, c);
-            let v = Self::value(o, &self.shown);
+            let v = Self::value(o, &self.shown, a.has_cd_audio());
             draw_text(out.layer, font, v.as_bytes(), 180, y, if i == self.cur { hi } else { dim });
         }
         out.palette = pal;

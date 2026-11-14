@@ -4,13 +4,15 @@ A Qt 6 installer and uninstaller for OBCR on Windows and Linux (ADR-021). It ins
 
 ## What it does
 
-1. **Game files**: the user points it at their Operation Body Count folder. Setup runs the bundled game with `obcr --check-data <dir>`, which identifies the files by SHA-256 against the known releases (`obc-formats::release`), and only continues when every required file matches. The Steam default locations are suggested when present.
+1. **Game files**: the user points it at their Operation Body Count folder, or at the CD image Steam and GOG ship (`.cue`, `.bin` or `.iso`; ADR-022). Setup runs the bundled game with `obcr --check-data <dir|image>`, which identifies the files by SHA-256 against the known releases (`obc-formats::release`), and only continues when every required file matches. `.cue` files and game folders under the Steam and GOG default locations are suggested when present.
 2. **Folder**: by default `%LOCALAPPDATA%\Programs\OBCR` on Windows and `~/.local/opt/OBCR` on Linux. It must be new, empty or an earlier OBCR installation (which is then replaced; settings and saved games are kept).
 3. **Install**:
 
    ```text
    <folder>/obcr[.exe]               the game
    <folder>/data/*.BC, COUNT.EXE     the required files and any sequences (F2.BC ...), nothing else
+                                     (BCCD.EXE for the CD release; from a CD image also the ripped
+                                     music, TRACK02.QOA .. TRACK05.QOA, made by obcr --extract-data)
    <folder>/obcr.png                 icon (drawn by Setup, not taken from the game)
    <folder>/uninstall/               OBCR-Uninstall[.exe] and its Qt runtime
    <folder>/install-manifest.txt     everything Setup created, for the uninstaller
@@ -26,7 +28,7 @@ A Qt 6 installer and uninstaller for OBCR on Windows and Linux (ADR-021). It ins
 
 ```text
 OBCR-Setup                                  the wizard
-OBCR-Setup --unattended --data DIR [--target DIR] [--desktop-shortcut] [--no-menu] [--no-path-link]
+OBCR-Setup --unattended --data DIR|IMAGE [--target DIR] [--desktop-shortcut] [--no-menu] [--no-path-link]
 OBCR-Setup --uninstall [--target DIR] [--unattended] [--purge]
 OBCR-Uninstall [--unattended] [--purge]     the installed uninstaller
 OBCR-Setup --screenshots DIR [--data DIR]   development: render the pages to PNG

@@ -225,23 +225,44 @@ QString defaultInstallDir() {
 #endif
 }
 
+bool isDiscImage(const QString &path) {
+    const QFileInfo fi(path);
+    const QString ext = fi.suffix().toLower();
+    return fi.isFile() && (ext == QLatin1String("cue") || ext == QLatin1String("bin") ||
+                           ext == QLatin1String("img") || ext == QLatin1String("iso"));
+}
+
 QStringList dataSuggestions() {
-    const QString game = QStringLiteral("steamapps/common/Operation Body Count/C/BCCD");
-    QStringList roots;
+    // Steam and GOG ship the CD release as a BIN/CUE image (with the music
+    // and movies); an unpacked BCCD folder works too, without them.
+    QStringList games;
 #ifdef Q_OS_WIN
-    roots << QStringLiteral("C:/Program Files (x86)/Steam") << QStringLiteral("C:/Program Files/Steam");
+    for (const QString &r : {QStringLiteral("C:/Program Files (x86)/Steam"),
+                             QStringLiteral("C:/Program Files/Steam")})
+        games << join(r, QStringLiteral("steamapps/common/Operation Body Count"));
+    games << QStringLiteral("C:/GOG Games/Operation Body Count")
+          << QStringLiteral("C:/Program Files (x86)/GOG Galaxy/Games/Operation Body Count");
 #else
-    roots << join(QDir::homePath(), QStringLiteral(".steam/steam"))
-          << join(QDir::homePath(), QStringLiteral(".local/share/Steam"));
+    for (const QString &r : {join(QDir::homePath(), QStringLiteral(".steam/steam")),
+                             join(QDir::homePath(), QStringLiteral(".local/share/Steam"))})
+        games << join(r, QStringLiteral("steamapps/common/Operation Body Count"));
+    games << join(QDir::homePath(), QStringLiteral("GOG Games/Operation Body Count"));
 #endif
-    QStringList out;
-    for (const QString &r : roots) {
-        const QString d = join(r, game);
-        if (QFileInfo::exists(join(d, QStringLiteral("GFXTILES.BC"))) ||
-            QFileInfo::exists(join(d, QStringLiteral("gfxtiles.bc"))))
-            out << QDir::toNativeSeparators(d);
+    QStringList images, folders;
+    for (const QString &g : games) {
+        if (!QFileInfo(g).isDir()) continue;
+        QDirIterator it(g, {QStringLiteral("*.cue"), QStringLiteral("*.CUE"),
+                            QStringLiteral("GFXTILES.BC"), QStringLiteral("gfxtiles.bc")},
+                        QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            const QFileInfo fi(it.next());
+            if (fi.suffix().compare(QLatin1String("cue"), Qt::CaseInsensitive) == 0)
+                images << QDir::toNativeSeparators(fi.filePath());
+            else
+                folders << QDir::toNativeSeparators(fi.path());
+        }
     }
-    return out;
+    return images + folders;
 }
 
 QStringList userDataDirs() {
@@ -276,11 +297,12 @@ DataCheck checkData(const QString &dir) {
     DataCheck c;
     c.dir = dir;
     if (dir.trimmed().isEmpty()) {
-        c.error = QStringLiteral("Choose the folder of your Operation Body Count copy.");
+        c.error = QStringLiteral(
+            "Choose the folder of your Operation Body Count copy, or its CD image (.cue).");
         return c;
     }
-    if (!QFileInfo(dir).isDir()) {
-        c.error = QStringLiteral("This folder does not exist.");
+    if (!QFileInfo(dir).isDir() && !isDiscImage(dir)) {
+        c.error = QStringLiteral("This is neither a folder nor a CD image (.cue, .bin, .iso).");
         return c;
     }
     QString err;
@@ -303,7 +325,13 @@ DataCheck checkData(const QString &dir) {
         const QStringList t = line.split(QLatin1Char('\t'));
         if (t[0] == QLatin1String("error") && t.size() > 1) c.error = t[1];
         if (t[0] == QLatin1String("release") && t.size() > 2) c.release = t[2];
-        if (t[0] == QLatin1String("file") && t.size() > 4) c.files << GameFile{t[1], t[2], t[3], t[4]};
+        if (t[0] == QLatin1String("source") && t.size() > 1) c.disc = t[1] == QLatin1String("disc");
+        if (t[0] == QLatin1String("file") && t.size() > 4)
+            c.files << GameFile{t[1], t[2], t[3], t[4], t.size() > 5 ? t[5].toLongLong() : 0};
+        if (t[0] == QLatin1String("audio") && t.size() > 3) {
+            ++c.audioTracks;
+            c.audioBytes += t[3].toLongLong();
+        }
         if (t[0] == QLatin1String("complete") && t.size() > 1) c.complete = t[1] == QLatin1String("yes");
     }
     if (c.files.isEmpty() && c.error.isEmpty())
@@ -366,8 +394,9 @@ qint64 installSize(const DataCheck &check) {
     bytes += QFileInfo(QCoreApplication::applicationFilePath()).size();
     for (const QString &rel : runtimeFiles())
         bytes += QFileInfo(join(QCoreApplication::applicationDirPath(), rel)).size();
-    for (const GameFile &f : check.toCopy()) bytes += QFileInfo(f.path).size();
-    return bytes;
+    for (const GameFile &f : check.toCopy())
+        bytes += check.disc ? f.size : QFileInfo(f.path).size();
+    return bytes + check.audioBytes;
 }
 
 bool install(const Options &o, const DataCheck &check, const Progress &progress, QString *error) {
@@ -410,8 +439,42 @@ bool install(const Options &o, const DataCheck &check, const Progress &progress,
     makeExecutable(exe);
     m.file(exe);
 
-    // The game files.
-    const QList<GameFile> files = check.toCopy();
+    // The game files: extracted by the game itself from a CD image, with the
+    // music ripped (`obcr --extract-data`), or copied from a folder.
+    if (check.disc) {
+        QProcess p;
+        p.start(exe, {QStringLiteral("--extract-data"), o.dataDir, data});
+        if (!p.waitForStarted(30000))
+            return fail(QStringLiteral("Cannot run the game to extract the files: %1").arg(p.errorString()));
+        QString failure;
+        QByteArray pending;
+        auto consume = [&] {
+            pending += p.readAllStandardOutput();
+            int nl;
+            while ((nl = pending.indexOf('\n')) >= 0) {
+                QString line = QString::fromUtf8(pending.left(nl));
+                pending.remove(0, nl + 1);
+                line.remove(QLatin1Char('\r'));
+                const QStringList t = line.split(QLatin1Char('\t'));
+                if (t[0] == QLatin1String("progress") && t.size() > 2)
+                    report(progress, 10 + 50 * t[1].toInt() / 100, t[2]);
+                else if (t[0] == QLatin1String("wrote") && t.size() > 1)
+                    m.file(QDir::fromNativeSeparators(t[1]));
+                else if (t[0] == QLatin1String("error") && t.size() > 1)
+                    failure = t[1];
+            }
+        };
+        while (!p.waitForFinished(200)) {
+            if (p.state() == QProcess::NotRunning) break;
+            consume();
+        }
+        consume();
+        if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0)
+            return fail(failure.isEmpty()
+                            ? QStringLiteral("Extracting the game files failed (exit code %1).").arg(p.exitCode())
+                            : failure);
+    }
+    const QList<GameFile> files = check.disc ? QList<GameFile>() : check.toCopy();
     for (int i = 0; i < files.size(); ++i) {
         const GameFile &f = files[i];
         report(progress, 10 + 50 * i / std::max<int>(1, int(files.size())),

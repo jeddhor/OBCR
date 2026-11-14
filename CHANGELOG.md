@@ -2,6 +2,12 @@
 
 All notable changes to OBCR. Versions follow [Semantic Versioning](https://semver.org).
 
+## Unreleased
+
+- **The CD release** (Steam, GOG; issue #1): Setup takes the BIN/CUE image directly, extracts the game files and rips the four CD music tracks. OBCR plays the CD release as its own executable did: the opening, map 22 and victory movies, CD music with the original keys (Alt+P play, Alt+S stop, Alt+F next track), and the CD build's gameplay changes. New options: MUSIC SOURCE (CD audio or AdLib) and CD TRACK END (next track, or the original's silence until the next floor). `obcr --extract-data <image or folder> <folder>` does the same from the command line.
+- **Rebindable controls** (issue #2): KEY BINDINGS in OPTIONS (and after the help page) rebinds every action for keyboard and mouse (up to three inputs each, mouse buttons 4/5 and the wheel included) and for gamepads (two buttons each, triggers included).
+- **Push walls** (issue #3) now move exactly as the original: twice as fast, exactly two cells, stopped by the player, and not pushable again once at rest.
+
 ## 1.0.0-beta.1 — 2026-11-06 (pre-release)
 
 The first beta of OBCR, a modern source port of Operation Body Count (1994) written in Rust on SDL 3. It needs your own copy of the game (the floppy release, files dated 1996-12-24).
