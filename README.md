@@ -8,7 +8,9 @@ OBCR is written in Rust on SDL3. It plays exactly like the original by default (
 
 ## You need the original game
 
-OBCR contains no game data. You need your own copy of Operation Body Count (retail or the Steam release). OBCR reads the original files (`GFXTILES.BC`, `MAPTEMP.BC`, `VGAGRAPH.BC`, `AUDIOT.BC`, `COUNT.EXE`, …) at run time.
+OBCR contains no game data. You need your own copy of Operation Body Count: the floppy release (`COUNT.EXE`), or the CD release that Steam and GOG sell as a BIN/CUE image (`BCCD.EXE`). OBCR reads the original files (`GFXTILES.BC`, `MAPTEMP.BC`, `VGAGRAPH.BC`, `AUDIOT.BC`, …) at run time.
+
+From the CD image, Setup (or `obcr --extract-data BODYCOUNT.cue <folder>`) extracts the game files and also rips the four CD music tracks. The CD release then plays as `BCCD.EXE` did: its opening, map 22 and victory movies, its CD music (Alt+P play, Alt+S stop, Alt+F next track) and its gameplay changes ([docs/re/CD_RELEASE.md](docs/re/CD_RELEASE.md)). OPTIONS has MUSIC SOURCE (CD audio or AdLib) and CD TRACK END (next track, or the original's silence until the next floor).
 
 ## Documentation
 
@@ -35,7 +37,7 @@ cargo xtask test-data   # also the tests that need the game data
 
 ## Installing
 
-The current version is **1.0.0-beta.1** (a pre-release; see [CHANGELOG.md](CHANGELOG.md)). `OBCR-Setup-<version>-windows-x64.exe` and `OBCR-Setup-<version>-linux-x86_64` install OBCR for your user account: you point Setup at your Operation Body Count folder, it checks the files and copies the game plus the files it uses into one folder (`%LOCALAPPDATA%\Programs\OBCR`, or `~/.local/opt/OBCR` on Linux) with menu entries and an uninstaller. Build them with `installer/build-windows.ps1` or `installer/build-linux.sh`; see [installer/README.md](installer/README.md).
+The current version is **1.0.0-beta.1** (a pre-release; see [CHANGELOG.md](CHANGELOG.md)). `OBCR-Setup-<version>-windows-x64.exe` and `OBCR-Setup-<version>-linux-x86_64` install OBCR for your user account: you point Setup at your Operation Body Count folder or CD image (`.cue`), it checks the files and copies the game plus the files it uses into one folder (`%LOCALAPPDATA%\Programs\OBCR`, or `~/.local/opt/OBCR` on Linux) with menu entries and an uninstaller. Build them with `installer/build-windows.ps1` or `installer/build-linux.sh`; see [installer/README.md](installer/README.md).
 
 ## Playing
 
@@ -70,6 +72,8 @@ From the command line: `--net N|T|M` starts a network game at once (`--net-setup
 
 ### Controls
 
+Every key, mouse button and gamepad button can be changed in **OPTIONS > KEY BINDINGS** (also shown after the help page: press H in the main menu). Each action takes up to three keyboard or mouse inputs and two gamepad buttons; Left/Right switches between the keyboard and gamepad lists, Enter (A) waits for the new input, Del (X) clears. Changing the CONTROL SCHEME restores that scheme's defaults. The sticks always move and turn, Esc and Start always open the menu. The defaults:
+
 | Action | Modern (default) | Original | Gamepad |
 |---|---|---|---|
 | Move | W / S, arrows | ↑ / ↓ | left stick |
@@ -84,10 +88,10 @@ From the command line: `--net N|T|M` starts a network game at once (`--net-setup
 | Map (Tab overlay) | Tab | Tab | Back |
 | Menu | Esc | Esc | Start |
 | Quick save | F9 | F9 | — |
-| Tremors on/off, textured floors off/on, pause | F8, F5/F6, Pause | same | — |
+| Tremors on/off, textured floors off / on, pause | F8, F5 / F6, Pause | same | — |
 | Exact health, crosshair, sound/music toggles, quit | H, C, F1/F2, F10 | same | — |
 
-You leave a floor through its stairs, ladder or elevator once at least half of its enemies are dead: the kill lamp on the status bar is red, turns yellow at half and green when every enemy is dead. Kills by allies earn nothing and do not count. There are no extra lives: save often (F9 saves to the slot you last saved from the menu; an AutoSave is written before every floor change).
+You leave a floor through its stairs, ladder or elevator once at least half of its enemies are dead: the kill lamp on the status bar is red, turns yellow at half and green when every enemy is dead. Kills by allies earn no points but do count. There are no extra lives: save often (F9 saves to the slot you last saved from the menu; an AutoSave is written before every floor change).
 
 ## Legal
 

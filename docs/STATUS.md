@@ -3,7 +3,7 @@
 Live project state. Every agent reads this at the start of a session and updates it at the end (AGENT_GUIDE §3). Keep edits small: change your own rows, append to the log.
 
 **Current milestone: M12 first-episode playtest and M13 multiplayer LAN test (owner testing needed)**
-**Last updated: 2026-11-05**
+**Last updated: 2026-11-14**
 
 ## Milestones
 
@@ -42,7 +42,7 @@ Task status values: `In progress`, `Paused`, `Blocked`, `Review`, `Done`. Remove
 |---|---|---|---|
 | B-1 | License | M15 | Resolved 2026-11-02: GPL-3.0-or-later (ADR-006) |
 | B-2 | Remote for CI? | M0.7 | Resolved 2026-11-02: local builds only; `cargo xtask ci` is the gate. 2026-11-06: the owner added a private GitHub repository (`jeddhor/OBCR`, remote `origin`) for the code; builds stay local |
-| B-3 | Rendered sequences and CD audio data | M10.R9, M6.R2 | Resolved 2026-11-02: the owner's floppy install archives contain `F2.BC`, `F3.BC`, `F4.BC`, `F6.BC` (FLC animations). No CD audio is available. |
+| B-3 | Rendered sequences and CD audio data | M10.R9, M6.R2 | Resolved 2026-11-02: the owner's floppy install archives contain `F2.BC`, `F3.BC`, `F4.BC`, `F6.BC` (FLC animations). 2026-11-14: the owner added the Steam BIN/CUE image (`..\CD`): `F1`, `F5`, `F7` and four CD audio tracks (ADR-022). |
 | B-4 | Agent commit policy | M0 | Resolved 2026-11-02: confirmed as written in CLAUDE.md |
 
 ## Owner goal (2026-11-02)
@@ -68,12 +68,16 @@ Append one line per completed task or notable event: `YYYY-MM-DD — <task> — 
 - 2026-11-06 — M14.11 — xBRZ for the 2D screens split in two: XBRZ MENUS (default on: menus, title and intro pictures, animated sequences, help and score pages) and XBRZ STATUS BAR (default off); 2D xBRZ about 2.5× faster (padded kernel, per-pixel touched blocks), direct layer writes; developer flag `--sequence F2|F3|F4|F6` — screenshots of the intro, menu and F2 with the option on and off.
 - 2026-11-06 — repo — m14 merged into main; private GitHub repository `jeddhor/OBCR` created and main plus the task branches pushed (history audited: no game data or decompiled code).
 - 2026-11-06 — M15.1 — Per-user Qt 6 installer and uninstaller for Windows and Linux (ADR-021): `installer/` wizard, `obcr --check-data`, `obcr-setup` self-extracting launcher, `cargo xtask pack-installer`, build scripts; `obcr` is a GUI program on Windows — Windows (15 MB) and Linux (27 MB) packages each installed unattended, game ran from the installed folder, update in place and uninstall left nothing behind (no Qt on PATH on Windows; WSL Ubuntu 22.04 for Linux); wizard pages rendered on both.
+- 2026-11-14 — M14.5 (issue #2) — Full rebinding: 33 actions, up to three keyboard/mouse inputs and two gamepad buttons each (mouse 4/5, wheel, triggers included), saved by name in obcr.toml; KEY BINDINGS screen in OPTIONS and after the help page; scheme defaults; F5/F6 corrected to the original (F5 floors off, F6 on; CheckKeys 1942:0666/0688) — 8 unit tests, screenshots of both views and a rebind.
+- 2026-11-14 — fix (issue #3) — Push walls follow the original `MovePWalls` exactly (full disassembly read): twice Wolf3D's speed, exactly two cells, the player blocks them, and a wall at rest loses its marker and cannot be pushed again. The free-standing blocks in the report come from the original's two-cell rule and map 8's push-wall partitions between open rooms — test `push_walls` (3).
 - 2026-11-06 — M15.5 — Version 1.0.0-beta.1: CHANGELOG.md, THIRD_PARTY_NOTICES.md (also in Setup's licence dialog), tag `v1.0.0-beta.1`, GitHub pre-release with both installers.
+- 2026-11-14 — M15.6 (issue #1) — The CD release (ADR-022, docs/re/CD_RELEASE.md): release OBC-CD and `BCCD.EXE`'s table layout (state records renamed to OBC-A's), the CD build's code differences behind `GameData::cd` (instruction-skeleton comparison of all functions, then a read of each changed one); BIN/CUE/ISO reader and QOA codec in obc-formats; `obcr --extract-data` rips the music; Setup takes a CD image; F1/F5/F7 play; CD music with the original's track logic and Alt+P/S/F — tests `cd_tables_line_up_with_the_floppy_ones`, `reads_the_cd_image`, `cd_music_follows_the_cd_release`, qoa and disc unit tests; unattended install and uninstall from `BODYCOUNT.cue` checked.
 
 ## Known gaps (first episode)
 
 - No DOSBox-X trace comparison yet: behaviour follows the disassembly, unverified against the original at run time.
-- Not shipped by the original release: sequences F1, F5, F7 (skipped, as the original does).
+- Sequences F1, F5, F7 exist only on the CD release; with floppy data they are skipped, as the original does.
+- CD release: a flame's direct-hit damage is a stand-in (Q-036).
 - Debug keys (`vfr750hondarc45`, Backspace) not ported; the bogus-mode cheats are (`--nsr250`).
 - Multiplayer has been tested on one machine (several processes over localhost UDP), not yet across a real LAN or the Internet.
 - Healing stations are ported but, as in OBC-A, nothing can start them (PLAYER.md §9).

@@ -1,9 +1,16 @@
 //! Rendered sequences: `PlaySequence(name)` (ghidra 32a2:0bcb, GAMEFLOW §6).
 //!
-//! `F2`–`F6` are FLC files named `.BC`. A missing file is skipped silently,
-//! as the original does. One 70 Hz tic counts as 16 "ms", so a frame lasts
-//! `ceil(speed / 16)` tics; playback ends after frame `frames − 2` or on Esc,
-//! then fades out over 30 steps.
+//! `F1`–`F7` are FLC files named `.BC`; `F1`, `F5` and `F7` ship only with
+//! the CD release. A missing file is skipped silently, as the original does.
+//! One 70 Hz tic counts as 16 "ms", so a frame lasts `ceil(speed / 16)`
+//! tics; playback ends after frame `frames − 2` or on Esc, then fades out
+//! over 30 steps.
+//!
+//! The CD release (cd:33bd:0002, CD_RELEASE.md §3.17) plays `F1`, `F5` and
+//! `F7` with the frame delay forced to 0, as fast as the drive delivers
+//! them, and stops the CD music first. OBCR shows them at
+//! [`CD_STREAM_TICS`] per frame, about what a double-speed drive managed
+//! (the files average 24 KB a frame against 300 KB/s).
 
 use std::sync::Arc;
 
@@ -16,9 +23,14 @@ use crate::assets::Assets;
 use crate::screen::{Ctx, Frame, Screen, Transition};
 use crate::sound::DIGI_RATE;
 
-/// Per-frame sound cues (32a2:09fa): (frame, sound id).
-fn cues(name: &str) -> &'static [(usize, u16)] {
+/// Tics per frame for the CD release's streamed sequences (see above).
+pub const CD_STREAM_TICS: u32 = 6;
+
+/// Per-frame sound cues (32a2:09fa): (frame, sound id). The CD's hook
+/// (cd:33a7:0003) has none for `F1`.
+fn cues(name: &str, cd: bool) -> &'static [(usize, u16)] {
     match name {
+        "F1" if cd => &[],
         "F1" => &[(0, 88), (128, 89), (185, 88), (258, 90), (319, 91)],
         "F2" => &[(1, 93)],
         "F3" => &[(1, 94)],
@@ -47,12 +59,16 @@ impl Sequence {
         if flic.frames.is_empty() {
             return None;
         }
-        let delay = flic.speed_ms.div_ceil(16).max(1);
+        let delay = if assets.release.release.cd && crate::cdaudio::stops_for_sequence(name) {
+            CD_STREAM_TICS
+        } else {
+            flic.speed_ms.div_ceil(16).max(1)
+        };
         Some(Self { name: name.to_string(), flic, frame: 0, wait: 0, delay, fading: None })
     }
 
     fn cue(&self, ctx: &Ctx) {
-        for &(f, id) in cues(&self.name) {
+        for &(f, id) in cues(&self.name, ctx.assets.release.release.cd) {
             if f == self.frame
                 && let Some(d) = ctx.assets.digi.get(usize::from(id)).filter(|d| !d.is_empty())
             {
@@ -78,6 +94,9 @@ impl Screen for Sequence {
             return if *step >= FADE_STEPS { Transition::Pop } else { Transition::None };
         }
         let skip = ctx.input.down(sc::ESCAPE) || ctx.input.pad_pressed(pad::START | pad::EAST);
+        if self.frame == 0 && self.wait == 0 && crate::cdaudio::stops_for_sequence(&self.name) {
+            crate::cdaudio::stop(ctx);
+        }
         if self.wait == 0 {
             self.cue(ctx);
         }

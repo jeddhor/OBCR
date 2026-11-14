@@ -59,6 +59,9 @@ pub mod pad {
     pub const DPAD_DOWN: u32 = 1 << 11;
     pub const DPAD_LEFT: u32 = 1 << 12;
     pub const DPAD_RIGHT: u32 = 1 << 13;
+    /// The analog triggers past half travel, as buttons (set by the platform).
+    pub const LEFT_TRIGGER: u32 = 1 << 14;
+    pub const RIGHT_TRIGGER: u32 = 1 << 15;
 }
 
 /// Combined state of all connected gamepads. Sticks are -1..=1, triggers 0..=1.
@@ -100,8 +103,11 @@ pub struct InputState {
     /// Relative mouse motion since the last frame, in pixels.
     pub mouse_dx: f32,
     pub mouse_dy: f32,
-    /// Held mouse buttons: bit 0 left, bit 1 middle, bit 2 right.
+    /// Held mouse buttons: bit 0 left, bit 1 middle, bit 2 right, bits 3 and 4
+    /// the side buttons.
     pub mouse_buttons: u8,
+    /// Mouse buttons at the previous frame (for edge detection).
+    pub mouse_prev: u8,
     /// Wheel notches since the last frame (positive = away from the user).
     pub wheel: i32,
     /// Gamepad state at the last pump.
@@ -119,6 +125,7 @@ impl Default for InputState {
             mouse_dx: 0.0,
             mouse_dy: 0.0,
             mouse_buttons: 0,
+            mouse_prev: 0,
             wheel: 0,
             pad: GamepadState::default(),
             pad_prev: 0,
@@ -140,6 +147,8 @@ impl InputState {
             1 => 1,
             2 => 2,
             3 => 4,
+            4 => 8,
+            5 => 16,
             _ => return,
         };
         if down {
@@ -168,6 +177,11 @@ impl InputState {
         self.pad.buttons & bits & !self.pad_prev != 0
     }
 
+    /// True if a mouse button in its went down since the last frame.
+    pub fn mouse_pressed(&self, bits: u8) -> bool {
+        self.mouse_buttons & bits & !self.mouse_prev != 0
+    }
+
     /// Clears per-frame data (call after the frame's tics consumed it).
     pub fn end_frame(&mut self) {
         self.events.clear();
@@ -176,5 +190,6 @@ impl InputState {
         self.mouse_dy = 0.0;
         self.wheel = 0;
         self.pad_prev = self.pad.buttons;
+        self.mouse_prev = self.mouse_buttons;
     }
 }

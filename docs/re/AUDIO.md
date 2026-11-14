@@ -183,7 +183,7 @@ A five-entry label table (DS:0x400: `FM MUSIC VOLUME`, `SOUND FX VOLUME`, ` BCKG
 
 Segment 32a2 contains an MSCDEX interface: `MSCDEX not installed...???`; a TOC reader that prints `DiskInfo.lo_tno`, `hi_tno`, lead-out and each track's start address and control bits (`4 chnl`, `2 chnl`, pre-emphasis, data, copy) (32a2:0f30 with 0cf9, 0d71, 1060, 10dd); and a "play from track `lo + a` to track `lo + b`" routine (32a2:0ec2 → 0e25). **None of them has a caller**: the only far calls into segment 32a2 are to 015e (sequence-player start-up), 01c6 (shutdown) and 0bcb (`PlaySequence`), and no far pointer to the CD routines exists in the file.
 
-The `cdmusic` parameter (also stored in `CONFIG.DAT`, but the parameter overrides it) sets DS:0x2E14, which makes `SD_SetMusicMode` force music off and `StartCPMusic` return early. **With `cdmusic` the game plays no music at all.** There is no track table to recover from this build; Q-016 can be closed as "unused in OBC-A" (a CD release could differ, Q-029).
+The `cdmusic` parameter (also stored in `CONFIG.DAT`, but the parameter overrides it) sets DS:0x2E14, which makes `SD_SetMusicMode` force music off and `StartCPMusic` return early. **With `cdmusic` the game plays no music at all.** There is no track table to recover from this build; Q-016 can be closed as "unused in OBC-A". The CD release does play disc audio: [CD_RELEASE.md](CD_RELEASE.md) §4.
 
 ## 9. Sounds in rendered sequences
 

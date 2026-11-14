@@ -168,14 +168,24 @@ impl World {
         self.play_sound(0x53);
     }
 
-    /// `MovePWalls`: two cells, then the wall rests.
+    /// `MovePWalls` (ghidra 2281:0e58, disassembly read for issue #3,
+    /// CONFIRMED): the wall advances `2·tics` per frame (Wolf3D: `tics`);
+    /// when it enters a new block the cell it leaves is cleared (tile,
+    /// `actorat`, plane 0 = player's area + 140, plane 1 = 0). Past state
+    /// 0x100 it stops there: the wall rests in the cell ahead, made solid on
+    /// the previous step, **without** a push-wall marker, so it cannot be
+    /// pushed again. Otherwise it moves on unless the next cell is occupied
+    /// or holds the player (Wolf3D checks `actorat` only), makes that cell
+    /// solid, and marks the moving cell `| 0x80` with plane-1 98. State
+    /// starts at 1 and steps by an even amount, so it never lands on 256 and
+    /// the wall always travels exactly two cells.
     pub fn move_pwalls(&mut self) {
         if self.pwall.state == 0 {
             return;
         }
-        let oldblock = self.pwall.state / 128;
-        self.pwall.state += self.tics as u16;
-        if self.pwall.state / 128 != oldblock {
+        let oldblock = self.pwall.state >> 7;
+        self.pwall.state = self.pwall.state.wrapping_add((self.tics as u16).wrapping_mul(2));
+        if self.pwall.state >> 7 != oldblock {
             let (x, y) = (i32::from(self.pwall.x), i32::from(self.pwall.y));
             let oldtile = self.pwall.tile;
             self.tilemap[Self::idx(x, y)] = 0;
@@ -183,18 +193,17 @@ impl World {
             let area = u16::from(self.plr().areanumber) + AREATILE;
             self.set_mapspot(x, y, 0, area);
             self.set_mapspot(x, y, 1, 0);
-            let (nx, ny) = step(x, y, self.pwall.dir);
-            self.set_mapspot(nx, ny, 1, PUSHABLETILE);
-            if self.pwall.state > 256 {
-                self.tilemap[Self::idx(nx, ny)] = oldtile;
+            if self.pwall.state > 0x100 {
                 self.pwall.state = 0;
                 return;
             }
+            let (nx, ny) = step(x, y, self.pwall.dir);
             self.pwall.x = nx as u16;
             self.pwall.y = ny as u16;
             let (fx, fy) = step(nx, ny, self.pwall.dir);
-            if !self.actorat(fx, fy).is_empty() {
-                self.tilemap[Self::idx(nx, ny)] = oldtile;
+            let p = self.plr();
+            let player_there = i32::from(p.tilex) == fx && i32::from(p.tiley) == fy;
+            if !self.actorat(fx, fy).is_empty() || player_there {
                 self.pwall.state = 0;
                 return;
             }
@@ -203,8 +212,9 @@ impl World {
                 self.tilemap[Self::idx(fx, fy)] = oldtile;
             }
             self.tilemap[Self::idx(nx, ny)] = oldtile | 0x80;
+            self.set_mapspot(nx, ny, 1, PUSHABLETILE);
         }
-        self.pwall.pos = (self.pwall.state / 2) & 63;
+        self.pwall.pos = (self.pwall.state >> 1) & 63;
     }
 }
 

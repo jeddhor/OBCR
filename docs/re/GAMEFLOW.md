@@ -155,7 +155,7 @@ All parameters are matched case-insensitively after skipping leading non-letters
 1. `StartCPMusic(8)` (music chunk 308) once on entry.
 2. If the intro has already run (`introshown`), go straight to step 9.
 3. If `nopics`: set DS:0x29A and go to step 9.
-4. `introshown = 1`; `PlaySequence("F1")` (`F1.BC` is not shipped, so nothing plays); memory housekeeping.
+4. `introshown = 1`; `PlaySequence("F1")` (`F1.BC` is not shipped with OBC-A, so nothing plays; the CD release's opening movie, CD_RELEASE.md §3.17); memory housekeeping.
 5. `SetPaletteMode(3)`; fade out; `CA_CacheScreen(4)` = **pic 1** (story text over soldiers); fade in over **65 steps**; `IN_UserInput(275)` (≈3.9 s, a key skips).
 6. Fade out; `CA_CacheScreen(5)` = **pic 2** (title logo); fade in in 1 step; `SD_PlaySound(86)` (a 3.9 s digitized sound, presumably the gunfire that goes with the splats); `IN_UserInput(100)`.
 7. `TitleSplats` (1497:15ca): draws pic 20 (16×16 red splat) nine times at random positions (four screen quadrants, `x = rnd % 125` or `300 − rnd % 125`, `y = rnd % 60` or `180 − rnd % 60`), with random pauses of `rnd % 10`, `% 20` or `% 30` tics after splats 1, 2, 3, 5, 6 and 7. That is 24 `US_RndT` calls (x then y per splat, plus six pauses); they advance the shared RNG index.

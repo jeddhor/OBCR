@@ -120,6 +120,11 @@ pub struct AudioSettings {
     pub channels: usize,
     /// Effects device: "digitized" (Sound Blaster), "adlib" or "pc" (speaker).
     pub effects: String,
+    /// Music: "cd" (the CD release's audio tracks, when ripped) or "adlib".
+    pub music_source: String,
+    /// Enhanced: when a CD track ends, play the next one (the original
+    /// waits for the next floor and plays the same track again).
+    pub cd_next_track: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -133,6 +138,11 @@ pub struct InputSettings {
     pub gamepad_deadzone: f32,
     pub gamepad_turn_speed: f32,
     pub rumble: bool,
+    /// Keyboard, mouse and gamepad bindings (issue #2); missing actions take
+    /// the control scheme's defaults when loaded (an empty default here, so
+    /// an old file gets its own scheme's bindings, not the modern ones).
+    #[serde(default)]
+    pub bindings: crate::bindings::Bindings,
 }
 
 impl Default for VideoSettings {
@@ -158,7 +168,15 @@ impl Default for VideoSettings {
 
 impl Default for AudioSettings {
     fn default() -> Self {
-        Self { master: 0.8, sfx: 1.0, music: 0.7, channels: 4, effects: "digitized".into() }
+        Self {
+            master: 0.8,
+            sfx: 1.0,
+            music: 0.7,
+            channels: 4,
+            effects: "digitized".into(),
+            music_source: "cd".into(),
+            cd_next_track: true,
+        }
     }
 }
 
@@ -172,6 +190,7 @@ impl Default for InputSettings {
             gamepad_deadzone: 0.2,
             gamepad_turn_speed: 1.0,
             rumble: true,
+            bindings: crate::bindings::Bindings::defaults("modern"),
         }
     }
 }
@@ -220,7 +239,13 @@ impl VideoSettings {
 
 impl Settings {
     pub fn load(path: &std::path::Path) -> Self {
-        std::fs::read_to_string(path).ok().and_then(|s| toml::from_str(&s).ok()).unwrap_or_default()
+        let mut s: Self = std::fs::read_to_string(path)
+            .ok()
+            .and_then(|s| toml::from_str(&s).ok())
+            .unwrap_or_default();
+        let scheme = s.input.profile.clone();
+        s.input.bindings.complete(&scheme);
+        s
     }
 
     pub fn save(&self, path: &std::path::Path) -> std::io::Result<()> {

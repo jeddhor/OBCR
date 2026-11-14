@@ -2145,6 +2145,9 @@ pub fn t_shoot(w: &mut World, id: ObjId) {
                 player::take_damage(w, 5, attacker);
             }
         }
+        // The CD drops the saucer's case: it fires at any range
+        // (cd:25d1:0200, CD_RELEASE.md §3.5).
+        class::SAUCER if w.data.cd => player::take_damage(w, damage, attacker),
         class::GIANT_RAT | class::SAUCER => {
             if dist <= 1 {
                 player::take_damage(w, damage, attacker);
@@ -2412,7 +2415,16 @@ pub fn t_projectile(w: &mut World, id: ObjId) {
 
     if dx < 0xC000 && dy < 0xC000 {
         let to_player = o.target == Some(w.player);
+        let cd = w.data.cd;
         let dmg: i16 = match o.obclass {
+            class::FLAME if cd => {
+                ignite(w, ti(o.tilex), ti(o.tiley));
+                fire_flash(w);
+                // DELTA-UNCHECKED: the CD passes an uninitialised local
+                // (cd:23e7:0316-032b) and rolls nothing; Q-036. Stand-in:
+                // the floppy formula's mean, without the US_RndT calls.
+                if to_player { 94 } else { 158 }
+            }
             class::FLAME => {
                 ignite(w, ti(o.tilex), ti(o.tiley));
                 fire_flash(w);
@@ -2423,8 +2435,14 @@ pub fn t_projectile(w: &mut World, id: ObjId) {
                 if w.gamestate.difficulty < 4 {
                     explosion_tile_effects(w, o.tilex as u8, o.tiley as u8, id);
                 }
-                // US_RndT (2390:040f / 041e).
-                let dmg = if to_player { (w.rnd() >> 1) + 30 } else { w.rnd() + 30 };
+                // US_RndT (2390:040f / 041e); the CD's (cd:23e7:02f9-0305)
+                // is gentler on the player and scales with difficulty.
+                let dmg = match (cd, to_player) {
+                    (false, true) => (w.rnd() >> 1) + 30,
+                    (false, false) => w.rnd() + 30,
+                    (true, true) => (w.rnd() >> 3) + 30,
+                    (true, false) => w.rnd().wrapping_mul(w.gamestate.difficulty).wrapping_add(80),
+                };
                 grenade_splash(w, dmg, id);
                 dmg
             }
@@ -2462,6 +2480,9 @@ pub fn t_projectile(w: &mut World, id: ObjId) {
 /// `actorat` tile is in `[tx-2, tx+2) × [ty-2, ty+2)` around the grenade's
 /// position takes `100 - (|Δtilex| + |Δtiley|)` (quirk K-6: asymmetric box,
 /// `dmg` ignored); only network games hurt the player (`dmg / 2`). CONFIRMED.
+///
+/// CD release (cd:307f:000c, CD_RELEASE.md §3.4): actors take
+/// `dmg >> (|Δtilex| + |Δtiley|)` and the network player the full `dmg`.
 #[doc(alias = "GrenadeSplash")]
 pub fn grenade_splash(w: &mut World, dmg: i16, id: ObjId) {
     let o = *w.obj(id);
@@ -2477,12 +2498,19 @@ pub fn grenade_splash(w: &mut World, dmg: i16, id: ObjId) {
                         .wrapping_sub(g.tilex as i16)
                         .wrapping_abs()
                         .wrapping_add((t.tiley as i16).wrapping_sub(g.tiley as i16).wrapping_abs());
-                    damage_actor(w, i, 100i16.wrapping_sub(d));
+                    let hurt = if w.data.cd {
+                        // The shift count is the byte sum (cd:307f:0089-0094).
+                        dmg >> (d as u8 & 15)
+                    } else {
+                        100i16.wrapping_sub(d)
+                    };
+                    damage_actor(w, i, hurt);
                 }
             }
             let p = *w.plr();
             if w.gamestate.difficulty > 3 && ti(p.tilex) == x && ti(p.tiley) == y {
-                player::take_damage(w, dmg >> 1, Some(id));
+                let hurt = if w.data.cd { dmg } else { dmg >> 1 };
+                player::take_damage(w, hurt, Some(id));
             }
         }
     }
@@ -2556,7 +2584,8 @@ pub fn explosion_tile_effects(w: &mut World, hitx: u8, hity: u8, ob: ObjId) {
                 continue;
             }
             let info = w.mapspot(x, y, 1);
-            if info == 0x59 || info == 0x62 {
+            // The CD no longer spares push walls (cd:3261:019f, CD_RELEASE.md §3.6).
+            if info == 0x59 || (info == 0x62 && !w.data.cd) {
                 continue;
             }
             let t = u16::from(t);

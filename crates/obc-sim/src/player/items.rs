@@ -20,6 +20,11 @@ const MAXSCORE: i32 = 1_000_000;
 /// 2 → ×4, 3 → ×3); at health ≤ 35 a 1/15 roll fades to black (single
 /// player); at 0 the game is over (`ex_died`). God mode and the immunity
 /// flag (`gamestate+0x28`) skip the damage but not the flash.
+///
+/// CD release (cd:211a:000e, CD_RELEASE.md §3.1): no fixed flash; after
+/// health is reduced the flash is `points / 5` (none in god mode or while
+/// immune), and the blackout roll at health ≤ 35 runs in god mode and in
+/// network games too.
 #[doc(alias = "TakeDamage")]
 pub fn take_damage(w: &mut World, points: i16, attacker: Option<ObjId>) {
     let mut points = points;
@@ -43,7 +48,10 @@ pub fn take_damage(w: &mut World, points: i16, attacker: Option<ObjId>) {
     }
     // DS:0xBFF4 (a modal box is up) returns here; there is no modal box in the simulation.
     w.lastattacker = attacker;
-    start_damage_flash(w, 6);
+    let cd = w.data.cd;
+    if !cd {
+        start_damage_flash(w, 6);
+    }
 
     if !w.godmode && w.gamestate.immune == 0 {
         if w.gamestate.armor > 0 {
@@ -63,13 +71,17 @@ pub fn take_damage(w: &mut World, points: i16, attacker: Option<ObjId>) {
         let gs = &mut w.gamestate;
         gs.health = gs.health.wrapping_sub(points).clamp(0, MAXVALUE);
         hud(w);
+        if cd && points / 5 != 0 {
+            // StartDamageFlash(points / 5) (cd:211a:00f7).
+            start_damage_flash(w, points / 5);
+        }
         // Enhanced-mode hint only (not in the original): gamepad rumble.
         w.emit(SimEvent::Rumble(points.clamp(0, 100) as u8));
     }
 
-    if !w.godmode && w.gamestate.health <= 35 {
-        let r = w.rnd(); // US_RndT, 208c:0592
-        if r % 15 == 0 && w.gamestate.difficulty < 4 {
+    if (cd || !w.godmode) && w.gamestate.health <= 35 {
+        let r = w.rnd(); // US_RndT, 208c:0592 (cd:211a:0108)
+        if r % 15 == 0 && (cd || w.gamestate.difficulty < 4) {
             // VL_FadeOut(0, 255, 0, 0, 0, 50)
             w.emit(SimEvent::Blackout);
         }
@@ -300,10 +312,11 @@ pub fn start_damage_flash(w: &mut World, damage: i16) {
 
 /// *StartBonusFlash* (ghidra 1942:0f44, CONFIRMED; `WOLFSRC/WL_PLAY.C:1143`):
 /// in single player, 1 in 15 bonus flashes is a red flash of
-/// `US_RndT() % 100` instead. Nothing in network games.
+/// `US_RndT() % 100` instead. Nothing in network games, except in the CD
+/// release (cd:1a74:003e, CD_RELEASE.md §3.2).
 #[doc(alias = "StartBonusFlash")]
 pub fn start_bonus_flash(w: &mut World) {
-    if w.gamestate.difficulty >= 4 {
+    if w.gamestate.difficulty >= 4 && !w.data.cd {
         return;
     }
     if w.rnd() % 15 == 0 {

@@ -40,7 +40,7 @@ Where the comparison and the code disagree, the code wins: OBCR reproduces the s
 | W wipe visor | `ClearScreenSplats` | `check_keys` | ✅ |
 | H exact health | `30d6:0779`: icon pic 24 at (viewwidth−40, 2), `%3d` in font 1 at (viewwidth−27, 0), black shadow, flat 0xFE below 50 health, font colours otherwise | `draw_health` | 🔧 (was a placeholder) |
 | C crosshair | `30d6:07d0`: 11 + 11 dots every other pixel through the view centre, colour 0xE1 | `draw_crosshair` | 🔧 (was a placeholder) |
-| F5 floors/ceilings off, F6 on | `floormode` DS:0x33D2 = 0 / 2, saved in CONFIG.DAT | game screen; `settings.game.floor_textures` | 🔧 (keys were reversed; now persisted) |
+| F5 floors/ceilings off, F6 on | `floormode` DS:0x33D2 = 0 / 2, saved in CONFIG.DAT; CheckKeys `1942:0666` (0x3F → off) and `1942:0688` (0x40 → on), CONFIRMED | game screen; `settings.game.floor_textures`; rebindable (FLOORS OFF / ON) | 🔧 (keys were still reversed until 2026-11-14; now persisted) |
 | F8 tremors | Toggles the screen shake (RENDERER.md §8.4) | `check_keys`, game screen | ✅ |
 | F1 sound, F2 music, F9 quick save, F10 quit prompt, Pause | CheckKeys / `US_ControlPanel` (GAMEFLOW §4.1, §11.3) | game screen | ✅ (F10 🔧 added) |
 | Esc ignored during a tremor | CheckKeys: no control panel while the shake counter and TREMORS are both set | game screen | 🔧 (added) |
@@ -135,7 +135,7 @@ All classes in ACTORS.md are ported with their state tables read from `COUNT.EXE
 |---|---|---|---|
 | Digitized effects, AdLib music | AUDIOMUS at 9,009 Hz with SB Pro panning; IMF music per floor (AUDIO.md) | `obc-audio`, `sound.rs` | ✅ |
 | Floor sequences F2, F3, F4, F6 | FLC players with sound cues | `sequence.rs` | ✅ |
-| F1, F5, F7, CD FMV | Not shipped in OBC-A | skipped as the original does | n/a |
+| F1, F5, F7, CD FMV | Not shipped in OBC-A; on the CD release | played when present (intro, map 22, victory); the CD's pacing and cues (CD_RELEASE.md §3.17) | n/a |
 | CD music and its mixer rows | Never used by OBC-A | — | n/a |
 | AUDIO MIX menu | Two rows: FM music volume, sound-effect volume | OPTIONS screen (master, effects, music) | ✅ ≠ (different screen, same controls) |
 | Sound device choice (PC speaker / AdLib / digitized) | Set by SETUP and CONFIG.DAT | OPTIONS → SOUND EFFECTS | 🔧 (added) |

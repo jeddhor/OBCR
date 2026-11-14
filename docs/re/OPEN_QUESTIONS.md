@@ -34,13 +34,14 @@ Seeded 2026-11-02 from the initial survey.
 | Q-026 | Cheats and debug activation | M10 | OPEN |
 | Q-027 | Map ThermoSensor | M10 | RESOLVED |
 | Q-028 | Command-line parameter semantics | M10 | OPEN |
-| Q-029 | Other releases and their differences | M0, M15 | OPEN |
+| Q-029 | Other releases and their differences | M0, M15 | PARTIAL (CD release: CD_RELEASE.md) |
 | Q-030 | High-score semantics (`completed`, `episode`) | M10 | OPEN |
 | Q-031 | Keys, cards, locked doors; `HIDDENCARD` | M5 | OPEN |
 | Q-032 | Elevators and floor transitions | M5, M10 | OPEN |
 | Q-033 | Booby traps | M5, M7 | OPEN |
 | Q-034 | Push walls | M5 | OPEN |
 | Q-035 | Door types | M4, M5 | OPEN |
+| Q-036 | CD release: a flame's direct-hit damage | M12 | OPEN |
 
 ---
 
@@ -193,6 +194,14 @@ Seeded 2026-11-02 from the initial survey.
 ### Q-029 — Which releases exist, and how do they differ?
 - **Evidence**: this copy is dated 1996-12-24 (`OBC-A`); ECWolf knows a Steam release (app 1627120, data under `C/BCCD`).
 - **Approach**: ask the owner for other copies; hash and diff; record manifests in `obc-formats::release`.
+- **Answer so far** (2026-11-14): the owner supplied the Steam BIN/CUE image. It is the CD release `OBC-CD` (`BCCD.EXE`), a later build with shifted tables, a few gameplay changes, three extra movies and CD audio: [CD_RELEASE.md](CD_RELEASE.md). The shareware release has not been examined.
+- **Status**: PARTIAL
+
+### Q-036 — CD release: how much does a flame's direct hit do?
+- **Matters for**: flame-thrower and fireball damage in the CD release (CD_RELEASE.md §3.3).
+- **Evidence**: in `BCCD.EXE`'s `T_Projectile`, class 18 within reach of its target ignites and flashes, then passes the local `[bp−0xA]` to `TakeDamage`/`DamageActor` without assigning it (cd:23e7:0316–032b). The value is whatever an earlier call left on the stack.
+- **Port**: a stand-in, the floppy formula's mean without its `US_RndT` calls (94 to the player, 158 to an actor), marked `DELTA-UNCHECKED`.
+- **Approach**: DOSBox-X breakpoint at the `DamageActor`/`TakeDamage` call after cd:23e7:032b with the CD build; read the argument over many hits.
 - **Status**: OPEN
 
 ### Q-030 — High-score field semantics

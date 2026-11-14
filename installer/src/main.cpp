@@ -2,7 +2,7 @@
 // Windows and Linux.
 //
 //   OBCR-Setup                         installation wizard
-//   OBCR-Setup --unattended --data DIR [--target DIR] [--desktop-shortcut]
+//   OBCR-Setup --unattended --data DIR|IMAGE [--target DIR] [--desktop-shortcut]
 //              [--no-menu] [--no-path-link]
 //   OBCR-Setup --uninstall [--target DIR] [--unattended] [--purge]
 //   OBCR-Uninstall ...                 same as --uninstall (installed copy)
@@ -140,7 +140,7 @@ int main(int argc, char **argv) {
     const QCommandLineOption uninstallOpt(QStringLiteral("uninstall"), QStringLiteral("Remove OBCR."));
     const QCommandLineOption unattendedOpt(QStringLiteral("unattended"),
                                            QStringLiteral("No windows; report progress on standard output."));
-    const QCommandLineOption dataOpt(QStringLiteral("data"), QStringLiteral("Your Operation Body Count folder."),
+    const QCommandLineOption dataOpt(QStringLiteral("data"), QStringLiteral("Your Operation Body Count folder or CD image (.cue)."),
                                      QStringLiteral("dir"));
     const QCommandLineOption targetOpt(QStringLiteral("target"), QStringLiteral("Installation folder."),
                                        QStringLiteral("dir"));

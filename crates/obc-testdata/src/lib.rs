@@ -22,6 +22,28 @@ pub fn data_dir() -> Option<PathBuf> {
         .find(|dir| dir.join("gfxtiles.bc").is_file() || dir.join("GFXTILES.BC").is_file())
 }
 
+/// CD-release data directory (BCCD.EXE and friends): `OBC_CD_DATA_DIR`, then
+/// `.local/data/obc-cd`.
+pub fn cd_data_dir() -> Option<PathBuf> {
+    let dir = std::env::var_os("OBC_CD_DATA_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| workspace_root().join(".local/data/obc-cd"));
+    (dir.join("BCCD.EXE").is_file() || dir.join("bccd.exe").is_file()).then_some(dir)
+}
+
+/// The CD image (`.cue`): `OBC_CD_IMAGE`, then the first `.cue` in `../CD`.
+pub fn cd_image() -> Option<PathBuf> {
+    if let Some(p) = std::env::var_os("OBC_CD_IMAGE") {
+        let p = PathBuf::from(p);
+        return p.is_file().then_some(p);
+    }
+    std::fs::read_dir(workspace_root().join("../CD"))
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("cue")))
+}
+
 /// Returns the data directory, or prints a skip notice and returns from the test.
 #[macro_export]
 macro_rules! require {

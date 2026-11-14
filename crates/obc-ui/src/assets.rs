@@ -15,12 +15,8 @@ use obc_formats::{DataDir, FormatError, Result};
 use obc_render::palette::Palette;
 use obc_render::view3d::Textures;
 use obc_render::xbrz::{HiTexture, Metric};
-use obc_sim::data::GameData;
+use obc_sim::data::{ExeLayout, GameData};
 
-/// File offset of the full-screen picture palette in `COUNT.EXE` (docs/re/DATA_FORMATS.md §9).
-const PICTURE_PALETTE: usize = 0x2E3B0;
-/// File offset of the dark palette (lighting mode 2).
-const DARK_PALETTE: usize = 0x2E0B0;
 /// First VGAGRAPH chunk holding a picture.
 const STARTPICS: usize = 3;
 
@@ -42,11 +38,13 @@ pub struct Assets {
     pub digi: Vec<Vec<u8>>,
     /// `GFXTILES.BC` digitized sounds.
     pub vswap_digi: Vec<DigiSound>,
-    /// Behavior tables read from `COUNT.EXE`.
+    /// Behavior tables read from the executable (`COUNT.EXE` or `BCCD.EXE`).
     pub game: Arc<GameData>,
     /// Trig tables shared by simulation and renderer.
     pub trig: Arc<Tables>,
     /// Dark palette (generators off), `COUNT.EXE` file 0x2E0B0.
+    /// The full-screen picture palette is at 0x2E3B0 (docs/re/DATA_FORMATS.md §9);
+    /// `BCCD.EXE` has both 0x6A0 bytes later (CD_RELEASE.md §2).
     pub darkpal: Palette,
     /// xBRZ colour metrics over `gamepal`: index 0xFF transparent (walls,
     /// sprites) and fully opaque (floors and ceilings).
@@ -81,9 +79,10 @@ impl Assets {
                 msg: format!("missing or unrecognized files: {}", missing.join(", ")),
             });
         }
-        let exe = MzExe::parse(data.read("COUNT.EXE")?)?;
-        let gamepal = exe.palette(release.release.gamepal_offset)?;
-        let picpal = exe.palette(PICTURE_PALETTE)?;
+        let rel = release.release;
+        let exe = MzExe::parse(data.read(rel.exe)?)?;
+        let gamepal = exe.palette(rel.gamepal_offset)?;
+        let picpal = exe.palette(rel.picpal_offset)?;
         let graph = GraphArchive::parse(
             &data.read("VGAHEAD.BC")?,
             &data.read("VGADICT.BC")?,
@@ -113,8 +112,8 @@ impl Assets {
         )?;
         let audio = AudioArchive::parse(&data.read("AUDIOHED.BC")?, data.read("AUDIOT.BC")?)?;
         let digi = parse_audiomus(&data.read("AUDIOMUS.BC")?)?;
-        let game = Arc::new(GameData::load(&exe)?);
-        let darkpal = exe.palette(DARK_PALETTE)?;
+        let game = Arc::new(GameData::load_with(&exe, ExeLayout::for_release(rel.id))?);
+        let darkpal = exe.palette(rel.darkpal_offset)?;
         let keyed = Metric::new(&gamepal, Some(0xFF));
         let opaque = Metric::new(&gamepal, None);
         Ok(Self {
@@ -142,6 +141,16 @@ impl Assets {
 
     /// Selects the xBRZ factor for the 3D view's textures (2–6; anything
     /// else turns upscaling off). Changing it drops the textures built so far.
+    /// CD audio tracks were ripped into the data directory (`TRACK02.QOA`..).
+    pub fn has_cd_audio(&self) -> bool {
+        (1..=crate::cdaudio::TRACKS).any(|n| self.data.contains(&crate::cdaudio::track_file(n)))
+    }
+
+    /// CD music track `n` (1..=4), read from disk each time it is started.
+    pub fn cd_track(&self, n: i16) -> Option<Arc<[u8]>> {
+        crate::cdaudio::load(&self.data, n)
+    }
+
     pub fn set_upscale(&mut self, n: usize) {
         let n = if (2..=6).contains(&n) { n } else { 0 };
         if self.upscaled.as_ref().map_or(0, |u| u.n) == n {

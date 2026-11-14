@@ -1,12 +1,15 @@
 //! Application state machine: screens, menus, sequences and HUD (DESIGN §7.6).
 
 pub mod assets;
+pub mod bindings;
+pub mod cdaudio;
 pub mod controls;
 pub mod game;
 pub mod hud;
 pub mod menu;
 pub mod netui;
 pub mod present;
+pub mod rebind;
 pub mod saves;
 pub mod scene;
 pub mod screen;

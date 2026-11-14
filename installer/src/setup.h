@@ -16,15 +16,19 @@ struct GameFile {
     QString role;    // required, sequence, user, extra
     QString status;  // ok, missing, mismatch, present
     QString name;    // canonical upper-case name
-    QString path;    // where it was found
+    QString path;    // where it was found (IMAGE|NAME on a CD image)
+    qint64 size = 0; // bytes, when verified
 };
 
 // Result of checking a directory of game files with the bundled `obcr`.
 struct DataCheck {
-    QString dir;
+    QString dir;       // a folder, or a CD image (.cue, .bin, .iso)
     QString error;     // set when the check could not run
     QString release;   // release description
     bool complete = false;
+    bool disc = false;        // `dir` is a CD image: files are extracted
+    int audioTracks = 0;      // CD music tracks to rip
+    qint64 audioBytes = 0;    // their estimated size once ripped
     QList<GameFile> files;
 
     // Files OBCR uses that are present and verified: required files and
@@ -56,8 +60,11 @@ QString version();
 QString gameExeName();      // obcr.exe or obcr
 QString uninstallerName();  // OBCR-Uninstall(.exe)
 QString defaultInstallDir();
-// Directories that look like game copies (Steam default locations).
+// Game copies found in the Steam and GOG default locations: CD images
+// (.cue) first, then folders with the game files.
 QStringList dataSuggestions();
+// True if `path` names a CD image file (.cue, .bin, .img, .iso).
+bool isDiscImage(const QString &path);
 // Settings and saved games written by OBCR itself (never by Setup).
 QStringList userDataDirs();
 
