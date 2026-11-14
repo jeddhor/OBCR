@@ -41,7 +41,7 @@ Task status values: `In progress`, `Paused`, `Blocked`, `Review`, `Done`. Remove
 | Id | Question | Needed by | Status |
 |---|---|---|---|
 | B-1 | License | M15 | Resolved 2026-11-02: GPL-3.0-or-later (ADR-006) |
-| B-2 | Remote for CI? | M0.7 | Resolved 2026-11-02: local builds only; `cargo xtask ci` is the gate. 2026-11-06: the owner added a private GitHub repository (`jeddhor/OBCR`, remote `origin`) for the code; builds stay local |
+| B-2 | Remote for CI? | M0.7 | Resolved 2026-11-02: local builds only; `cargo xtask ci` is the gate. 2026-11-14: the repository is public; GitHub Actions runs `cargo xtask ci` on Ubuntu 22.04 and Windows for every push to main, and builds the installers and publishes the release for each `v*` tag (`.github/workflows`). 2026-11-06: the owner added a private GitHub repository (`jeddhor/OBCR`, remote `origin`) for the code; builds stay local |
 | B-3 | Rendered sequences and CD audio data | M10.R9, M6.R2 | Resolved 2026-11-02: the owner's floppy install archives contain `F2.BC`, `F3.BC`, `F4.BC`, `F6.BC` (FLC animations). 2026-11-14: the owner added the Steam BIN/CUE image (`..\CD`): `F1`, `F5`, `F7` and four CD audio tracks (ADR-022). |
 | B-4 | Agent commit policy | M0 | Resolved 2026-11-02: confirmed as written in CLAUDE.md |
 
@@ -72,6 +72,7 @@ Append one line per completed task or notable event: `YYYY-MM-DD — <task> — 
 - 2026-11-14 — fix (issue #3) — Push walls follow the original `MovePWalls` exactly (full disassembly read): twice Wolf3D's speed, exactly two cells, the player blocks them, and a wall at rest loses its marker and cannot be pushed again. The free-standing blocks in the report come from the original's two-cell rule and map 8's push-wall partitions between open rooms — test `push_walls` (3).
 - 2026-11-06 — M15.5 — Version 1.0.0-beta.1: CHANGELOG.md, THIRD_PARTY_NOTICES.md (also in Setup's licence dialog), tag `v1.0.0-beta.1`, GitHub pre-release with both installers.
 - 2026-11-14 — M15.6 (issue #1) — The CD release (ADR-022, docs/re/CD_RELEASE.md): release OBC-CD and `BCCD.EXE`'s table layout (state records renamed to OBC-A's), the CD build's code differences behind `GameData::cd` (instruction-skeleton comparison of all functions, then a read of each changed one); BIN/CUE/ISO reader and QOA codec in obc-formats; `obcr --extract-data` rips the music; Setup takes a CD image; F1/F5/F7 play; CD music with the original's track logic and Alt+P/S/F — tests `cd_tables_line_up_with_the_floppy_ones`, `reads_the_cd_image`, `cd_music_follows_the_cd_release`, qoa and disc unit tests; unattended install and uninstall from `BODYCOUNT.cue` checked.
+- 2026-11-14 — M15.7 — Version 1.0.0-beta.2 published as a GitHub pre-release, both installers built by GitHub Actions (Windows with Qt 6.10.3: aqtinstall 3.3 cannot read Qt 6.11); the Windows installer from the release installed and removed cleanly from `BODYCOUNT.cue`. Issues #1, #2 and #3 answered and closed.
 
 ## Known gaps (first episode)
 
