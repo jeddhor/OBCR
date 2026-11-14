@@ -1,0 +1,116 @@
+# Builds both installers with the same scripts used locally
+# (installer/build-windows.ps1, installer/build-linux.sh). A pushed `v*` tag
+# also publishes a GitHub release with the installers and SHA256SUMS.txt;
+# its notes are the tag's section of CHANGELOG.md, and a version with a
+# hyphen (1.0.0-beta.2) is marked as a pre-release. Run it by hand
+# (workflow_dispatch) to build the installers as artifacts only.
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Qt 6 MinGW kit (into C:\Qt, as the build script expects)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.1'
+          host: windows
+          target: desktop
+          arch: win64_mingw
+          tools: 'tools_mingw1310 tools_ninja'
+          dir: 'C:\'
+          cache: true
+      - name: Rust toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the installer
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File installer\build-windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: target/dist/OBCR-Setup-*-windows-x64.exe
+          if-no-files-found: error
+
+  linux:
+    # The oldest supported distribution, so the result runs on newer ones.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build patchelf qt6-base-dev \
+            qt6-wayland libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev \
+            libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols \
+            libdecor-0-dev libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev libdrm-dev \
+            libgbm-dev libasound2-dev libpulse-dev libpipewire-0.3-dev libdbus-1-dev \
+            libudev-dev libibus-1.0-dev
+      - name: Rust toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the installer
+        run: installer/build-linux.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: target/dist/OBCR-Setup-*-linux-x86_64
+          if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, linux]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums and release notes
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          cd dist
+          chmod +x OBCR-Setup-*-linux-x86_64
+          sha256sum OBCR-Setup-* > SHA256SUMS.txt
+          cd ..
+          # The version's section of CHANGELOG.md, without its heading.
+          awk -v v="$version" '
+            index($0, "## " v " ") == 1 { on = 1; next }
+            on && /^## / { exit }
+            on { print }
+          ' CHANGELOG.md > section.md
+          test -s section.md || { echo "no CHANGELOG section for $version"; exit 1; }
+          if [[ "$version" == *-* ]]; then
+            printf '**Pre-release: a beta for testing, not a final release.**\n' > notes.md
+          else
+            : > notes.md
+          fi
+          cat section.md >> notes.md
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          title="OBCR $version"
+          flags=()
+          if [[ "$version" == *-beta.* ]]; then
+            title="OBCR ${version%%-*} Beta ${version##*-beta.} (pre-release)"
+            flags+=(--prerelease)
+          elif [[ "$version" == *-* ]]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" dist/* --title "$title" \
+            --notes-file notes.md --verify-tag "${flags[@]}"

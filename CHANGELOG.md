@@ -2,11 +2,32 @@
 
 All notable changes to OBCR. Versions follow [Semantic Versioning](https://semver.org).
 
-## Unreleased
+## 1.0.0-beta.2 — 2026-11-14 (pre-release)
 
-- **The CD release** (Steam, GOG; issue #1): Setup takes the BIN/CUE image directly, extracts the game files and rips the four CD music tracks. OBCR plays the CD release as its own executable did: the opening, map 22 and victory movies, CD music with the original keys (Alt+P play, Alt+S stop, Alt+F next track), and the CD build's gameplay changes. New options: MUSIC SOURCE (CD audio or AdLib) and CD TRACK END (next track, or the original's silence until the next floor). `obcr --extract-data <image or folder> <folder>` does the same from the command line.
+The second beta. It adds the CD release that Steam and GOG sell, full control rebinding, and fixes push walls.
+
+### Installers
+
+- **Windows**: `OBCR-Setup-1.0.0-beta.2-windows-x64.exe`. **Linux** (x86-64, glibc 2.35 or newer, such as Ubuntu 22.04+): `OBCR-Setup-1.0.0-beta.2-linux-x86_64` (make it executable and run it).
+- Point Setup at your Operation Body Count folder, or now at the **CD image** (`.cue`) of the Steam or GOG edition. Setup suggests the images it finds in the Steam and GOG folders. Running it over beta 1 updates the installation; settings and saved games are kept.
+- Built by GitHub Actions from the tagged source. `SHA256SUMS.txt` lists the files' checksums. They are not code-signed: Windows SmartScreen warns on first run (*More info* > *Run anyway*).
+
+### Changes
+
+- **The CD release** (Steam, GOG; issue #1): Setup takes the BIN/CUE image directly, extracts the game files and rips the four CD music tracks. OBCR plays the CD release as its own executable did:
+  - the opening, map 22 and victory movies;
+  - CD music, with the original keys Alt+P (play), Alt+S (stop) and Alt+F (next track);
+  - the CD build's gameplay changes (for example, grenades blow push walls open and the saucer fires at any range; full list in `docs/re/CD_RELEASE.md`).
+  New options: MUSIC SOURCE (CD audio or AdLib) and CD TRACK END (play the next track, or the original's silence until the next floor). `obcr --extract-data <image or folder> <folder>` does the same as Setup from the command line.
 - **Rebindable controls** (issue #2): KEY BINDINGS in OPTIONS (and after the help page) rebinds every action for keyboard and mouse (up to three inputs each, mouse buttons 4/5 and the wheel included) and for gamepads (two buttons each, triggers included).
-- **Push walls** (issue #3) now move exactly as the original: twice as fast, exactly two cells, stopped by the player, and not pushable again once at rest.
+- **Push walls** (issue #3) now move exactly as the original: twice as fast, exactly two cells, stopped by the player, and not pushable again once at rest. A wall left standing alone in a room after a push is how the original behaves too.
+
+### Known limitations
+
+- Behaviour follows the disassembly of the original; it has not yet been checked frame by frame against the original running in DOSBox-X.
+- CD release: the damage of a flame's direct hit cannot be read from the original's code and uses a stand-in; the CD-only movies play at about 12 frames a second (the original played them as fast as the CD drive could read).
+- Saved games are tied to the release they were made with: floppy saves do not load with CD files, and the other way round.
+- Multiplayer has been tested on one machine (several game processes), not yet across a real network.
 
 ## 1.0.0-beta.1 — 2026-11-06 (pre-release)
 
