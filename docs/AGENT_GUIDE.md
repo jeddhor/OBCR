@@ -33,7 +33,7 @@ This guide is the operating manual. [CLAUDE.md](../CLAUDE.md) at the repository 
 | `P:\msdos\OBC\OBCR\` | **This repository** | Read/write |
 | `P:\msdos\OBC\OBC\` | Original game (pristine reference copy) | **Read-only.** Copy before running. |
 | `P:\msdos\OBC\wolf3d\WOLFSRC\` | Wolf3D source, `WOLF3D.EXE` (with Turbo Debugger symbols), `WOLF3D.MAP` | Read-only |
-| `P:\msdos\OBC\EC7Wolf\` | The owner's Corridor 7 port (ECWolf fork): best reference for Capstone engine changes OBC inherited | Read-only |
+| `P:\msdos\OBC\EC7Wolf\` | The EC7Wolf port of Corridor 7 (an ECWolf fork): best reference for Capstone engine changes OBC inherited | Read-only |
 | `P:\msdos\OBC\ECWolf\` | ECWolf source | Read-only |
 | `P:\msdos\OBC\ghidra\` | Ghidra project `OBC` (programs `count.exe`, `WOLF3D.EXE`). Outside `.local` because Ghidra rejects dot-folders in project paths. | Read/write, one writer at a time |
 | `P:\msdos\OBC\dosbox-x\` | DOSBox-X source with debugger, JSON-RPC agent and control server | Build in place; source changes only on local branch `obc-tools` (§6.8) |

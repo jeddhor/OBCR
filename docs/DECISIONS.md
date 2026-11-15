@@ -204,7 +204,7 @@ Template:
 ## ADR-024 — OBCEdit: EC7Edit ported, shipped with OBCR
 
 - **Status**: Accepted (2026-11-15), at the owner's request
-- **Context**: The owner asked for a level editor shipped with OBCR, reusing EC7Edit, the owner's Corridor 7 editor (Python 3 + PySide6, about 25,000 lines with tests, GPL-3.0-or-later).
+- **Context**: The owner asked for a level editor shipped with OBCR, reusing EC7Edit, the editor from the EC7Wolf port of Corridor 7 (Python 3 + PySide6, about 25,000 lines with tests, GPL-3.0-or-later).
 - **Decision**:
   - OBCEdit is a fork of EC7Edit in `obcedit/`: the game-agnostic layers kept (raw-word document, undo, project format, path guards, drawing tools, transforms), the Corridor 7 and ECWolf parts replaced (codec for OBC's `MAPHEAD`/`MAPTEMP`, catalog, rules, compound tools, validation, mod export, OBCR runner) or dropped (WAD/MAPINFO, translators, custom resources, cinematics).
   - The catalog is generated from OBCR's own code (`obc-tool catalog`, spawning every code with the real `SetupGameLevel`) and verified by `cargo xtask test-data`, so the editor never disagrees with the engine about what a value means.

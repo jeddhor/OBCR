@@ -1,7 +1,7 @@
 //! Reading the game off a CD image: a BIN/CUE pair (the Steam and GOG
 //! release) or a plain ISO (docs/DECISIONS.md, ADR-022).
 //!
-//! Ported from the owner's Corridor 7 port (`EC7Wolf/tools/c7disc.py`), which
+//! Ported from the EC7Wolf port of Corridor 7 (`EC7Wolf/tools/c7disc.py`), which
 //! reads its disc the same way. Only what a 1990s ISO9660 level-1 disc uses:
 //! the primary volume descriptor and directory records, no Joliet or Rock
 //! Ridge. File names are returned bare and upper-case, without the `;1`

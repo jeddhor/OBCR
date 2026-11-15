@@ -39,7 +39,7 @@ Licensing, missing data only they can supply (CD or Steam release), behavior tha
 |---|---|
 | `..\OBC\` | Original game (read-only) |
 | `..\wolf3d\WOLFSRC\` | Wolf3D source, `WOLF3D.EXE` (Turbo Debugger symbols) and `WOLF3D.MAP` |
-| `..\EC7Wolf\` | The owner's Corridor 7 port: best reference for Capstone engine changes OBC inherited (concepts and leads; OBC's numbers come from `COUNT.EXE`) |
+| `..\EC7Wolf\` | The EC7Wolf port of Corridor 7: best reference for Capstone engine changes OBC inherited (concepts and leads; OBC's numbers come from `COUNT.EXE`) |
 | `..\ECWolf\` | ECWolf source (reference only; never port from `src\mame\`) |
 | `..\dosbox-x\` | DOSBox-X with debugger, JSON-RPC agent (`docs\rpc-agent-usage.md`, `client\python`) |
 | `C:\Users\jason\Desktop\ghidra_12.2_PUBLIC\` | Ghidra (`support\analyzeHeadless.bat`) |

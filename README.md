@@ -339,7 +339,7 @@ Network games are not compatible with the DOS original, and floppy and CD copies
 
 OBCR plays **mods**: campaigns of new floors, built from the original game's walls, objects and enemies, and optionally with their own wall textures, sprites, sounds, music and network arenas. Put a `.obcmod` file or a mod folder in the mods folder (`%APPDATA%\OBCR\data\mods\` on Windows, `~/.local/share/obcr/mods/` on Linux), press **D** in the main menu, choose it, and START GAME plays its floors in order. Each mod keeps its own saved games and high scores. `obcr --mod <file>` plays one without installing it.
 
-**OBCEdit**, the level editor, comes with OBCR. Setup installs it unless you untick the option, with its own menu entry. It is a port of EC7Edit, the editor of the owner's Corridor 7 port. In OBCEdit you can:
+**OBCEdit**, the level editor, comes with OBCR. Setup installs it unless you untick the option, with its own menu entry. It is a port of the EC7Edit editor from the EC7Wolf port of Corridor 7. In OBCEdit you can:
 - open the original floors to study them;
 - draw new ones from a palette of the game's real walls, objects and enemies;
 - place doors, push walls, exits and the other compound features with one click;
@@ -474,7 +474,7 @@ The full mechanic-by-mechanic comparison is [docs/MECHANICS_AUDIT.md](docs/MECHA
 
 **Wolfenstein 3D** © id Software: the engine Operation Body Count licensed, and whose released source code is OBCR's starting point.
 
-**OBCR** stands on open-source work: SDL 3, the Nuked OPL3 emulator, xBRZ by Zenju, Qt 6 for the installer, and the Rust crates listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). [ECWolf](https://maniacsvault.net/ecwolf/) and the owner's Corridor 7 port, EC7Wolf, were references for the Capstone engine family; Operation Body Count shares Corridor 7's engine lineage.
+**OBCR** stands on open-source work: SDL 3, the Nuked OPL3 emulator, xBRZ by Zenju, Qt 6 for the installer, and the Rust crates listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). [ECWolf](https://maniacsvault.net/ecwolf/) and the EC7Wolf port of Corridor 7 were references for the Capstone engine family; Operation Body Count shares Corridor 7's engine lineage.
 
 **OBCR is an unofficial preservation project. It is not affiliated with or endorsed by Capstone Software, IntraCorp, id Software, or the current rights holders of Operation Body Count.**
 

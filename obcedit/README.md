@@ -5,7 +5,7 @@ original maps read-only, draws new 64x64 floors, checks them against the
 game's rules, playtests them in OBCR, and exports them as a **mod** OBCR plays
 (a folder, or a `.obcmod` file).
 
-OBCEdit is a port of **EC7Edit**, the owner's Corridor 7 editor
+OBCEdit is a port of **EC7Edit**, the editor from the EC7Wolf port of Corridor 7
 (`EC7Wolf/editor`): its document model, undo, project files, path safety and
 GUI are kept; its Corridor 7 codec, catalog, rules and ECWolf export are
 replaced with Operation Body Count's. The plan is

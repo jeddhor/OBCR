@@ -18,7 +18,7 @@ OBCR is free software under the GNU General Public License, version 3 or later (
 
 ## In OBCEdit (the level editor, `obcedit/`, installed as `<install>/obcedit/`)
 
-OBCEdit is GPL-3.0-or-later, a port of EC7Edit by the same author. The frozen editor also contains:
+OBCEdit is GPL-3.0-or-later, a port of the EC7Edit editor from the EC7Wolf port of Corridor 7. The frozen editor also contains:
 
 - **PySide6 and Shiboken6** (Qt for Python) with **Qt 6** (Core, Gui, Widgets, Svg and their plugins) — LGPL-3.0. Linked dynamically and shipped unmodified in `obcedit/_internal/`; they can be replaced. <https://pypi.org/project/PySide6/>
 - **CPython** — Python Software Foundation License 2.0, with its bundled libraries (OpenSSL, Apache-2.0; libffi, MIT; zlib; and others as listed in the CPython distribution). <https://docs.python.org/3/license.html>

@@ -2,7 +2,7 @@
 
 OBCEdit is the level editor that comes with OBCR. With it you draw new floors for Operation Body Count, test them in OBCR with one key, and turn them into a **mod** that anyone with OBCR and the game can play.
 
-It is a port of **EC7Edit**, the editor of the owner's Corridor 7 port EC7Wolf, rebuilt for Operation Body Count's maps, objects and rules. What a mod is, and the format OBCEdit writes, is in [modding.md](modding.md).
+It is a port of **EC7Edit**, the editor from the EC7Wolf port of Corridor 7, rebuilt for Operation Body Count's maps, objects and rules. What a mod is, and the format OBCEdit writes, is in [modding.md](modding.md).
 
 ## Contents
 

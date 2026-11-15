@@ -47,7 +47,7 @@ The third beta. It adds mods and custom maps, and OBCEdit, a level editor for ma
 ### Changes
 
 - **Mods and custom maps**: OBCR plays mods, campaigns of new floors made from the game's own walls, objects and enemies. Put a `.obcmod` file or mod folder in the mods folder, press **D** in the main menu and choose it; each mod keeps its own saves and high scores. `obcr --mod <file>` plays one directly, and `obcr --check-mod <file>` checks one. A mod's floor can reuse an original floor from your own copy of the game, and can behave like any original floor (darkness, sewer walls, music, sequences). The format: [docs/modding.md](docs/modding.md).
-- **OBCEdit**, a level editor, ships with OBCR. It is a port of EC7Edit from the Corridor 7 port EC7Wolf, and lets you:
+- **OBCEdit**, a level editor, ships with OBCR. It is a port of the EC7Edit editor from the EC7Wolf port of Corridor 7, and lets you:
   - draw floors from a palette of the game's real walls, objects and enemies;
   - place doors, push walls, exits and the other compound features with one click;
   - check a floor as you draw, including whether it can be finished;
