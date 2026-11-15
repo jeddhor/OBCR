@@ -2,6 +2,18 @@
 
 All notable changes to OBCR. Versions follow [Semantic Versioning](https://semver.org).
 
+## Unreleased
+
+- **Mod art, sounds and music** (mod format 2): a mod can replace any wall texture (floors and ceilings included), sprite (objects, enemy frames, the weapons in hand), digitized sound, and give each floor its own music as Ogg Vorbis, QOA or IMF. Images are ordinary PNGs, converted to the game's palette as the mod loads. Enhanced mode's xBRZ upscaling covers replaced textures too. `obcr --convert-audio` turns a WAV into QOA music.
+- **Network arenas in mods**: a mod can bring up to ten arenas for network games. Machines only see each other when they have the same mod and version; the network setup screen shows where the arenas come from. In a mod's arenas, players reappear only where the start can reach.
+- **OBCEdit**:
+  - a *Resources* panel to import and preview art, sounds and music;
+  - arenas in the campaign;
+  - a **patrol-route tool** (**T**): click the turns of a route and it places the arrows, turning the enemy to face the route;
+  - patrol arrows drawn as arrows, and checks for patrols that stop against a wall and arrows nothing reads.
+- **Linux installer** about 55 MB smaller: symbolic links are kept as links instead of copies, and parts of Qt the editor never uses are left out. The Linux editor now bundles the X11 cursor library Qt needs.
+- The MODS screen lists what a mod brings: arenas, new art, sounds, music.
+
 ## 1.0.0-beta.3 — 2026-11-15 (pre-release)
 
 The third beta. It adds mods and custom maps, and OBCEdit, a level editor for making them.
