@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, AtomicI16, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use nuked_opl3::Opl3Chip;
-use obc_formats::qoa::Decoder;
+use obc_formats::stream::PcmStream;
 
 use crate::synth::{AdlibSfx, ImfPlayer, PcSfx, init_opl};
 use crate::{AudioCommand, DIGI_CHANNELS, Pan, Rates, Volumes};
@@ -60,10 +60,12 @@ impl CdDrive {
     }
 }
 
-/// A CD track being streamed: decoded a QOA frame at a time and resampled
-/// linearly to the output rate.
-struct CdVoice {
-    dec: Decoder<Arc<[u8]>>,
+/// Streamed music: a CD track (QOA, played once) or a mod's music (QOA or
+/// Ogg Vorbis, looped), decoded a block at a time and resampled linearly to
+/// the output rate.
+struct StreamVoice {
+    src: PcmStream,
+    looped: bool,
     channels: usize,
     /// Interleaved samples; the first frame is the previous block's last.
     buf: Vec<i16>,
@@ -72,18 +74,31 @@ struct CdVoice {
     step: f64,
 }
 
-impl CdVoice {
-    fn new(data: Arc<[u8]>, out_rate: u32) -> Option<Self> {
-        let dec = Decoder::new(data).ok()?;
-        let info = dec.info();
+impl StreamVoice {
+    fn new(data: Arc<[u8]>, out_rate: u32, looped: bool) -> Option<Self> {
+        let src = PcmStream::open(data).ok()?;
+        let (channels, rate) = (src.channels(), src.rate());
         Some(Self {
-            dec,
-            channels: info.channels,
+            src,
+            looped,
+            channels,
             buf: Vec::new(),
             tmp: Vec::new(),
             pos: 0.0,
-            step: f64::from(info.rate) / f64::from(out_rate),
+            step: f64::from(rate) / f64::from(out_rate),
         })
+    }
+
+    /// The next block; at the end, the first block again when looping.
+    fn refill(&mut self) -> bool {
+        if self.src.next_block(&mut self.tmp) {
+            return true;
+        }
+        if !self.looped {
+            return false;
+        }
+        self.src.rewind();
+        self.src.next_block(&mut self.tmp)
     }
 
     /// The next output sample pair, `None` at the end of the track.
@@ -91,7 +106,7 @@ impl CdVoice {
         let ch = self.channels;
         while self.pos as usize + 1 >= self.buf.len() / ch {
             let frames = self.buf.len() / ch;
-            if !self.dec.next_frame(&mut self.tmp) {
+            if !self.refill() {
                 return None;
             }
             let mut next = Vec::with_capacity(self.tmp.len() + ch);
@@ -135,8 +150,10 @@ pub struct Mixer {
     music_clock: f64,
     digi: [Option<DigiVoice>; DIGI_CHANNELS],
     opl_buf: [i16; 2],
-    cd: Option<CdVoice>,
+    cd: Option<StreamVoice>,
     drive: Arc<CdDrive>,
+    /// A mod's music file, looping.
+    stream: Option<StreamVoice>,
 }
 
 impl Mixer {
@@ -162,6 +179,7 @@ impl Mixer {
             opl_buf: [0; 2],
             cd: None,
             drive: drive.clone(),
+            stream: None,
         };
         (mixer, MixerHandle { tx, cd: drive })
     }
@@ -195,15 +213,19 @@ impl Mixer {
                     *slot = None;
                 }
             }
+            // A mod's music stream is music too: a new song replaces it and
+            // stopping or pausing music stops or pauses it.
             AudioCommand::StartMusic(commands) => {
                 ImfPlayer::silence(&mut self.opl);
                 self.music_paused = false;
                 self.music = Some(ImfPlayer::new(commands));
+                self.stream = None;
             }
             AudioCommand::StopMusic => {
                 ImfPlayer::silence(&mut self.opl);
                 self.music = None;
                 self.music_paused = false;
+                self.stream = None;
             }
             AudioCommand::PauseMusic(on) => {
                 if on {
@@ -212,13 +234,18 @@ impl Mixer {
                 self.music_paused = on;
             }
             AudioCommand::PlayCd(data) => {
-                self.cd = CdVoice::new(data, self.rate);
+                self.cd = StreamVoice::new(data, self.rate, false);
                 self.drive.busy.store(self.cd.is_some(), Ordering::Relaxed);
             }
             AudioCommand::StopCd => {
                 self.cd = None;
                 self.drive.busy.store(false, Ordering::Relaxed);
             }
+            AudioCommand::PlayStream(data) => {
+                self.music_paused = false;
+                self.stream = StreamVoice::new(data, self.rate, true);
+            }
+            AudioCommand::StopStream => self.stream = None,
             AudioCommand::SetVolumes(v) => self.volumes = v,
             AudioCommand::SetRates(r) => self.rates = r,
         }
@@ -286,6 +313,16 @@ impl Mixer {
                         self.cd = None;
                         self.drive.busy.store(false, Ordering::Relaxed);
                     }
+                }
+            }
+
+            if let Some(st) = self.stream.as_mut().filter(|_| !self.music_paused) {
+                match st.next() {
+                    Some((sl, sr)) => {
+                        l += sl * v.music;
+                        r += sr * v.music;
+                    }
+                    None => self.stream = None,
                 }
             }
 
@@ -357,5 +394,35 @@ mod tests {
         mixer.fill(&mut rest);
         assert!(!handle.cd.busy(), "0.29 s of output ends a 0.25 s track");
         assert_eq!(rest[rest.len() - 2..], [0.0, 0.0]);
+    }
+
+    #[test]
+    fn a_music_stream_loops() {
+        let (mut mixer, handle) = Mixer::new(48_000);
+        // 0.1 s of 22.05 kHz mono: looping keeps it sounding long after.
+        let pcm: Vec<i16> =
+            (0..2_205).map(|i| if i % 50 < 25 { 12_000 } else { -12_000 }).collect();
+        let qoa = obc_formats::qoa::encode(&pcm, 1, 22_050).unwrap();
+        handle.send(AudioCommand::PlayStream(qoa.into()));
+        let mut buf = vec![0.0; 2 * 48_000];
+        mixer.fill(&mut buf);
+        let tail = &buf[buf.len() - 2 * 4_800..];
+        assert!(tail.iter().any(|&s| s.abs() > 0.1), "still playing after 1 s");
+        assert!(!handle.cd.busy(), "a stream is not the CD drive");
+        handle.send(AudioCommand::PauseMusic(true));
+        mixer.fill(&mut buf);
+        assert_eq!(buf[buf.len() - 2..], [0.0, 0.0], "paused");
+        handle.send(AudioCommand::PauseMusic(false));
+        mixer.fill(&mut buf);
+        assert!(buf.iter().any(|&s| s.abs() > 0.1), "resumed");
+        handle.send(AudioCommand::StopMusic);
+        mixer.fill(&mut buf);
+        assert_eq!(buf[buf.len() - 2..], [0.0, 0.0], "stopping music stops the stream");
+        // Ogg Vorbis streams too.
+        let ogg: &[u8] = include_bytes!("../../obc-formats/tests/data/tone.ogg");
+        handle.send(AudioCommand::PlayStream(Arc::from(ogg)));
+        let mut buf = vec![0.0; 2 * 4_800];
+        mixer.fill(&mut buf);
+        assert!(buf.iter().any(|&s| s.abs() > 0.05));
     }
 }

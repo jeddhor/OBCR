@@ -178,6 +178,11 @@ pub struct NetGame {
     pub left: Vec<u16>,
     /// Drained by the platform after a frame.
     pub outbox: Vec<Outgoing>,
+    /// In a mod arena, the cells a player may reappear on (row-major 64×64:
+    /// those connected to the player start, `level::connected_region`).
+    /// `None` on the original arenas, which keep `NetRandomSpot`'s rule.
+    #[serde(skip)]
+    pub spawn_region: Option<Vec<bool>>,
 }
 
 impl NetGame {
@@ -711,6 +716,13 @@ fn random_spot(w: &mut World) {
             continue;
         }
         if w.statics.iter().any(|s| i32::from(s.tilex) == xi && i32::from(s.tiley) == yi) {
+            continue;
+        }
+        // Mod arenas only (docs/MOD_ASSETS_AND_ARENAS.md §3.5). The random
+        // numbers are drawn as before; a refused cell just draws again.
+        if let Some(r) = w.net.as_deref().and_then(|n| n.spawn_region.as_ref())
+            && !r.get(yi as usize * 64 + xi as usize).copied().unwrap_or(false)
+        {
             continue;
         }
         let area = (w.mapspot(xi, yi, 0) as u8).wrapping_add(0x74);

@@ -12,5 +12,8 @@ obc-core.workspace = true
 obc-formats.workspace = true
 obc-sim.workspace = true
 
+[dev-dependencies]
+serde_json.workspace = true
+
 [lints]
 workspace = true

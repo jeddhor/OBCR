@@ -84,6 +84,11 @@ pub enum AudioCommand {
     /// replacing any track playing; [`CdDrive::busy`] is set until it ends.
     PlayCd(Arc<[u8]>),
     StopCd,
+    /// Plays a mod's music file (QOA or Ogg Vorbis bytes), looping, replacing
+    /// any playing. It is music: `StartMusic` replaces it, `StopMusic` stops
+    /// it and `PauseMusic` holds it. The CD drive is separate.
+    PlayStream(Arc<[u8]>),
+    StopStream,
     SetVolumes(Volumes),
     SetRates(Rates),
 }

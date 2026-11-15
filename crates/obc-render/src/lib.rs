@@ -9,6 +9,7 @@
 pub mod draw2d;
 mod framebuffer;
 pub mod palette;
+pub mod quantize;
 pub use obc_core::trig as tables;
 pub mod view3d;
 pub mod xbrz;
