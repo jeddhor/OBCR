@@ -56,6 +56,27 @@ EXCLUDES = [
     "PySide6.QtSql",
 ]
 
+# Files PyInstaller's Qt hooks pull in that a widgets-only editor never
+# loads: Qt Quick/QML/PDF/virtual keyboard, the 20 MB software OpenGL
+# renderer, and the network/TLS plugins with their OpenSSL. Removed after the
+# freeze; the self-test below builds the real window to prove nothing needed
+# went with them.
+PRUNE = [
+    "**/opengl32sw.dll",
+    "**/*Qt6Quick*",
+    "**/*Qt6Qml*",
+    "**/*Qt6Pdf*",
+    "**/*Qt6VirtualKeyboard*",
+    "**/*Qt6Network*",
+    "**/plugins/tls",
+    "**/plugins/networkinformation",
+    "**/plugins/platforminputcontexts",
+    "**/plugins/imageformats/*pdf*",
+    "**/plugins/platforms/*direct2d*",
+    "**/libcrypto-3-x64.dll",
+    "**/libssl-3-x64.dll",
+]
+
 # Files of the original game: none may end up in the package.
 GAME_FILES = re.compile(
     r"^(COUNT|BCCD)\.EXE$|^(GFXTILES|MAPHEAD|MAPTEMP|VGAHEAD|VGADICT|VGAGRAPH|AUDIOHED|AUDIOT|AUDIOMUS|F\d)\.BC$",
@@ -161,6 +182,12 @@ def main() -> int:
         if not exe.is_file():
             print(f"FAIL: no {exe.name} in the freeze")
             return 1
+        pruned = 0
+        for pattern in PRUNE:
+            for p in list(built.glob(pattern)):
+                pruned += sum(f.stat().st_size for f in ([p] if p.is_file() else p.rglob("*")) if f.is_file())
+                shutil.rmtree(p) if p.is_dir() else p.unlink()
+        print(f"  pruned {pruned / 1e6:.1f} MB of unused Qt")
         shutil.copy2(REPO / "LICENSE", built / "LICENSE.txt")
         third_party(built / "THIRD-PARTY.txt")
         bad = [p for p in built.rglob("*") if p.is_file() and GAME_FILES.match(p.name)]

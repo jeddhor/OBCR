@@ -151,13 +151,22 @@ def selftest() -> int:
     print(f"catalog={len(catalog.entries)} entries, schema {catalog.schema}")
 
     application = build_application([])
-    settings = Settings()
+    # A throwaway settings file: a self-test must not leave a window layout
+    # (or anything else) in the real OBCEdit settings of the machine it runs on.
+    import tempfile
+
+    from PySide6.QtCore import QSettings
+
+    scratch = tempfile.TemporaryDirectory(prefix="obcedit-selftest-")
+    settings = Settings(QSettings(str(Path(scratch.name) / "selftest.ini"), QSettings.IniFormat))
     window = MainWindow(settings, catalog=catalog)
     window.show()
     application.processEvents()
     docks = len(window.findChildren(QDockWidget))
     window.close()
     print(f"window={window.width()}x{window.height()}, {docks} docks")
+    settings.sync()
+    scratch.cleanup()
     print("selftest=ok")
     return 0
 

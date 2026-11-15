@@ -1516,6 +1516,7 @@ class MainWindow(QMainWindow):
             dock.show()
             self.addDockWidget(area, dock)
         self.resize(1180, 760)
+        QTimer.singleShot(0, self._default_dock_sizes)
         self.statusBar().showMessage("Layout reset", 4000)
 
     # -- editing ----------------------------------------------------------
@@ -2364,6 +2365,17 @@ class MainWindow(QMainWindow):
             self.restoreGeometry(geometry)
         if state:
             self.restoreState(state)
+        else:
+            QTimer.singleShot(0, self._default_dock_sizes)
+
+    def _default_dock_sizes(self) -> None:
+        """First run and Reset layout: the palette gets most of the right-hand
+        column, since it is where an author spends their time."""
+        right = [self.palette_dock, self.inspector_dock, self.snapshot_dock]
+        self.resizeDocks(right, [460, 200, 180], Qt.Vertical)
+        self.resizeDocks([self.palette_dock], [440], Qt.Horizontal)
+        self.resizeDocks([self.maps_dock], [200], Qt.Horizontal)
+        self.resizeDocks([self.problems_dock], [150], Qt.Vertical)
 
     def closeEvent(self, event) -> None:
         if not self._confirm_discard():
