@@ -646,4 +646,4 @@ Done (recorded as M15.6–M15.7 in STATUS): release OBC-CD, the CD build's code 
 - [x] A network game with an arena mod plays its arenas in order and wraps; the network identity differs from a machine without the mod (in-process test; a two-machine game is left to the owner's LAN test, as for M13).
 - [x] OBCEdit imports art, sounds and music, shows replaced art, exports a mod OBCR accepts, and builds arenas (checked end to end with the real engine).
 - [x] OBCEdit's patrol-route tool places arrows a patrolling enemy follows (route core test plus a GUI test).
-- [ ] The CI-built Linux installer is under 70 MB and its editor starts (72 MB built locally; CI on the next push).
+- [ ] The CI-built Linux installer is under 70 MB and its editor starts. Not met: the 1.0.0-beta.4 release's is 87 MB (beta 3: 128 MB; 72 MB built locally): CI's frozen editor is 151 MB against 115 MB locally. Its self-test passed in CI.
