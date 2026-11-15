@@ -175,7 +175,7 @@ def validate_map(document: MapDocument, catalog: Catalog | None = None, *,
         if rules.is_door(w0):
             doors += 1
             for problem in rules.check_door(document, x, y):
-                add(problem.code, problem.severity, problem.message, x, y)
+                add(problem.code, problem.severity, problem.message, x, y, fix=problem.fix)
         if w1 in PLAYER_STARTS:
             starts.append((x, y))
         if w1 in ANIM_CODES:
