@@ -155,6 +155,7 @@ These change the settings as if you had chosen them in OPTIONS, and they are sav
 | `--mod PATH\|ID` | Play a mod for this run: a mod folder, a `.obcmod` file, or an installed mod's id. |
 | `--check-mod PATH` | Check a mod and exit: one tab-separated line per finding, then `result ok` or `result errors`; exit code 0 or 2. OBCEdit uses this. |
 | `--start X,Y,DIR` | With `--play`: start the player at cell X,Y (0-63) facing DIR (0 north, 1 east, 2 south, 3 west). OBCEdit's *play from here*. |
+| `--convert-audio IN.wav OUT.qoa` | Convert a WAV file to QOA music for a mod (mono or stereo, 8-96 kHz) and exit; exit code 0 or 1. OBCEdit uses this when you import WAV music. |
 
 ### Settings and the original's parameters
 

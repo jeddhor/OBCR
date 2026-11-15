@@ -70,6 +70,7 @@ from obcedit_core.transforms import copy_region, flip_clip, paste_writes, rotate
 from obcedit_core.validation import (
     fix_label,
     fix_writes,
+    profile_for_map,
     profile_for_slot,
     summarize,
     validate_local,
@@ -90,6 +91,7 @@ from obcedit_core.project import (
 )
 
 from .import_dialog import ImportDialog
+from .resources_panel import ResourcesPanel
 from .inspector import Inspector
 from .map_canvas import MapCanvas
 from .palette_models import CatalogFilter, CatalogModel, EntryRole
@@ -202,11 +204,18 @@ class MainWindow(QMainWindow):
         self.tools.refused.connect(self._on_prefab_refused)
         self.tools.picked.connect(self._on_picked)
         self.tools.camera_placed.connect(self.set_camera)
+        self.tools.catalog = self.catalog
+        self.tools.route_changed.connect(self._on_route_changed)
         self.tools.message.connect(lambda text: self.statusBar().showMessage(text, 3000))
 
         self._build_menus()
         self._build_tools()
+        #: The ResourceStore the open project's records were last read from,
+        #: so a save to a new place can carry the files along.
+        self._active_store = None
+        self._resource_state = None
         self._build_docks()
+        self._build_resources_dock()
         self._build_central()
         self.setStatusBar(QStatusBar(self))
         self._cell_label = QLabel("", self)
@@ -360,6 +369,7 @@ class MainWindow(QMainWindow):
         for action in (self.action_zoom_in, self.action_zoom_out, self.action_grid):
             view_menu.addAction(action)
         view_menu.addSeparator()
+        self.view_menu = view_menu
         view_menu.addAction(self.action_reset_layout)
 
         self.tools_menu = self.menuBar().addMenu("&Tools")
@@ -696,6 +706,13 @@ class MainWindow(QMainWindow):
         self._identity = project_identity(path) if path else None
         self.history.clear()
         self.tabs.clear()
+        store = self.resource_store()
+        self._active_store = store
+        if project.resources:
+            for problem in store.check(project.resources):
+                self._note_problem(f"Resources: {problem.message}")
+            if path is not None:
+                store.prune(project.resources)
         self._refresh()
 
     def new_project(self) -> None:
@@ -822,7 +839,9 @@ class MainWindow(QMainWindow):
     def save_project(self) -> bool:
         if self.project_path is None:
             return self.save_project_as()
+        previous = self._active_store
         try:
+            self._carry_resources(previous)
             revision = save_project(self.project, self.project_path,
                                     expect_identity=self._identity)
         except SaveConflict:
@@ -850,6 +869,11 @@ class MainWindow(QMainWindow):
             return False
         self.project = self.project.marked_saved(revision)
         self._identity = project_identity(self.project_path)
+        self._active_store = self.resource_store()
+        if previous is not None and previous.root != self._active_store.root \
+                and previous.root.parent.name == "unsaved":
+            # First save of a new project: its files now live beside it.
+            previous.discard()
         self.recovery.discard(self.project.uuid)
         self.settings.remember_project(self.project_path)
         self._refresh()
@@ -942,6 +966,11 @@ class MainWindow(QMainWindow):
                         "this one.")
             return False
         try:
+            if self.project.resources:
+                from obcedit_core.resources import store_for
+
+                store_for(Path(path), workspace="", project_uuid="").adopt_all(
+                    self.resource_store())
             save_project(self.project, Path(path))
         except Exception as error:
             self._error("Could not write the copy", str(error))
@@ -1010,7 +1039,8 @@ class MainWindow(QMainWindow):
             self._error("That campaign cannot be read", str(error))
             return False
 
-        dialog = CampaignDialog(current, self.project.maps, self)
+        dialog = CampaignDialog(current, self.project.maps, self,
+                                music_names=self.music_names())
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return False
         return self.set_campaign(dialog.campaign())
@@ -1023,6 +1053,9 @@ class MainWindow(QMainWindow):
         # dirty like any other edit. It is not a setting that quietly persists.
         self.project = self.project.with_campaign(campaign.to_json())
         self._refresh_title()
+        if getattr(self, "resources_panel", None) is not None:
+            self.resources_panel.refresh()
+        self._revalidate_soon()
         count = len(campaign.levels)
         self.statusBar().showMessage(
             f"Campaign: {campaign.title or campaign.mod_id}, {count} floor(s)", 6000)
@@ -1040,7 +1073,8 @@ class MainWindow(QMainWindow):
         except (ObcEditError, ValueError, TypeError) as error:
             self._error("That campaign cannot be read", str(error))
             return None
-        problems = validate_campaign(campaign, self.project.maps)
+        problems = validate_campaign(campaign, self.project.maps,
+                                     music_names=self.music_names())
         blocking = [p for p in problems if p.severity >= Severity.ERROR]
         if blocking:
             self._error(
@@ -1054,7 +1088,7 @@ class MainWindow(QMainWindow):
         if self._preflight_refused(self.preflight(maps), what):
             return None
         try:
-            return build_mod(self.project, campaign)
+            return build_mod(self.project, campaign, store=self.resource_store())
         except ObcEditError as error:
             self._error(f"{what}: could not build the mod", str(error))
             return None
@@ -1175,6 +1209,8 @@ class MainWindow(QMainWindow):
         tab.canvas.pressed.connect(self._on_press)
         tab.canvas.dragged.connect(self.tools.drag)
         tab.canvas.released.connect(self.tools.release)
+        tab.canvas.finish_requested.connect(self.tools.finish_route)
+        tab.canvas.cancel_requested.connect(self.tools.cancel_pending)
         index = self.tabs.addTab(tab, document.name or document.label)
         self.tabs.setCurrentIndex(index)
         self._apply_wall_colors()
@@ -1384,8 +1420,19 @@ class MainWindow(QMainWindow):
         if 0 <= row < len(self.project.maps):
             self.open_map(self.project.maps[row].uuid)
 
+    def _on_route_changed(self, route) -> None:
+        """Show the patrol route being drawn on the current map only."""
+        current = self.current_tab
+        for index in range(self.tabs.count()):
+            tab = self.tabs.widget(index)
+            if isinstance(tab, MapTab):
+                tab.canvas.set_route(route if tab is current else None)
+
     def _on_hover(self, x: int, y: int) -> None:
         tab = self.current_tab
+        if tab is not None:
+            self.tools.set_document(self.project.map_by_uuid(tab.map_uuid))
+            self.tools.hover(x, y)
         if tab is None or x < 0:
             self._cell_label.setText("")
             return
@@ -1515,6 +1562,10 @@ class MainWindow(QMainWindow):
             dock.setFloating(False)
             dock.show()
             self.addDockWidget(area, dock)
+        self.resources_dock.setFloating(False)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.resources_dock)
+        self.tabifyDockWidget(self.palette_dock, self.resources_dock)
+        self.palette_dock.raise_()
         self.resize(1180, 760)
         QTimer.singleShot(0, self._default_dock_sizes)
         self.statusBar().showMessage("Layout reset", 4000)
@@ -1538,6 +1589,8 @@ class MainWindow(QMainWindow):
             # the old one would keep reporting the words from before this edit.
             self.tools.set_document(self.project.map_by_uuid(tab.map_uuid))
         self._refresh_title()
+        if command.resources or command.campaigns:
+            self._sync_resources()
         # Continuous validation: the cheap rules on every edit, the whole set
         # when the hand stops. Painting a wall must not pay for a reachability
         # flood, and a panel that only updates on F8 is a panel describing a
@@ -1806,7 +1859,7 @@ class MainWindow(QMainWindow):
 
         cache = self._snapshot_cache_dir()
         try:
-            build = preview_mod(self.project, document.uuid)
+            build = preview_mod(self.project, document.uuid, store=self.resource_store())
             key = snapshot_key(
                 engine=profile.engine_path,
                 data_fingerprint=profile.data_fingerprint,
@@ -1902,8 +1955,64 @@ class MainWindow(QMainWindow):
                 self.snapshot_status.setText(text + " — edited since")
 
     def _map_profile(self, document) -> "Profile":
-        """Which rules apply to this map, from the slot it is exported to."""
-        return profile_for_slot(document.slot)
+        """Which rules apply to this map: an arena's if the campaign plays it as
+        a network arena, otherwise the slot's (docs/MOD_ASSETS_AND_ARENAS.md)."""
+        return profile_for_map(document, self._arena_maps())
+
+    def _arena_maps(self) -> set:
+        try:
+            return self.current_campaign().arena_maps() if self.project.campaign else set()
+        except (ObcEditError, ValueError, TypeError):
+            return set()
+
+    # -- resources (mod format 2) -----------------------------------------
+
+    def _build_resources_dock(self) -> None:
+        """The Resources panel, tabbed with the palette."""
+        self.resources_panel = ResourcesPanel(self)
+        dock = QDockWidget("Resources", self)
+        dock.setObjectName("resources-dock")
+        dock.setWidget(self.resources_panel)
+        self.addDockWidget(Qt.RightDockWidgetArea, dock)
+        self.tabifyDockWidget(self.palette_dock, dock)
+        self.palette_dock.raise_()
+        self.resources_dock = dock
+        action = dock.toggleViewAction()
+        action.setText("&Resources (art, sounds, music)")
+        self.action_resources = action
+        self.view_menu.insertAction(self.action_reset_layout, action)
+
+    def resource_store(self):
+        """Where the open project's replacement files live: beside the project
+        (`<name>.assets/`), or in the workspace until it is first saved."""
+        from obcedit_core.resources import store_for
+
+        workspace = self.settings.profile.workspace_dir or str(
+            Path(self.settings.recovery_dir).parent)
+        return store_for(self.project_path, workspace=workspace, project_uuid=self.project.uuid)
+
+    def music_names(self) -> list[str]:
+        return [str(r.target) for r in self.project.resources if r.kind == "music"]
+
+    def _sync_resources(self, *, force: bool = False) -> None:
+        """Show the project's replacement art everywhere after it changed."""
+        store = self.resource_store()
+        state = (self.project.resources, str(store.root), self.thumbnails.available)
+        if state == self._resource_state and not force:
+            return
+        self._resource_state = state
+        if self.thumbnails.set_overrides(self.project.resources, store) or force:
+            for model in self.palette_models.values():
+                model.invalidate_icons()
+            self._apply_wall_colors()
+        if getattr(self, "resources_panel", None) is not None:
+            self.resources_panel.refresh()
+
+    def _carry_resources(self, previous) -> None:
+        """Before writing the project somewhere new, copy its files along."""
+        target = self.resource_store()
+        if previous is not None and previous.root != target.root:
+            target.adopt_all(previous)
 
     def validate(self, *, quick: bool = False) -> list:
         """Check the open map and fill the Problems panel.
@@ -2042,7 +2151,7 @@ class MainWindow(QMainWindow):
         session = self._next_session_id()
         session_dir = workspace / session
         try:
-            build = preview_mod(self.project, document.uuid)
+            build = preview_mod(self.project, document.uuid, store=self.resource_store())
             guard = OutputGuard(protected_roots=(Path(profile.data_dir),))
             mod = write_mod(build, session_dir / "mod", guard=guard)
         except (OSError, ObcEditError) as error:
@@ -2312,6 +2421,7 @@ class MainWindow(QMainWindow):
         self.settings.sync()
         self.thumbnails.clear()
         self.open_assets(profile)
+        self._sync_resources(force=True)
         self._refresh_palette()
         self.statusBar().showMessage("Setup saved", 4000)
         return True
@@ -2319,6 +2429,7 @@ class MainWindow(QMainWindow):
     # -- housekeeping -----------------------------------------------------
 
     def _refresh(self) -> None:
+        self._sync_resources()
         self.map_list.clear()
         for document in self.project.maps:
             item = QListWidgetItem(f"{document.name or '(unnamed)'}")

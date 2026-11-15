@@ -621,3 +621,29 @@ Done (recorded as M15.6–M15.7 in STATUS): release OBC-CD, the CD build's code 
 - [x] OBCEdit re-encodes both releases' map archives byte-identically.
 - [x] A map drawn in OBCEdit, exported and checked by OBCR, with a snapshot through OBCR's renderer (GUI slice test, data-gated).
 - [x] The installers carry OBCEdit; an unattended install creates it and the uninstaller removes it (Windows checked; Linux by CI).
+
+## M18 — Mod art, sounds, music, arenas; patrol routes
+
+**Goal:** mods carry their own art, sounds and music and their own network arenas; OBCEdit makes them and draws patrol routes; the Linux installer slimmed. The plan: [MOD_ASSETS_AND_ARENAS.md](MOD_ASSETS_AND_ARENAS.md) (ADR-025, ADR-026).
+
+| Id | Task |
+|---|---|
+| M18.0 | Linux installer: symbolic links kept as links in the payload; unused Qt pruned. |
+| M18.1 | The plan; ADR-025 (mod format 2), ADR-026 (arenas and network identity). |
+| M18.2 | Format 2: manifest, arenas, asset files, decoders, checks, limits. |
+| M18.3 | Art: palette rule, sprites from images, the texture layer, xBRZ. |
+| M18.4 | Sounds and music: overrides, stream voice (QOA, Vorbis, looping), IMF, `--convert-audio`. |
+| M18.5 | Arenas: network campaign, identity hash, setup screen, arena checks, respawn region. |
+| M18.6 | OBCEdit: project schema 2, imports, Resources panel, replaced art in palette and snapshots, export. |
+| M18.7 | OBCEdit: arenas and music files in the campaign; arena validation. |
+| M18.8 | OBCEdit: patrol-route tool, arrows drawn as arrows, patrol validation. |
+| M18.9 | Documentation and verification. |
+
+### Acceptance criteria
+
+- [x] With no mod, every existing test passes unchanged, network tests included.
+- [x] A generated format-2 mod with a replaced wall, sprite, sound and music file passes `--check-mod`, renders the replacement and plays the music in a loop.
+- [x] A network game with an arena mod plays its arenas in order and wraps; the network identity differs from a machine without the mod (in-process test; a two-machine game is left to the owner's LAN test, as for M13).
+- [x] OBCEdit imports art, sounds and music, shows replaced art, exports a mod OBCR accepts, and builds arenas (checked end to end with the real engine).
+- [x] OBCEdit's patrol-route tool places arrows a patrolling enemy follows (route core test plus a GUI test).
+- [ ] The CI-built Linux installer is under 70 MB and its editor starts (72 MB built locally; CI on the next push).

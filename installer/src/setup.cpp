@@ -18,7 +18,11 @@
 #include <QTextStream>
 
 #include <algorithm>
+#include <filesystem>
 #include <memory>
+#ifndef Q_OS_WIN
+#include <unistd.h>
+#endif
 
 namespace setup {
 
@@ -104,6 +108,34 @@ bool copyFile(const QString &from, const QString &to, QString *error) {
     QFile::setPermissions(to, QFile::permissions(to) | QFileDevice::WriteOwner |
                                   QFileDevice::ReadOwner);
     return true;
+}
+
+// Recreates the symbolic link `from` (inside `root`) at `to` with the same
+// relative target. PyInstaller's Linux freeze of OBCEdit links its biggest
+// libraries into place; the payload carries them as links, and copying the
+// target instead would install every one twice. Windows freezes have none;
+// should one appear there, it is copied.
+bool copyLink(const QString &from, const QString &to, const QString &root, QString *error) {
+    std::error_code ec;
+    const std::filesystem::path raw =
+        std::filesystem::read_symlink(std::filesystem::path(from.toStdU16String()), ec);
+    const QString target = QString::fromStdU16String(raw.generic_u16string());
+    const QString resolved = QDir::cleanPath(QFileInfo(from).absolutePath() + QLatin1Char('/') + target);
+    const QString base = QDir::cleanPath(root) + QLatin1Char('/');
+    if (ec || target.isEmpty() || QDir::isAbsolutePath(target) || !resolved.startsWith(base)) {
+        *error = QStringLiteral("Cannot copy %1: it links outside OBCEdit's folder").arg(from);
+        return false;
+    }
+    QFile::remove(to);
+#ifdef Q_OS_WIN
+    return copyFile(resolved, to, error);
+#else
+    if (::symlink(QFile::encodeName(target).constData(), QFile::encodeName(to).constData()) != 0) {
+        *error = QStringLiteral("Cannot create the link %1 -> %2").arg(to, target);
+        return false;
+    }
+    return true;
+#endif
 }
 
 void makeExecutable(const QString &path) {
@@ -234,7 +266,10 @@ bool editorAvailable() { return QFileInfo::exists(join(editorSource(), editorExe
 qint64 editorSize() {
     qint64 bytes = 0;
     QDirIterator it(editorSource(), QDir::Files | QDir::Hidden, QDirIterator::Subdirectories);
-    while (it.hasNext()) bytes += QFileInfo(it.next()).size();
+    while (it.hasNext()) {
+        const QFileInfo fi(it.next());
+        if (!fi.isSymLink()) bytes += fi.size();  // a link costs nothing
+    }
     return bytes;
 }
 
@@ -554,6 +589,12 @@ bool install(const Options &o, const DataCheck &check, const Progress &progress,
             }
             for (const QString &d : parents) m.dir(d);
             QDir().mkpath(QFileInfo(to).absolutePath());
+            if (QFileInfo(from).isSymLink()) {
+                // Listed like a file: the uninstaller removes links too.
+                if (!copyLink(from, to, src, error)) return fail(*error);
+                m.file(to);
+                continue;
+            }
             if (!copyFile(from, to, error)) return fail(*error);
             if (QFileInfo(from).isExecutable()) makeExecutable(to);
             m.file(to);

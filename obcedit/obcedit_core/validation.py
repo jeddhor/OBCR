@@ -27,7 +27,15 @@ Warnings (advisory):
 * an ambush marker with no standing enemy on it (it stays a wall);
 * a door-look marker on something that is not a door-look wall;
 * plane-1 words the game ignores (19-317 with no meaning);
-* static 71, which blocks only in the CD release.
+* static 71, which blocks only in the CD release;
+* a patroller that walks into a wall with no arrow to turn it (it stops there
+  for good), and a patrol arrow no patrol reaches (patrol.py).
+
+Maps a mod uses as network arenas (docs/MOD_ASSETS_AND_ARENAS.md 3.5) are
+checked with the ARENA profile, chosen by campaign membership rather than slot:
+exactly one player start, no enemies (an error: in a network game they spawn
+but cannot be killed), and a warning for floor the start cannot reach (players
+reappear on random free cells).
 
 Every diagnostic has a stable `OBC-*` code and a cell, so the GUI can put the
 cursor on the problem.
@@ -37,7 +45,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from . import rules
+from . import patrol, rules
 from .catalog import Catalog
 from .document import MapDocument
 from .errors import Diagnostic, Severity
@@ -73,13 +81,20 @@ class Profile:
     starts: int | None = 1
     needs_exit: bool = True
     reports_unreachable: bool = True
+    #: False for mod arenas: enemies there cannot be killed.
+    enemies: bool = True
+    unreachable_severity: Severity = Severity.INFORMATION
 
 
 SINGLE_PLAYER = Profile("single_player", "Single-player floor")
 #: Network arenas (original slots 50-59): exits work for everyone, no quota.
 NETWORK = Profile("network", "Network arena", starts=None, needs_exit=False,
                   reports_unreachable=False)
-PROFILES = {profile.key: profile for profile in (SINGLE_PLAYER, NETWORK)}
+#: A mod's own network arena (format 2): one start as the reference point.
+ARENA = Profile("arena", "Network arena (mod)", starts=1, needs_exit=False,
+                reports_unreachable=True, enemies=False,
+                unreachable_severity=Severity.WARNING)
+PROFILES = {profile.key: profile for profile in (SINGLE_PLAYER, NETWORK, ARENA)}
 NETWORK_SLOTS = frozenset(range(50, 60))
 #: EC7Edit's name for the same idea.
 DEATHMATCH = NETWORK
@@ -89,14 +104,23 @@ def profile_for_slot(slot: int) -> Profile:
     return NETWORK if slot in NETWORK_SLOTS else SINGLE_PLAYER
 
 
+def profile_for_map(document: MapDocument, arena_maps=()) -> Profile:
+    """A map the campaign uses as an arena is checked as one, whatever its slot."""
+    if document.uuid in arena_maps:
+        return ARENA
+    return profile_for_slot(document.slot)
+
+
 LOCAL_CODES = frozenset({
     "OBC-BOUNDARY-001", "OBC-CELL-002", "OBC-THING-001", "OBC-THING-002", "OBC-THING-003",
     "OBC-DOOR-001", "OBC-DOOR-002", "OBC-DOOR-003", "OBC-DOOR-004", "OBC-PUSH-001",
     "OBC-PUSH-002", "OBC-AMBUSH-001", "OBC-WALL-002", "OBC-EXIT-002", "OBC-RELEASE-001",
+    "OBC-ARENA-001",
 })
 GLOBAL_CODES = frozenset({
     "OBC-SIZE-001", "OBC-START-001", "OBC-START-002", "OBC-LIMIT-001", "OBC-LIMIT-002",
     "OBC-LIMIT-003", "OBC-LIMIT-004", "OBC-EXIT-001", "OBC-KILL-001", "OBC-UNREACH-001",
+    "OBC-PATROL-001", "OBC-PATROL-002",
 })
 
 
@@ -185,6 +209,11 @@ def validate_map(document: MapDocument, catalog: Catalog | None = None, *,
             statics += 1
         if kind in ("enemy", "ally", "fire") or (catalog is None and 108 <= w1 <= LAST_SPAWN_CODE):
             actors += 1
+        if not profile.enemies and (kind == "enemy"
+                                    or (catalog is None and 108 <= w1 <= LAST_SPAWN_CODE)):
+            add("OBC-ARENA-001", Severity.ERROR,
+                "an enemy in a network arena: it spawns but cannot be killed in a network "
+                "game, which also leaves the elevator exit unusable", x, y)
         if w1 > LAST_SPAWN_CODE and w1 != 0xFFFF:
             add("OBC-THING-002", Severity.ERROR,
                 f"plane-1 word {w1} is past the original's spawn table (19-{LAST_SPAWN_CODE})",
@@ -253,9 +282,11 @@ def validate_map(document: MapDocument, catalog: Catalog | None = None, *,
 
     # -- reachability (advisory) ---------------------------------------
     wants_reach = only is None or bool({"OBC-EXIT-001", "OBC-KILL-001", "OBC-UNREACH-001"} & only)
-    if wants_reach and profile.needs_exit and starts:
+    if wants_reach and (profile.needs_exit or profile.reports_unreachable) and starts:
         reach = analyze(document, catalog)
-        if not reach.exits and not reach.victor_reached:
+        if not profile.needs_exit:
+            pass
+        elif not reach.exits and not reach.victor_reached:
             add("OBC-EXIT-001", Severity.WARNING,
                 "no exit (ladder, stairs or elevator) can be reached from the player start")
         elif reach.exits and not reach.victor_reached and len(reach.enemies_reached) < reach.quota:
@@ -266,10 +297,69 @@ def validate_map(document: MapDocument, catalog: Catalog | None = None, *,
             cut = unreachable_floor(document, reach)
             if cut:
                 x, y = coordinates(cut[0], width)
-                add("OBC-UNREACH-001", Severity.INFORMATION,
-                    f"{len(cut)} floor cells cannot be reached from the start", x, y)
+                why = ("; network players reappear on random free cells, so one could "
+                       "land there" if not profile.enemies else "")
+                add("OBC-UNREACH-001", profile.unreachable_severity,
+                    f"{len(cut)} floor cells cannot be reached from the start{why}", x, y)
+
+    # -- patrols (advisory) --------------------------------------------
+    if only is None or {"OBC-PATROL-001", "OBC-PATROL-002"} & only:
+        for problem in patrol_problems(document, catalog, imported=imported):
+            add(problem.code, problem.severity, problem.message, *problem.cell)
 
     return _sorted(problems)
+
+
+def patrol_problems(document: MapDocument, catalog: Catalog | None = None, *,
+                    imported: bool = False) -> list[Diagnostic]:
+    """Patrols that stop for good, and arrows no patrol ever reads.
+
+    Follows every moving patroller with the engine's rule (patrol.py). A
+    patroller that walks into a wall away from an arrow stands there for the
+    rest of the floor, which is rarely what was meant; an arrow that no patrol
+    reaches does nothing (allies told to disperse also read arrows, but they
+    start wherever the player leads them, so they are not followed here).
+
+    Both are warnings on a new map and notes on one imported from the game,
+    where the original's own floors do both.
+    """
+    severity = Severity.INFORMATION if imported else Severity.WARNING
+    grid = patrol.Grid(document, catalog)
+    problems = []
+    read: set[tuple[int, int]] = set()
+    for x, y, facing in patrol.patrollers(document, catalog):
+        walk = patrol.follow(grid, x, y, facing)
+        read |= walk.arrows
+        if walk.stops_at is None:
+            continue
+        name = "this patroller"
+        if catalog is not None:
+            entry = catalog.for_value(1, document.planes.at(1, x, y))
+            if entry is not None:
+                name = entry.name.split(",")[0]
+        sx, sy = walk.stops_at
+        where = "where it starts" if (sx, sy) == (x, y) else f"at ({sx}, {sy})"
+        heading = patrol.ARROW_ORDER[walk.stop_direction]
+        bx, by = walk.blocked_by
+        message = (f"{name} stops for good {where}: heading {heading}, it walks into "
+                   f"{walk.reason} at ({bx}, {by}) with no arrow to turn it")
+        word = document.planes.at(1, bx, by) if grid.inside(bx, by) else 0
+        blocker = catalog.kind(1, word) if catalog is not None else ""
+        if blocker == "enemy" or (catalog is None and 108 <= word <= 317):
+            # Standing enemies leave their posts once they see the player, so
+            # this one may be gone by the time the patrol gets there.
+            problems.append(Diagnostic("OBC-PATROL-001", Severity.INFORMATION,
+                                       message + ", unless that enemy has moved by then",
+                                       _where(x, y), (x, y)))
+            continue
+        problems.append(Diagnostic("OBC-PATROL-001", severity, message, _where(x, y), (x, y)))
+    for x, y in patrol.arrow_cells(document):
+        if (x, y) not in read:
+            problems.append(Diagnostic(
+                "OBC-PATROL-002", severity,
+                "no patrolling enemy's route reaches this arrow, so it turns nobody",
+                _where(x, y), (x, y)))
+    return problems
 
 
 # -- safe repairs ---------------------------------------------------------

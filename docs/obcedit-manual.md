@@ -49,6 +49,7 @@ The first start opens **Setup**, which asks for three things and answers with a 
 | **Maps** (left) | The maps in your project. Double-click to open one; right-click to rename, change its slot, duplicate, check, test or delete it. *New map…* below the list. |
 | **Map tabs** (centre) | The open maps, drawn cell by cell from above: walls, floors, doors, objects and enemies, each in its own colour, with markers for what sits on plane 1. |
 | **Palette** (right) | Everything you can place, in tabs: *Doors and Specials*, then *Walls*, *Special walls*, *Floors*, *Objects*, *Enemies*, *Starts*, *Markers* and *Raw*. Type in the search box to find a thing by name, class or raw value; *Only what this map uses* narrows the tabs to the values already on the map. |
+| **Resources** (right, a tab beside the Palette) | Your own art, sounds and music: replace any wall, floor, sprite or sound of the game, and import music for your floors (section 13). *View → Resources* shows it. |
 | **Inspector** | The cell under the cursor or the selection: its raw values on all three planes, what they mean, a picture, and for enemies their **facing**, whether they stand or patrol, and the **difficulty** that brings them in. Changing those rewrites the cell. |
 | **Snapshot** | A frame of your map rendered by OBCR itself (section 10). |
 | **Problems** (bottom) | What is wrong with the open map, checked as you draw, plus a line saying whether the floor can be finished (section 8). |
@@ -82,6 +83,7 @@ Docks can be moved, floated and closed; *View → Reset layout* puts them back.
 | Pick | **I** | Take the value under the cursor into the palette. |
 | Place | **P** | Place the chosen compound structure (section 7). |
 | Camera | **K** | Set where a snapshot looks from (section 10). |
+| Patrol route | **T** | Click the turns of a patrol route; OBCEdit places the arrows (section 7, *Patrol routes*). |
 
 *Edit* has **Undo** (**Ctrl+Z**) and **Redo** (**Ctrl+Y** / **Ctrl+Shift+Z**) for every change, including renames and deleted maps; **Copy** and **Paste** of a selection; and rotation and flipping of what you copied. Rotating turns enemies, the player start and patrol arrows with the region, so a copied room keeps looking the right way. Zoom with **Ctrl+=** / **Ctrl+−** or **Ctrl** and the mouse wheel; **Ctrl+G** toggles the grid.
 
@@ -124,9 +126,23 @@ The first palette tab holds structures that need more than one value, placed wit
 | **Ambush: soldier** | A soldier on an ambush marker: he stays put until he sees you. |
 | **Squad of three allies** | Three allies in a row, as the original lines them up at the start of a floor. |
 
+### Patrol routes
+
+A patrolling enemy walks straight ahead from its own cell, the way it faces. Each time it reaches a cell holding a **patrol arrow** (values 90–97, eight directions) it turns that way; when something blocks it away from an arrow, it stops there for good (until it sees you). A route is therefore a set of arrows on the cells where it turns, and the **Patrol route** tool (**T**) places them for you:
+
+1. Click the cell where the route starts: a patrolling enemy's own cell, or an empty floor cell the enemy walks onto.
+2. Click each cell where the route turns. Legs run straight: horizontally, vertically or at 45 degrees. The dashed preview follows the mouse, and turns red with the reason in the status bar when a leg cannot go that way.
+3. Finish: click the **first cell** again to close a loop, **double-click** the last cell (or press **Enter**) to end an open route. **Esc** drops the route; nothing is written until you finish.
+
+The whole route is one edit, undone with one **Ctrl+Z**. The tool checks each leg with the game's own walking rule: walls, blocking objects and standing enemies stop a patrol, doors do not (the enemy opens them), and a diagonal step needs both cells beside the corner clear and cannot pass a door. Arrows go only on empty cells (or replace an arrow), and a leg may not cross an arrow that points another way.
+
+Starting on the enemy itself: its cell cannot hold an arrow, so if it faces another way the tool turns it to face the first leg (only east, north, west or south; enemies cannot start on a diagonal), and a loop that comes back to it must pass straight through its cell, so start such a loop at a corner. Hovering saucers never move; standing enemies do not patrol.
+
+Arrows draw as arrows on the map in every tool, so a route can be read at a glance.
+
 ## 8. Problems
 
-The Problems pane re-checks the open map as you work. **Errors** stop OBCR from playing it: no player start or more than one, more than 64 doors or the game's limits on objects, animated walls and actors, a floor value outside 140–161. **Warnings** play, but probably not as you meant: a door without walls on both sides, open floor on the map's edge, a push wall whose path is blocked, an unknown value, a crowded map. Notes are advice.
+The Problems pane re-checks the open map as you work. **Errors** stop OBCR from playing it: no player start or more than one, more than 64 doors or the game's limits on objects, animated walls and actors, a floor value outside 140–161. **Warnings** play, but probably not as you meant: a door without walls on both sides, open floor on the map's edge, a push wall whose path is blocked, an unknown value, a crowded map, a patrolling enemy that walks into a wall with no arrow to turn it (it stops there for good), a patrol arrow no patrol ever reaches. Notes are advice; on a floor imported from the original game the patrol findings are notes, because the original's own floors do both.
 
 Above the list, a line answers the question that matters most: **can the floor be finished?** OBCEdit walks the map from the player start through doors, sliding panels and push walls, and reports whether an exit can be reached and how many of the enemies needed for the half-kill quota can be reached. It is advice, not a proof. A floor it calls finishable can still be hard, and an enemy behind a door only explosions open may not count.
 
@@ -149,6 +165,8 @@ A snapshot is a frame rendered by OBCR, not an imitation of it: there is one ren
 ## 11. Projects and saving
 
 A project (`.obcproject`) holds your maps, their names and slots, and the campaign. It is JSON, so it can be read, compared and kept in version control. **Ctrl+S** saves; *Save As* (**Ctrl+Shift+S**) and *Save a Copy* write elsewhere. Saves are written to a temporary file and then renamed into place, so a failed save never damages the previous one.
+
+Art, sounds and music you import (section 13) are kept as files beside the project, in a folder of the same name ending `.assets` (`pack.obcproject` keeps them in `pack.assets/`). Keep the two together when you move or share a project. Until a new project is first saved, they wait in your workspace; saving moves them. If one of those files goes missing or is changed by another program, opening the project lists it under Problems, and exporting names it.
 
 OBCEdit also autosaves your work every minute to a recovery file (`.obcrecovery`), outside the project. After a crash it offers to bring the work back. Projects you opened recently are in *File → Recent*.
 
@@ -173,6 +191,24 @@ Then:
 - *File → Export mod…* (**Ctrl+E**) writes the mod as a folder or as a single `.obcmod` file, reads it back to check it, and asks OBCR to check it too.
 - *File → Install in OBCR* (**Ctrl+Shift+E**) writes it straight into OBCR's mods folder. Start OBCR, press **D** in the main menu, choose your mod and START GAME.
 
+A mod that uses only maps and floor settings is written in the original mod format (1), which every OBCR plays. A mod with your own art, sounds or music, or with network arenas, is written as format 2, which needs an OBCR that has it (the MODS screen of an older one says so).
+
+### Your own art, sounds and music
+
+The **Resources** panel (a tab beside the Palette; *View → Resources*) replaces the game's own pictures and sounds in your mod, and holds its music. Every import is one step that **Ctrl+Z** takes back.
+
+- **Walls** and **Sprites**: every wall page (136, including doors, and the floor and ceiling textures, which are wall pages too) and every sprite (680: objects, every animation frame of every enemy, the weapons in your hands, splats), each named after what uses it. Select one and **Import…** (or double-click) a **64×64 PNG**. Sprites are transparent where the image is (alpha below 128); walls are always solid. A replaced one is marked ★ and shows your picture everywhere, converted to the game's 256 colours exactly as OBCR will: in the panel, the palette, the inspector and the map's colours. **Revert** goes back to the game's own. *Save a copy…* saves your imported file elsewhere.
+- **Sounds**: the 99 sounds by number, with what the game plays each for. **Import…** a WAV (8 or 16-bit or 32-bit float, mono or stereo, 4,000–48,000 Hz, up to 30 seconds).
+- **Music**: your music files and the floors that play them. **Import…** an **Ogg Vorbis** (`.ogg`), **QOA** (`.qoa`) or **IMF** (`.imf`, AdLib) file, up to 16 MB. A **WAV** is converted to QOA by OBCR (it needs the OBCR that came with this OBCEdit). *Rename…* gives it a new name (the floors that play it follow); *Remove* takes it out. Then choose it in the *Music* column of *File → Campaign…*.
+
+Art is drawn in the game's own resolution: 64×64, the game's palette. A replacement changes how something looks, never how it behaves: a replaced soldier still walks, shoots and dies as a soldier. Sounds and music are heard in OBCR (F5), not in the editor.
+
+### Network arenas
+
+The **Network arenas** tab of *File → Campaign…* lists up to ten of your maps as network floors. With your mod active in OBCR, a network game plays them instead of the original ten, in order; the exit of the last one leads back to the first. Every player needs the same version of your mod: OBCR refuses to connect machines with different mods.
+
+An arena needs exactly **one player start** (where the first player appears; later players and respawns appear on random free cells) and **no enemies** (they would be unkillable in a network game). OBCEdit checks maps used as arenas by these rules, and warns about open floor the start cannot reach, since a player could reappear there. Each arena can have its own music, colours (0–59; by default 50 plus its place in the list), darkness and sewer look.
+
 ## 14. Keyboard reference
 
 | Keys | |
@@ -182,7 +218,8 @@ Then:
 | **Ctrl+E** / **Ctrl+Shift+E** | Export mod, install in OBCR |
 | **Ctrl+Z** / **Ctrl+Y** | Undo, redo |
 | **Ctrl+C** / **Ctrl+V** | Copy, paste a selection |
-| **S B L R F E I P K** | Select, paint, line, rectangle, fill, erase, pick, place, camera |
+| **S B L R F E I P K T** | Select, paint, line, rectangle, fill, erase, pick, place, camera, patrol route |
+| **Enter** / **Esc** | Finish / drop the patrol route being drawn |
 | **F5** / **Shift+F5** / **Ctrl+F5** | Test, test from the cursor, stop the test |
 | **F7** / **F8** | Snapshot, check this map |
 | **Ctrl+=** / **Ctrl+−** / **Ctrl+G** | Zoom in, zoom out, grid |
@@ -205,8 +242,8 @@ The editor's core runs without a window, which is useful for scripts and checks.
 
 ## 16. Known limitations
 
-- **Maps and settings only.** A mod arranges what the game already has: no new walls, sprites, sounds or music yet.
-- **Patrol routes** are placed arrow by arrow from the *Markers* tab; there is no route-drawing tool yet.
+- **Replacements, not additions.** Your art and sounds replace the game's numbered pages, sprites and sounds; a mod cannot add new kinds of objects or enemies. Art is 64×64; the title, status bar, menus and fonts cannot be replaced.
+- **Sounds and music are not played inside OBCEdit**; test them in OBCR (F5).
 - **Test from the cursor** always faces east; **snapshots** are always in the original 320×200 picture.
 - **The test floor** (F5) uses default floor settings; export the campaign to test darkness, music and sequences.
-- **Network floors** cannot be made into mods yet.
+- **Network arenas** are tested by exporting the mod and starting a network game in OBCR; F5 plays an arena as a single-player floor.

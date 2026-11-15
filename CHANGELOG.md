@@ -2,6 +2,37 @@
 
 All notable changes to OBCR. Versions follow [Semantic Versioning](https://semver.org).
 
+## 1.0.0-beta.4 — 2026-11-15 (pre-release)
+
+The fourth beta. Mods can now bring their own art, sounds, music and network arenas, and OBCEdit gains a resources panel and a patrol-route tool.
+
+### Installers
+
+- **Windows**: `OBCR-Setup-1.0.0-beta.4-windows-x64.exe`. **Linux** (x86-64, glibc 2.35 or newer, such as Ubuntu 22.04+): `OBCR-Setup-1.0.0-beta.4-linux-x86_64` (make it executable and run it).
+- The Linux installer is much smaller than beta 3's, and the Linux editor now opens on X11 as well as Wayland.
+- Running Setup over an earlier beta updates the installation; settings, saved games and high scores are kept.
+- Built by GitHub Actions from the tagged source. `SHA256SUMS.txt` lists the files' checksums. They are not code-signed: Windows SmartScreen warns on first run (*More info* > *Run anyway*).
+
+### Changes
+
+- **Mod art, sounds and music** (mod format 2): a mod can replace any wall texture (floors and ceilings included), sprite (objects, enemy frames, the weapons in hand) or digitized sound, and give each floor its own music as Ogg Vorbis, QOA or IMF. Images are ordinary PNGs, converted to the game's palette as the mod loads; Enhanced mode's texture upscaling covers them too. `obcr --convert-audio` turns a WAV into QOA music. The format: [docs/modding.md](docs/modding.md).
+- **Network arenas in mods**: a mod can bring up to ten arenas for network games. Machines only see each other when they have the same mod and version; the network setup screen shows where the arenas come from. In a mod's arenas, players reappear only where the start can reach.
+- **OBCEdit**:
+  - a *Resources* panel to import and preview art, sounds and music (a WAV imported as music becomes QOA);
+  - network arenas in the campaign;
+  - a **patrol-route tool** (**T**): click the turns of a route and it places the arrows, turning the enemy to face the route;
+  - patrol arrows drawn as arrows, and checks for patrols that stop against a wall and arrows nothing reads.
+- The MODS screen lists what a mod brings: arenas, new art, sounds, music.
+- Mods made with this version use format 2 only when they need it; a mod with just floors still plays in beta 3.
+
+### Known limitations
+
+- Behaviour follows the disassembly of the original; it has not yet been checked frame by frame against the original running in DOSBox-X.
+- Mods replace the game's art and sounds; they cannot add new kinds of objects or enemies, or replace the title, status bar, menus, fonts or sequences.
+- OBCEdit cannot play sounds or music itself; hear them by testing the floor in OBCR (F5).
+- Saved games are tied to the release they were made with: floppy saves do not load with CD files, and the other way round.
+- Multiplayer, including mod arenas, has been tested on one machine (several game processes), not yet across a real network.
+
 ## 1.0.0-beta.3 — 2026-11-15 (pre-release)
 
 The third beta. It adds mods and custom maps, and OBCEdit, a level editor for making them.

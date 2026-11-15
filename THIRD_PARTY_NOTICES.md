@@ -63,14 +63,17 @@ Generated with `cargo tree -p obcr -p obcr-setup -e normal --target all`; every 
 | hash32 | 0.2.1 | MIT OR Apache-2.0 |
 | heapless | 0.7.17 | MIT OR Apache-2.0 |
 | heck | 0.5.0 | MIT OR Apache-2.0 |
+| hound | 3.5.1 | Apache-2.0 |
 | hybrid-array | 0.4.15 | MIT OR Apache-2.0 |
 | is_terminal_polyfill | 1.70.2 | MIT OR Apache-2.0 |
+| lewton | 0.10.2 | MIT OR Apache-2.0 |
 | libc | 0.2.191 | MIT OR Apache-2.0 |
 | libredox | 0.1.25 | MIT |
 | lock_api | 0.4.14 | MIT OR Apache-2.0 |
 | miniz_oxide | 0.8.9 | MIT OR Zlib OR Apache-2.0 |
 | miniz_oxide | 0.9.1 | MIT OR Zlib OR Apache-2.0 |
 | nuked-opl3 | 0.1.0 | LGPL-2.1-or-later |
+| ogg | 0.8.0 | BSD-3-Clause |
 | once_cell_polyfill | 1.70.2 | MIT OR Apache-2.0 |
 | option-ext | 0.2.0 | MPL-2.0 |
 | png | 0.18.1 | MIT OR Apache-2.0 |
@@ -93,6 +96,7 @@ Generated with `cargo tree -p obcr -p obcr-setup -e normal --target all`; every 
 | syn | 3.0.9 | MIT OR Apache-2.0 |
 | thiserror | 2.0.21 | MIT OR Apache-2.0 |
 | thiserror-impl | 2.0.21 | MIT OR Apache-2.0 |
+| tinyvec | 1.13.3 | Zlib OR Apache-2.0 OR MIT |
 | toml | 1.1.8+spec-1.1.0 | MIT OR Apache-2.0 |
 | toml_datetime | 1.1.2+spec-1.1.0 | MIT OR Apache-2.0 |
 | toml_parser | 1.1.5+spec-1.1.0 | MIT OR Apache-2.0 |

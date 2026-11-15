@@ -4,7 +4,7 @@
 
 It plays the original game, floor for floor and tic for tic, from your own copy of the game files. You can play it in the original 320×200 picture, or in a modern one: high resolution and widescreen, smooth motion, xBRZ-upscaled textures, mouse and gamepad controls, and network play over the Internet.
 
-> **Status: beta, in testing.** The whole single-player game and network play run. Behaviour follows the disassembly of the original, but it has not yet been compared frame by frame with the original running in DOSBox-X. The current version is **1.0.0-beta.3** ([CHANGELOG.md](CHANGELOG.md), [releases](https://github.com/jeddhor/OBCR/releases)); progress is tracked in [docs/STATUS.md](docs/STATUS.md).
+> **Status: beta, in testing.** The whole single-player game and network play run. Behaviour follows the disassembly of the original, but it has not yet been compared frame by frame with the original running in DOSBox-X. The current version is **1.0.0-beta.4** ([CHANGELOG.md](CHANGELOG.md), [releases](https://github.com/jeddhor/OBCR/releases)); progress is tracked in [docs/STATUS.md](docs/STATUS.md).
 
 > ### 🎮 The controls are modern by default
 >
@@ -133,6 +133,7 @@ Every option is described in [docs/options.md](docs/options.md).
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Architecture decision records: every significant choice and why (ADR-001 onward). |
 | [docs/MECHANICS_AUDIT.md](docs/MECHANICS_AUDIT.md) | Every Operation Body Count mechanic, what the original's code does, and where OBCR implements it. |
 | [docs/MODS_AND_OBCEDIT.md](docs/MODS_AND_OBCEDIT.md) | The plan for mods and OBCEdit: the format, the engine changes, how EC7Edit became OBCEdit. |
+| [docs/MOD_ASSETS_AND_ARENAS.md](docs/MOD_ASSETS_AND_ARENAS.md) | The plan for mod art, sounds, music and network arenas, and OBCEdit's patrol-route tool. |
 | [obcedit/README.md](obcedit/README.md) | OBCEdit's source tree. |
 | [docs/re/](docs/re/README.md) | The reverse-engineering knowledge base: file formats, the executable's layout, actors, player, allies, renderer, audio, game flow, network, the CD release, and open questions. Every claim carries a confidence grade and a citation. |
 | [docs/ci.md](docs/ci.md) | The test gates, what GitHub Actions runs and cannot run, and how a release is cut. |
@@ -336,13 +337,16 @@ Network games are not compatible with the DOS original, and floppy and CD copies
 
 ## Mods and OBCEdit
 
-OBCR plays **mods**: campaigns of new floors, built from the original game's walls, objects and enemies. Put a `.obcmod` file or a mod folder in the mods folder (`%APPDATA%\OBCR\data\mods\` on Windows, `~/.local/share/obcr/mods/` on Linux), press **D** in the main menu, choose it, and START GAME plays its floors in order. Each mod keeps its own saved games and high scores. `obcr --mod <file>` plays one without installing it.
+OBCR plays **mods**: campaigns of new floors, built from the original game's walls, objects and enemies, and optionally with their own wall textures, sprites, sounds, music and network arenas. Put a `.obcmod` file or a mod folder in the mods folder (`%APPDATA%\OBCR\data\mods\` on Windows, `~/.local/share/obcr/mods/` on Linux), press **D** in the main menu, choose it, and START GAME plays its floors in order. Each mod keeps its own saved games and high scores. `obcr --mod <file>` plays one without installing it.
 
 **OBCEdit**, the level editor, comes with OBCR. Setup installs it unless you untick the option, with its own menu entry. It is a port of EC7Edit, the editor of the owner's Corridor 7 port. In OBCEdit you can:
 - open the original floors to study them;
 - draw new ones from a palette of the game's real walls, objects and enemies;
 - place doors, push walls, exits and the other compound features with one click;
+- draw patrol routes by clicking their turns;
 - have it check your map as you draw, including whether the exit can be reached and the quota met;
+- import your own wall textures, sprites, sounds and music, previewed in the game's palette;
+- build network arenas for multiplayer games;
 - press **F5** to play your floor in OBCR at once;
 - export a mod ready to share.
 

@@ -35,7 +35,7 @@ from .errors import ObcEditError, Severity
 from .modexport import audit_mod, build_mod, write_mod
 from .paths import OutputGuard, SourceIdentity
 from .project import load_project, new_project, save_project
-from .validation import profile_for_slot, summarize, validate_map
+from .validation import profile_for_map, profile_for_slot, summarize, validate_map
 
 EXIT_OK = 0
 EXIT_ERROR = 1
@@ -187,7 +187,9 @@ def command_mod_export(args) -> int:
         return EXIT_USAGE
     campaign = Campaign.from_json(project.campaign) if project.campaign \
         else Campaign.default_for(project)
-    problems = campaign_validate(campaign, project.maps, sharing=not args.private)
+    music = [str(r.target) for r in project.resources if r.kind == "music"]
+    problems = campaign_validate(campaign, project.maps, sharing=not args.private,
+                                 music_names=music)
     for problem in problems:
         print(f"  {problem}", file=sys.stderr)
     if any(p.severity is Severity.ERROR for p in problems):
@@ -195,7 +197,9 @@ def command_mod_export(args) -> int:
     catalog = default_catalog()
     for uuid in campaign.map_order():
         document = next(d for d in project.maps if d.uuid == uuid)
-        errors = [p for p in validate_map(document, catalog) if p.severity is Severity.ERROR]
+        profile = profile_for_map(document, campaign.arena_maps())
+        errors = [p for p in validate_map(document, catalog, profile=profile)
+                  if p.severity is Severity.ERROR]
         if errors and not args.force:
             print(f"{document.name}: {summarize(errors)}", file=sys.stderr)
             for problem in errors[:10]:
@@ -203,7 +207,16 @@ def command_mod_export(args) -> int:
             print("not exported (--force exports anyway; OBCR will refuse the map)",
                   file=sys.stderr)
             return EXIT_ERROR
-    build = build_mod(project, campaign, sharing=not args.private)
+    from .errors import ObcEditError
+    from .resources import store_for
+
+    # A saved project keeps its replacement files beside it (<name>.assets/).
+    store = store_for(args.project, workspace="", project_uuid=project.uuid)
+    try:
+        build = build_mod(project, campaign, sharing=not args.private, store=store)
+    except ObcEditError as error:
+        print(f"not exported: {error}", file=sys.stderr)
+        return EXIT_ERROR
     guard = OutputGuard(protected_roots=tuple(args.protect))
     written = write_mod(build, args.output, guard=guard)
     audit = audit_mod(written, catalog=catalog)

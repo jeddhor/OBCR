@@ -50,9 +50,10 @@ const KEY_J: u8 = 0x24;
 /// Tics "Get Ready!" stays up before the game starts.
 const READY_TICS: u32 = 50;
 
-/// The data-release id machines must share.
-pub fn release_id(a: &Assets) -> u64 {
-    obc_net::release_id(a.release.release.id)
+/// The id machines must share: the data release, and the active mod when it
+/// brings arenas (`campaign::net_identity`).
+pub fn release_id(ctx: &Ctx) -> u64 {
+    obc_net::release_id(&crate::campaign::net_identity(ctx).0)
 }
 
 /// The transport of a running network game.
@@ -63,6 +64,11 @@ pub struct NetLink {
 }
 
 impl NetLink {
+    /// A link over an opened transport (tests, and the setup screens).
+    pub fn new(transport: Transport) -> Self {
+        Self { transport, pending: Vec::new() }
+    }
+
     /// Before a frame: received records into the world (the receive handler).
     pub fn receive(&mut self, w: &mut World) {
         let events = self.transport.poll(Instant::now());
@@ -150,6 +156,8 @@ pub struct NetSetup {
     note: Option<String>,
     pending: Vec<Packet>,
     ready: Option<u32>,
+    /// Where the arenas come from, shown under the player list.
+    arenas: String,
 }
 
 impl NetSetup {
@@ -164,6 +172,10 @@ impl NetSetup {
             note: None,
             pending: Vec::new(),
             ready: None,
+            arenas: match crate::campaign::net_identity(ctx).1 {
+                Some(t) => format!("ARENAS: {}", t.to_ascii_uppercase()),
+                None => "ARENAS: ORIGINAL".into(),
+            },
         };
         s.open(ctx);
         s
@@ -174,7 +186,7 @@ impl NetSetup {
         Config {
             port: ctx.settings.net.port,
             game_kind: self.kind as u8,
-            release: release_id(ctx.assets),
+            release: release_id(ctx),
             join: self.joined.clone(),
             broadcast: !modem,
             max_peers: if modem { 1 } else { obc_net::MAX_PLAYERS - 1 },
@@ -230,7 +242,7 @@ impl Screen for NetSetup {
                 match e {
                     Event::Record(r) => self.pending.push(Packet::from_bytes(&r)),
                     Event::Mismatch(a) => {
-                        self.note = Some(format!("{a}: other version or game type"));
+                        self.note = Some(format!("{a}: other version, game type or mod"));
                     }
                     _ => {}
                 }
@@ -399,8 +411,9 @@ impl Screen for NetSetup {
             }
         };
         centred(fb, font, &calling, 0x7C, 0x94);
-        if let Some(n) = &self.note {
-            centred(fb, font, n, 0x8A, 0x9A);
+        match &self.note {
+            Some(n) => centred(fb, font, n, 0x8A, 0x9A),
+            None => centred(fb, font, &self.arenas, 0x8A, 0x94),
         }
         match &self.entry {
             Entry::Port(text) => {
@@ -495,7 +508,7 @@ impl Screen for NetBoot {
         let cfg = Config {
             port: ctx.settings.net.port,
             game_kind: self.kind as u8,
-            release: release_id(ctx.assets),
+            release: release_id(ctx),
             join,
             broadcast: !modem,
             max_peers: if modem { 1 } else { obc_net::MAX_PLAYERS - 1 },

@@ -128,6 +128,9 @@ pub struct Game {
     campaign: std::sync::Arc<crate::campaign::Campaign>,
     /// `--start X,Y,DIR`: the first floor's player start (OBCEdit playtests).
     pub start_override: Option<(u8, u8, u16)>,
+    /// The active mod's own art, sounds and music, converted for the game
+    /// (docs/MOD_ASSETS_AND_ARENAS.md §3); `None` for the original game.
+    media: Option<Arc<crate::modmedia::ModMedia>>,
 }
 
 impl Game {
@@ -165,6 +168,11 @@ impl Game {
             eprintln!("playing the original game: {why}");
         }
         let a = ctx.assets;
+        let media = campaign
+            .package
+            .as_ref()
+            .filter(|p| !p.assets.is_empty())
+            .map(|p| Arc::new(crate::modmedia::ModMedia::load(Arc::clone(p), &a.gamepal)));
         let mut world = World::new(a.game.clone(), a.trig.clone());
         obc_sim::player::new_game(&mut world, difficulty);
         // `US_Startup` calls `US_InitRndT(true)`: the index starts at the DOS
@@ -180,6 +188,9 @@ impl Game {
             sound: {
                 let mut s = SoundManager::new(a, ctx.settings.audio.channels);
                 s.effects = crate::sound::Effects::from_setting(&ctx.settings.audio.effects);
+                for (id, samples, rate) in media.iter().flat_map(|m| m.sounds.iter()) {
+                    s.replace_digi(*id, Arc::clone(samples), *rate);
+                }
                 s
             },
             hud: Hud::default(),
@@ -214,6 +225,7 @@ impl Game {
             dev_place: None,
             campaign,
             start_override: None,
+            media,
         }
     }
 
@@ -271,12 +283,27 @@ impl Game {
     }
 
     /// `SetupGameLevel`, `StartMusic`, then the `PlayLoop` entry.
-    pub(crate) fn start_level(&mut self, ctx: &mut Ctx) {
-        let mapon = self.world.gamestate.mapon;
+    pub fn start_level(&mut self, ctx: &mut Ctx) {
+        use obc_sim::net::FIRST_NETLEVEL;
+        let mut mapon = self.world.gamestate.mapon;
+        // A network game with a mod's arenas plays them as slots 50 + i, and
+        // after the last one the first again (docs/MOD_ASSETS_AND_ARENAS.md
+        // §3.5).
+        let arenas = self.campaign.arenas.len() as i16;
+        let arena = (self.net.is_some() && arenas > 0).then(|| {
+            if !(FIRST_NETLEVEL..FIRST_NETLEVEL + arenas).contains(&mapon) {
+                mapon = FIRST_NETLEVEL;
+                self.world.gamestate.mapon = mapon;
+            }
+            (mapon - FIRST_NETLEVEL) as usize
+        });
         // The campaign's floor, or (network games, the warp cheat's floors
         // 51-60) the original map slot with its own behaviour.
-        let (map, profile) = match self.campaign.level(mapon) {
-            Some(l) if self.net.is_none() => {
+        let (map, profile) = match (arena, self.campaign.level(mapon)) {
+            (Some(i), _) => {
+                (self.campaign.arena_map(ctx.assets, i), self.campaign.arenas[i].profile.clone())
+            }
+            (None, Some(l)) if self.net.is_none() => {
                 (self.campaign.map(ctx.assets, mapon), l.profile.clone())
             }
             _ => (
@@ -294,7 +321,23 @@ impl Game {
         }
         self.set_view_size(ctx.settings.game.viewsize);
         self.world.setup_game_level_with(&map, mapon, profile);
-        prepare_textures(ctx.assets, &self.world);
+        if let Some(n) = self.world.net.as_deref_mut() {
+            // In a mod arena, players reappear only where the start can reach.
+            n.spawn_region = arena.map(|_| {
+                let start = map.planes[1]
+                    .iter()
+                    .position(|&c| (19..=22).contains(&c))
+                    .map_or((32, 32), |i| (i % 64, i / 64));
+                obc_sim::level::connected_region(&map.planes[0], start)
+            });
+        }
+        match self.media.as_deref().filter(|m| m.has_art()) {
+            Some(m) => prepare_textures(
+                &crate::modmedia::Layered { base: ctx.assets, media: m },
+                &self.world,
+            ),
+            None => prepare_textures(ctx.assets, &self.world),
+        }
         self.start_music(ctx);
         self.lighting = self.world.start_play_loop();
         self.hud.event = Default::default();
@@ -318,6 +361,14 @@ impl Game {
     /// `StartMusic` (1942:0d2d): one `US_RndT` on maps ≥ 10. With CD music
     /// the current CD track instead (cdaudio).
     fn start_music(&mut self, ctx: &Ctx) {
+        // A mod's music file: no song number and no random number drawn.
+        if let Some(file) = self.world.level_music_file().map(str::to_owned) {
+            if self.music {
+                self.start_mod_music(ctx, &file);
+            }
+            return;
+        }
+        ctx.audio.send(AudioCommand::StopStream);
         let song = self.world.level_song();
         if !self.music {
             return;
@@ -329,6 +380,26 @@ impl Game {
         match ctx.assets.audio.music(300 + usize::from(song)) {
             Ok(m) => ctx.audio.send(AudioCommand::StartMusic(Arc::from(m))),
             Err(e) => eprintln!("music {song}: {e}"),
+        }
+    }
+
+    /// Plays a mod's music file instead of any song or CD track, whatever
+    /// MUSIC SOURCE says (docs/MOD_ASSETS_AND_ARENAS.md §3.4).
+    fn start_mod_music(&self, ctx: &Ctx, file: &str) {
+        let Some(bytes) = self.media.as_ref().and_then(|m| m.music(file)) else {
+            eprintln!("music {file}: not in the mod");
+            return;
+        };
+        ctx.audio.send(AudioCommand::StopCd);
+        if file.to_ascii_lowercase().ends_with(".imf") {
+            ctx.audio.send(AudioCommand::StopStream);
+            match obc_formats::modassets::read_imf(&bytes) {
+                Ok(m) => ctx.audio.send(AudioCommand::StartMusic(Arc::from(m))),
+                Err(e) => eprintln!("music {file}: {e}"),
+            }
+        } else {
+            ctx.audio.send(AudioCommand::StopMusic);
+            ctx.audio.send(AudioCommand::PlayStream(Arc::from(bytes)));
         }
     }
 
@@ -914,8 +985,18 @@ impl Screen for Game {
             self.splats.push(SplatView { shape, x: i32::from(s.x), height });
         }
         if let Some((_, view)) = &mut self.view {
-            view.render(out.frame, l.x, l.y, &scene, a);
-            view.draw_splats(out.frame, l.x, l.y, &self.splats, a);
+            // A mod's replaced walls and sprites over the game's.
+            let layered = self
+                .media
+                .as_deref()
+                .filter(|m| m.has_art())
+                .map(|m| crate::modmedia::Layered { base: a, media: m });
+            let tex: &dyn obc_render::view3d::Textures = match &layered {
+                Some(t) => t,
+                None => a,
+            };
+            view.render(out.frame, l.x, l.y, &scene, tex);
+            view.draw_splats(out.frame, l.x, l.y, &self.splats, tex);
         }
         out.layer.clear(0xFF);
         out.layer_key = Some(0xFF);
@@ -990,8 +1071,7 @@ impl Screen for Boot {
 /// Builds the xBRZ versions (if enabled) of the textures a new floor shows
 /// first: its walls and doors, floors and ceilings, statics, the actors'
 /// current frames and the hand weapons. Other frames follow on first use.
-fn prepare_textures(a: &Assets, w: &World) {
-    use obc_render::view3d::Textures;
+fn prepare_textures(a: &(dyn obc_render::view3d::Textures + Sync), w: &World) {
     if a.hires() < 2 {
         return;
     }
@@ -1025,7 +1105,7 @@ fn prepare_textures(a: &Assets, w: &World) {
         v.sort_unstable();
         v.dedup();
     }
-    a.prepare_upscaled(&walls, &flats, &sprites);
+    crate::assets::prepare_upscaled(a, &walls, &flats, &sprites);
 }
 
 /// The Tab overhead map (`2f4d:0d31`, RENDERER.md §9.2), one pixel per tile

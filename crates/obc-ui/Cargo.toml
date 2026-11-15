@@ -21,4 +21,6 @@ toml.workspace = true
 workspace = true
 
 [dev-dependencies]
+hound.workspace = true
 obc-testdata.workspace = true
+png.workspace = true

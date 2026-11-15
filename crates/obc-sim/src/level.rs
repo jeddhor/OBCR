@@ -243,11 +243,24 @@ impl World {
 
     /// Song for a level: table for maps 0–9, `US_RndT() % 9` otherwise
     /// (`StartMusic` ghidra 1942:0d2d). Audio chunk = song + 300.
+    ///
+    /// A floor with a music file has no song: the caller asks
+    /// [`World::level_music_file`] first and does not call this, so no random
+    /// number is drawn (and 0 is returned if it does).
     pub fn level_song(&mut self) -> u16 {
         match self.level.music {
             LevelMusic::Table(m) => self.data.levels.songs[usize::from(m).min(9)],
             LevelMusic::Song(n) => n,
             LevelMusic::Random => (self.rnd() % 9) as u16,
+            LevelMusic::File(_) => 0,
+        }
+    }
+
+    /// The mod music file this floor plays, if it has one.
+    pub fn level_music_file(&self) -> Option<&str> {
+        match &self.level.music {
+            LevelMusic::File(f) => Some(f),
+            _ => None,
         }
     }
 }
@@ -375,7 +388,7 @@ pub fn classify_info(code: u16) -> (InfoCode, i16) {
 }
 
 /// Where a floor's music comes from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum LevelMusic {
     /// The song table entry of original floor `n` (0–9).
     Table(u8),
@@ -383,6 +396,9 @@ pub enum LevelMusic {
     Song(u16),
     /// `US_RndT() % 9`, as the original does from floor 11 on.
     Random,
+    /// A mod's music file, by its name in the mod's `music/` folder
+    /// (docs/MOD_ASSETS_AND_ARENAS.md §3.4). Draws no random number.
+    File(String),
 }
 
 /// The sequence played after a floor (GAMEFLOW §5.3).
@@ -583,7 +599,6 @@ impl LevelProfile {
     /// A mod floor's profile: original floor `like`'s (default 6, a UN floor),
     /// then the manifest's overrides (docs/MODS_AND_OBCEDIT.md §3.2).
     pub fn for_mod_level(l: &obc_formats::modpack::LevelEntry, cd: bool) -> Self {
-        use obc_formats::modpack::MusicSpec;
         if let Some(slot) = l.stock {
             return Self::stock(slot as i16, cd);
         }
@@ -597,10 +612,8 @@ impl LevelProfile {
         if let Some(c) = l.colors {
             p.colors = c as i16;
         }
-        match l.music {
-            Some(MusicSpec::Song(n)) => p.music = LevelMusic::Song(n),
-            Some(MusicSpec::Named(_)) => p.music = LevelMusic::Random,
-            None => {}
+        if let Some(m) = music_of(&l.music) {
+            p.music = m;
         }
         if let Some(m) = &l.message {
             p.message = Some(m.clone());
@@ -620,4 +633,133 @@ impl LevelProfile {
         // face apparition unless its profile says so; `like` keeps them.
         p
     }
+
+    /// A mod arena's profile: the original arena slot `50 + index`'s
+    /// (lit, random song, its own colour entry), then the manifest's
+    /// overrides (docs/MOD_ASSETS_AND_ARENAS.md §2.2).
+    pub fn for_arena(a: &obc_formats::modpack::ArenaEntry, index: usize, cd: bool) -> Self {
+        let mut p = Self::stock(crate::net::FIRST_NETLEVEL + index.min(9) as i16, cd);
+        if let Some(d) = a.dark {
+            p.dark = d;
+        }
+        if let Some(s) = a.sewer {
+            p.sewer = s;
+        }
+        if let Some(c) = a.colors {
+            p.colors = c as i16;
+        }
+        if let Some(m) = music_of(&a.music) {
+            p.music = m;
+        }
+        p
+    }
+}
+
+fn music_of(m: &Option<obc_formats::modpack::MusicSpec>) -> Option<LevelMusic> {
+    use obc_formats::modpack::MusicSpec;
+    match m {
+        Some(MusicSpec::Song(n)) => Some(LevelMusic::Song(*n)),
+        Some(MusicSpec::Named(_)) => Some(LevelMusic::Random),
+        Some(MusicSpec::File(f)) => Some(LevelMusic::File(f.clone())),
+        None => None,
+    }
+}
+
+/// Whether a plane-0 cell can be walked through: floor (an area code, or
+/// the ambush code) or a door.
+fn passable(t: u16) -> bool {
+    t >= AREATILE || t == AMBUSHTILE || (130..=137).contains(&t)
+}
+
+/// The cells connected to `start` through floor and doors (4-neighbour,
+/// plane 0 as drawn; push walls count as walls). Row-major, 64×64.
+pub fn connected_region(plane0: &[u16], start: (usize, usize)) -> Vec<bool> {
+    let mut seen = vec![false; MAPSIZE * MAPSIZE];
+    let mut todo = vec![start];
+    while let Some((x, y)) = todo.pop() {
+        let i = y * MAPSIZE + x;
+        if seen[i] || !plane0.get(i).is_some_and(|&t| passable(t)) {
+            continue;
+        }
+        seen[i] = true;
+        if x > 0 {
+            todo.push((x - 1, y));
+        }
+        if y > 0 {
+            todo.push((x, y - 1));
+        }
+        if x + 1 < MAPSIZE {
+            todo.push((x + 1, y));
+        }
+        if y + 1 < MAPSIZE {
+            todo.push((x, y + 1));
+        }
+    }
+    seen
+}
+
+/// The player start's cell, if the map has exactly one.
+fn player_start(map: &obc_formats::maps::Map) -> Option<(usize, usize)> {
+    let mut found = None;
+    for (i, &c) in map.planes[1].iter().enumerate() {
+        if matches!(classify_info(c).0, InfoCode::Player { .. }) {
+            if found.is_some() {
+                return None;
+            }
+            found = Some((i % MAPSIZE, i / MAPSIZE));
+        }
+    }
+    found
+}
+
+/// Checks a mod arena (docs/MOD_ASSETS_AND_ARENAS.md §3.5): [`check_map`],
+/// plus no enemies or allies (in a network game they spawn but cannot be
+/// killed, so the elevator's kill quota could never be met), and a warning
+/// for open floor not connected to the start (players reappear on random
+/// cells; OBCR keeps them in the start's region, but the floor is wasted).
+pub fn check_arena(map: &obc_formats::maps::Map) -> Vec<MapProblem> {
+    let mut out = check_map(map);
+    if map.width as usize != MAPSIZE || map.height as usize != MAPSIZE {
+        return out;
+    }
+    let mut first = None;
+    let mut actors = 0;
+    for (i, &c) in map.planes[1].iter().enumerate() {
+        if matches!(
+            classify_info(c).0,
+            InfoCode::Stand { .. }
+                | InfoCode::Patrol { .. }
+                | InfoCode::Special { .. }
+                | InfoCode::Ally { .. }
+        ) {
+            actors += 1;
+            first.get_or_insert(((i % MAPSIZE) as u8, (i / MAPSIZE) as u8));
+        }
+    }
+    if actors > 0 {
+        out.push(MapProblem {
+            severity: Severity::Error,
+            at: first,
+            message: format!(
+                "{actors} enemies or allies: network arenas cannot have any (they cannot be killed in a network game)"
+            ),
+        });
+    }
+    if let Some(start) = player_start(map) {
+        let region = connected_region(&map.planes[0], start);
+        let cut_off: Vec<usize> = (0..MAPSIZE * MAPSIZE)
+            .filter(|&i| map.planes[0][i] >= AREATILE && !region[i])
+            .collect();
+        if let Some(&i) = cut_off.first() {
+            out.push(MapProblem {
+                severity: Severity::Warning,
+                at: Some(((i % MAPSIZE) as u8, (i / MAPSIZE) as u8)),
+                message: format!(
+                    "{} floor cells cannot be reached from the start; players never reappear there",
+                    cut_off.len()
+                ),
+            });
+        }
+    }
+    out
 }

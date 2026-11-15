@@ -474,6 +474,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3bd1574e617a9a6c1f8f8181bd7e841e1f20e4277607ef28945765188d6284d4"
 
 [[package]]
+name = "lewton"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "777b48df9aaab155475a83a7df3070395ea1ac6902f5cd062b8f2b028075c030"
+dependencies = [
+ "byteorder",
+ "ogg",
+ "tinyvec",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -546,7 +557,7 @@ dependencies = [
 
 [[package]]
 name = "obc-audio"
-version = "1.0.0-beta.3"
+version = "1.0.0-beta.4"
 dependencies = [
  "nuked-opl3",
  "obc-core",
@@ -555,17 +566,20 @@ dependencies = [
 
 [[package]]
 name = "obc-core"
-version = "1.0.0-beta.3"
+version = "1.0.0-beta.4"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "obc-formats"
-version = "1.0.0-beta.3"
+version = "1.0.0-beta.4"
 dependencies = [
+ "hound",
+ "lewton",
  "miniz_oxide 0.8.9",
  "obc-testdata",
+ "png",
  "proptest",
  "serde",
  "sha2",
@@ -575,11 +589,11 @@ dependencies = [
 
 [[package]]
 name = "obc-net"
-version = "1.0.0-beta.3"
+version = "1.0.0-beta.4"
 
 [[package]]
 name = "obc-platform"
-version = "1.0.0-beta.3"
+version = "1.0.0-beta.4"
 dependencies = [
  "obc-core",
  "sdl3",
@@ -588,16 +602,17 @@ dependencies = [
 
 [[package]]
 name = "obc-render"
-version = "1.0.0-beta.3"
+version = "1.0.0-beta.4"
 dependencies = [
  "obc-core",
  "obc-formats",
  "obc-sim",
+ "serde_json",
 ]
 
 [[package]]
 name = "obc-sim"
-version = "1.0.0-beta.3"
+version = "1.0.0-beta.4"
 dependencies = [
  "obc-core",
  "obc-formats",
@@ -609,11 +624,11 @@ dependencies = [
 
 [[package]]
 name = "obc-testdata"
-version = "1.0.0-beta.3"
+version = "1.0.0-beta.4"
 
 [[package]]
 name = "obc-tool"
-version = "1.0.0-beta.3"
+version = "1.0.0-beta.4"
 dependencies = [
  "anyhow",
  "clap",
@@ -627,8 +642,9 @@ dependencies = [
 
 [[package]]
 name = "obc-ui"
-version = "1.0.0-beta.3"
+version = "1.0.0-beta.4"
 dependencies = [
+ "hound",
  "obc-audio",
  "obc-core",
  "obc-formats",
@@ -636,13 +652,14 @@ dependencies = [
  "obc-render",
  "obc-sim",
  "obc-testdata",
+ "png",
  "serde",
  "toml",
 ]
 
 [[package]]
 name = "obcr"
-version = "1.0.0-beta.3"
+version = "1.0.0-beta.4"
 dependencies = [
  "anyhow",
  "clap",
@@ -658,9 +675,18 @@ dependencies = [
 
 [[package]]
 name = "obcr-setup"
-version = "1.0.0-beta.3"
+version = "1.0.0-beta.4"
 dependencies = [
  "miniz_oxide 0.8.9",
+]
+
+[[package]]
+name = "ogg"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6951b4e8bf21c8193da321bcce9c9dd2e13c858fe078bf9054a288b419ae5d6e"
+dependencies = [
+ "byteorder",
 ]
 
 [[package]]
@@ -1100,6 +1126,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "tinyvec"
+version = "1.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
+
+[[package]]
 name = "toml"
 version = "1.1.8+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1215,7 +1247,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "1.0.0-beta.3"
+version = "1.0.0-beta.4"
 dependencies = [
  "anyhow",
  "miniz_oxide 0.8.9",

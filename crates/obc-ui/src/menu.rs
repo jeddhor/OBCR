@@ -1388,6 +1388,24 @@ impl Mods {
                         },
                         m.manifest.levels.len()
                     )];
+                    // Format 2: what else the mod brings.
+                    let a = &m.package.assets;
+                    let mut extras = Vec::new();
+                    if !m.manifest.arenas.is_empty() {
+                        extras.push(format!("{} ARENAS", m.manifest.arenas.len()));
+                    }
+                    if !a.walls.is_empty() || !a.sprites.is_empty() {
+                        extras.push("NEW ART".to_owned());
+                    }
+                    if !a.sounds.is_empty() {
+                        extras.push("SOUNDS".to_owned());
+                    }
+                    if !a.music.is_empty() {
+                        extras.push("MUSIC".to_owned());
+                    }
+                    if !extras.is_empty() {
+                        detail.push(extras.join("  "));
+                    }
                     detail.extend(wrap(&i.description, 34).into_iter().take(3));
                     ModRow {
                         id: i.id.clone(),
