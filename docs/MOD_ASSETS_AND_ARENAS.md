@@ -1,6 +1,6 @@
 # Mod art, sounds, music, network arenas and patrol routes — the plan
 
-**Milestone M18.** Status: planned 2026-11-15, being implemented on `m18/*` branches.
+**Milestone M18.** Status: implemented 2026-11-15 on `m18/mod-assets`; differences from this plan are noted in §8.
 
 M17 ([MODS_AND_OBCEDIT.md](MODS_AND_OBCEDIT.md)) gave OBCR mods made of maps and per-floor settings, and OBCEdit to make them. It deferred three things on purpose (its §1 non-goals and §8), and the owner has now asked for all three, plus one editor tool:
 
@@ -222,3 +222,17 @@ Measured on Ubuntu 22.04: the frozen OBCEdit is 143 MB on disk, but the installe
 | Project files referencing missing asset files | Digest check on open and export, with the missing file named |
 
 ---
+
+## 8. As built
+
+What changed from the plan while implementing it:
+
+- **The patrol-route tool's key is T**, not R (R is the Rectangle tool). Starting a route on the patrolling enemy's own cell **turns the enemy** to face the first leg in the same undo step, rather than asking; enemies cannot face diagonals, so such a route starts with a straight leg. Standing enemies and hovering saucers are refused.
+- **The patrol walking rule** follows the engine's `try_walk`: walls, blocking objects (static 71 counted, as it blocks on the CD release) and standing enemies stop a patrol; doors do not; a diagonal step needs both corner cells clear and cannot pass a door. On imported original floors, the two patrol checks are notes rather than warnings: 257 of the original's 318 patrols stop for good, by design.
+- **OBCEdit stores imported files by content** (`<project>.assets/<sha256>.<ext>`), not in the mod's layout, so undoing an import or replacement always finds the earlier file; export writes the mod layout. *Save As* copies the stored files; unreferenced ones are removed only when a saved project is opened. Only music some floor or arena plays is exported.
+- **Arena identity** includes the mod only when it has arenas: a mod with only art or sounds changes nothing peers must agree on, so it does not stop them connecting.
+- **The mixer treats a mod's music as music**: a new song replaces it, and stopping or pausing music stops or pauses it, so every existing music path handles it without changes.
+- **PNG decoding is pinned by shared vectors** (`docs/test-vectors/png.json`: 14 images from 1-bit grey to 16-bit RGBA, palettes and tRNS) that both OBCR and OBCEdit decode identically, beside the palette-rule vectors.
+- **The IMF rule** (a length header when it fits, otherwise headerless; a song with no delays refused) is OBCR's, and OBCEdit's import uses it too.
+- **The Linux installer** came to 72 MB locally (from 113 MB; 128 MB in the beta.3 release), a little above the 70 MB target in decimal megabytes. Beyond the plan, the release workflow now installs `libxcb-cursor0` and the xcb helper libraries so the freeze bundles them (without them the Linux editor opens only under Wayland), and the editor's self-test checks SHA-256, so a package with a broken `hashlib` fails the build.
+- **F5 on an arena map** plays it as a one-floor single-player preview with the arena's music.

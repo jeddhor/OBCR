@@ -641,9 +641,9 @@ Done (recorded as M15.6–M15.7 in STATUS): release OBC-CD, the CD build's code 
 
 ### Acceptance criteria
 
-- [ ] With no mod, every existing test passes unchanged, network tests included.
-- [ ] A generated format-2 mod with a replaced wall, sprite, sound and music file passes `--check-mod`, renders the replacement and plays the music in a loop.
-- [ ] Two network machines with the same arena mod play its arena; a machine with a different mod is refused.
-- [ ] OBCEdit imports art, sounds and music, shows replaced art, exports a mod OBCR accepts, and builds arenas.
-- [ ] OBCEdit's patrol-route tool places arrows a patrolling enemy follows (route core test plus a GUI test).
-- [ ] The CI-built Linux installer is under 70 MB and its editor starts.
+- [x] With no mod, every existing test passes unchanged, network tests included.
+- [x] A generated format-2 mod with a replaced wall, sprite, sound and music file passes `--check-mod`, renders the replacement and plays the music in a loop.
+- [x] A network game with an arena mod plays its arenas in order and wraps; the network identity differs from a machine without the mod (in-process test; a two-machine game is left to the owner's LAN test, as for M13).
+- [x] OBCEdit imports art, sounds and music, shows replaced art, exports a mod OBCR accepts, and builds arenas (checked end to end with the real engine).
+- [x] OBCEdit's patrol-route tool places arrows a patrolling enemy follows (route core test plus a GUI test).
+- [ ] The CI-built Linux installer is under 70 MB and its editor starts (72 MB built locally; CI on the next push).
