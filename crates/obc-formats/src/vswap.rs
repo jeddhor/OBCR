@@ -157,6 +157,41 @@ impl PageFile {
     }
 }
 
+impl Shape {
+    /// A sprite from a 64×64 column-major image (`x * 64 + y`) whose
+    /// transparent pixels are `transparent`: the same shape [`decode_shape`]
+    /// would give for a page encoding it (a mod's replacement sprite,
+    /// docs/MOD_ASSETS_AND_ARENAS.md §3.2). Posts are the opaque runs of each
+    /// column, top to bottom.
+    pub fn from_indexed(columns: &[u8], transparent: u8) -> Self {
+        assert_eq!(columns.len(), WALL_BYTES, "a sprite image is 64x64");
+        let opaque: Vec<bool> = columns.iter().map(|&p| p != transparent).collect();
+        let pixels: Vec<u8> =
+            columns.iter().zip(&opaque).map(|(&p, &o)| if o { p } else { 0 }).collect();
+        let mut posts = vec![Vec::new(); SHAPE_SIZE];
+        for (x, col) in posts.iter_mut().enumerate() {
+            let mut y = 0;
+            while y < SHAPE_SIZE {
+                if opaque[x * SHAPE_SIZE + y] {
+                    let start = y;
+                    while y < SHAPE_SIZE && opaque[x * SHAPE_SIZE + y] {
+                        y += 1;
+                    }
+                    col.push(Post { start: start as u16, end: y as u16 });
+                } else {
+                    y += 1;
+                }
+            }
+        }
+        let used: Vec<usize> = (0..SHAPE_SIZE).filter(|&x| !posts[x].is_empty()).collect();
+        let (left, right) = match (used.first(), used.last()) {
+            (Some(&l), Some(&r)) => (l as u16, r as u16),
+            _ => (0, 0),
+        };
+        Self { left, right, pixels, opaque, posts }
+    }
+}
+
 /// Decodes a Wolf3D `t_compshape`: `leftpix`, `rightpix`, column offsets, then
 /// per-column post lists of `(end*2, corrected_top, start*2)` ending with 0.
 pub fn decode_shape(page: &[u8]) -> Result<Shape> {
@@ -198,6 +233,60 @@ pub fn decode_shape(page: &[u8]) -> Result<Shape> {
 
 #[cfg(test)]
 mod tests {
+    use super::{Shape, decode_shape};
+
+    /// Encodes a shape as a `t_compshape` page (test helper).
+    fn encode(sh: &Shape) -> Vec<u8> {
+        let (l, r) = (sh.left as usize, sh.right as usize);
+        let mut page = vec![0u8; 4 + 2 * (r - l + 1)];
+        page[0..2].copy_from_slice(&sh.left.to_le_bytes());
+        page[2..4].copy_from_slice(&sh.right.to_le_bytes());
+        // Pixel bytes first, then the post lists; `top` points into them.
+        let mut cols = Vec::new();
+        for x in l..=r {
+            let mut list = Vec::new();
+            for p in &sh.posts[x] {
+                let src = page.len() as i32;
+                for y in p.start..p.end {
+                    page.push(sh.pixels[x * 64 + y as usize]);
+                }
+                list.push((p.end * 2, (src - i32::from(p.start)) as i16, p.start * 2));
+            }
+            cols.push(list);
+        }
+        for (k, list) in cols.into_iter().enumerate() {
+            let at = page.len() as u16;
+            page[4 + 2 * k..6 + 2 * k].copy_from_slice(&at.to_le_bytes());
+            for (e, t, s) in list {
+                page.extend_from_slice(&e.to_le_bytes());
+                page.extend_from_slice(&t.to_le_bytes());
+                page.extend_from_slice(&s.to_le_bytes());
+            }
+            page.extend_from_slice(&0u16.to_le_bytes());
+        }
+        page
+    }
+
+    #[test]
+    fn from_indexed_matches_decoding_an_encoded_page() {
+        let mut img = vec![0xFFu8; 64 * 64];
+        // Two runs in column 10, one in column 40, a pixel in column 63.
+        for y in 5..9 {
+            img[10 * 64 + y] = y as u8;
+        }
+        for y in 20..64 {
+            img[10 * 64 + y] = 200;
+        }
+        img[40 * 64] = 1;
+        img[63 * 64 + 63] = 0; // index 0 is a colour, not transparency
+        let sh = Shape::from_indexed(&img, 0xFF);
+        assert_eq!((sh.left, sh.right), (10, 63));
+        assert_eq!(sh.posts[10].len(), 2);
+        assert_eq!(decode_shape(&encode(&sh)).unwrap(), sh);
+        let empty = Shape::from_indexed(&vec![0xFF; 64 * 64], 0xFF);
+        assert!(empty.posts.iter().all(Vec::is_empty));
+    }
+
     use super::*;
 
     #[test]

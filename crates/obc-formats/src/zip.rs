@@ -12,11 +12,11 @@ use std::collections::BTreeMap;
 use crate::error::{FormatError, Result};
 
 /// Most entries an archive may hold.
-pub const MAX_ENTRIES: usize = 1000;
+pub const MAX_ENTRIES: usize = 2000;
 /// Largest uncompressed entry.
 pub const MAX_ENTRY: u64 = 16 << 20;
 /// Largest total uncompressed size.
-pub const MAX_TOTAL: u64 = 64 << 20;
+pub const MAX_TOTAL: u64 = 128 << 20;
 
 const EOCD: u32 = 0x0605_4b50;
 const CENTRAL: u32 = 0x0201_4b50;
