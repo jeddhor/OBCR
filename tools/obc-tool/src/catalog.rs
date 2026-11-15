@@ -157,7 +157,11 @@ fn plane0_entry(v: u16) -> Value {
         85 => wall("Special panel".into(), "panel", json!({})),
         88 => wall("Rock opening (sewer)".into(), "rock_opening", json!({"needs_plane1": 107})),
         95 => wall("Generator switch (lights on)".into(), "generator", json!({"on": true})),
-        96 => wall("Generator switch (lights off: the floor starts dark)".into(), "generator", json!({"on": false})),
+        96 => wall(
+            "Generator switch (lights off: the floor starts dark)".into(),
+            "generator",
+            json!({"on": false}),
+        ),
         113 => wall("Exit: ladder".into(), "exit", json!({"exit": "ladder", "exitkind": 0})),
         114 => wall("Exit: stairs".into(), "exit", json!({"exit": "stairs", "exitkind": 0})),
         115 => wall("Exit: elevator".into(), "exit", json!({"exit": "elevator", "exitkind": 1})),
