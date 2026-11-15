@@ -22,11 +22,13 @@ artwork.
 
 from __future__ import annotations
 
+import math
+
 from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPen
+from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import QWidget
 
-from obcedit_core import rules
+from obcedit_core import patrol, rules
 from obcedit_core.catalog import Catalog
 from obcedit_core.document import MapDocument
 
@@ -53,6 +55,9 @@ _SCHEMATIC = {
     "enemy": QColor(206, 88, 76),
     "start": QColor(96, 200, 120),
     "unknown": QColor(150, 60, 150),
+    "arrow": QColor(120, 200, 230),
+    "route": QColor(90, 220, 255),
+    "route_bad": QColor(255, 80, 70),
 }
 
 
@@ -66,6 +71,10 @@ class MapCanvas(QWidget):
     dragged = Signal(int, int, int)
     released = Signal(int, int)
     zoom_changed = Signal(int)
+    #: Enter and Esc while the canvas has the focus (the patrol-route tool
+    #: finishes or drops the route it is drawing).
+    finish_requested = Signal()
+    cancel_requested = Signal()
 
     def __init__(self, document: MapDocument | None = None, catalog: Catalog | None = None,
                  parent=None) -> None:
@@ -81,6 +90,8 @@ class MapCanvas(QWidget):
         #: anything in it, so it is drawn and never written.
         self._camera: tuple[float, float, float] | None = None
         self._swatches: dict[int, QColor] = {}
+        #: A patrol route being drawn (patrol.Route), previewed over the map.
+        self._route = None
         self._button = Qt.NoButton
 
         self.setMouseTracking(True)
@@ -113,6 +124,17 @@ class MapCanvas(QWidget):
             return
         self._camera = value
         self.update()
+
+    def set_route(self, route) -> None:
+        """Preview a patrol route being drawn, or none."""
+        if route is self._route:
+            return
+        self._route = route
+        self.update()
+
+    @property
+    def route(self):
+        return self._route
 
     def set_catalog(self, catalog: Catalog | None) -> None:
         self._catalog = catalog
@@ -263,7 +285,12 @@ class MapCanvas(QWidget):
             for y in range(first_y, last_y + 1):
                 row = y * document.width
                 for x in range(first_x, last_x + 1):
-                    color = self._object_color(plane1[row + x])
+                    value = plane1[row + x]
+                    direction = patrol.arrow_direction(value)
+                    if direction is not None:
+                        self._paint_arrow(painter, x, y, direction, _SCHEMATIC["arrow"])
+                        continue
+                    color = self._object_color(value)
                     if color is not None:
                         painter.fillRect(self.cell_rect(x, y).adjusted(
                             inset, inset, -inset, -inset), color)
@@ -281,6 +308,66 @@ class MapCanvas(QWidget):
 
         if self._camera is not None:
             self._paint_camera(painter)
+
+        if self._route is not None:
+            self._paint_route(painter)
+
+    def _paint_arrow(self, painter, x: int, y: int, direction: int, color: QColor,
+                     width: float | None = None) -> None:
+        """A patrol arrow: a shaft through the cell and a head where it points.
+
+        Directions are the engine's (0 east, then counter-clockwise in
+        eighths), and the screen's y axis points down, hence the minus.
+        """
+        zoom = self._zoom
+        angle = math.radians(direction * 45)
+        ux, uy = math.cos(angle), -math.sin(angle)
+        cx, cy = (x + 0.5) * zoom, (y + 0.5) * zoom
+        half = zoom * 0.36
+        tip = QPointF(cx + ux * half, cy + uy * half)
+        tail = QPointF(cx - ux * half, cy - uy * half)
+        head = max(2.0, zoom * 0.28)
+        # The head's two back corners, a little behind the tip on either side.
+        px, py = -uy, ux
+        left = QPointF(tip.x() - ux * head + px * head * 0.6, tip.y() - uy * head + py * head * 0.6)
+        right = QPointF(tip.x() - ux * head - px * head * 0.6, tip.y() - uy * head - py * head * 0.6)
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setPen(QPen(color, width or max(1.0, zoom / 8.0), Qt.SolidLine, Qt.RoundCap))
+        painter.drawLine(tail, tip)
+        painter.setBrush(color)
+        painter.drawPolygon(QPolygonF([tip, left, right]))
+        painter.restore()
+
+    def _paint_route(self, painter) -> None:
+        """The route being drawn: its legs, the arrows it would place, and in
+        red the cell that refuses it."""
+        route = self._route
+        zoom = self._zoom
+        color = _SCHEMATIC["route"] if route.ok else _SCHEMATIC["route_bad"]
+        points = [QPointF((x + 0.5) * zoom, (y + 0.5) * zoom) for x, y in route.waypoints]
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        pen = QPen(color, max(1.5, zoom / 6.0), Qt.DashLine, Qt.RoundCap, Qt.RoundJoin)
+        painter.setPen(pen)
+        for a, b in zip(points, points[1:]):
+            painter.drawLine(a, b)
+        if points:
+            painter.setBrush(color)
+            painter.setPen(Qt.NoPen)
+            painter.drawEllipse(points[0], max(2.0, zoom * 0.15), max(2.0, zoom * 0.15))
+        painter.restore()
+        if route.ok:
+            for x, y, value in route.arrows:
+                direction = patrol.arrow_direction(value)
+                if direction is not None:
+                    self._paint_arrow(painter, x, y, direction, color, max(1.5, zoom / 5.0))
+        if route.bad_cell is not None:
+            painter.save()
+            painter.setPen(QPen(_SCHEMATIC["route_bad"], max(2.0, zoom / 6.0)))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRect(self.cell_rect(*route.bad_cell).adjusted(1, 1, -2, -2))
+            painter.restore()
 
     def _paint_camera(self, painter) -> None:
         """A ring where the camera stands, and a cone showing where it looks.
@@ -341,6 +428,16 @@ class MapCanvas(QWidget):
         self._button = Qt.NoButton
         cell = self.cell_at(event.position().toPoint())
         self.released.emit(*cell)
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+            self.finish_requested.emit()
+            event.accept()
+        elif event.key() == Qt.Key_Escape:
+            self.cancel_requested.emit()
+            event.accept()
+        else:
+            super().keyPressEvent(event)
 
     def leaveEvent(self, event) -> None:
         if self._hover != (-1, -1):
