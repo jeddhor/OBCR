@@ -81,7 +81,7 @@
       "sewer_floor_page": null
     }
   ],
-  "generator": "obc-tool catalog 1.0.0-beta.2",
+  "generator": "obc-tool catalog 1.0.0-beta.3",
   "limits": {
     "ambushtile": 138,
     "areatile": 140,
