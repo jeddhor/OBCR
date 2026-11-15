@@ -211,3 +211,25 @@ Template:
   - OBCR stays the only authority at run time: OBCEdit identifies game data with `obcr --check-data`, checks mods with `obcr --check-mod`, playtests with `obcr --mod … --play … --start …` and photographs the map with `obcr --shot` (no second renderer).
   - Shipped as a PyInstaller onedir folder (EC7Edit's measured decision) inside the OBCR installers, as an option on by default; GitHub Actions tests the core and GUI and freezes it for releases.
 - **Consequences**: The installers grow by the frozen Python and Qt (about 70 MB). The core stays standard-library-only, so its tests run anywhere.
+
+## ADR-025 — Mod format 2: replacement art, sounds and music
+
+- **Status**: Accepted (2026-11-15), at the owner's request
+- **Context**: The owner asked for new art, sounds and music in mods made with OBCEdit. The engine refers to wall pages, sprites and sounds by the original's fixed numbers (map codes, state tables in the EXE, sound ids in the simulation), and the palette is original data.
+- **Decision**:
+  - Format 2 adds `walls/NNN.png` (pages 0–135), `sprites/NNN.png` (0–679), `sounds/NN.wav` (0–98) and `music/*.ogg|qoa|imf`. Assets **replace** numbered pages, sprites and sounds; they never add new ones. A floor's `music` may name a file (docs/MOD_ASSETS_AND_ARENAS.md §2).
+  - Images are ordinary 64×64 PNGs converted to the game palette when loaded, by one written nearest-colour rule shared with OBCEdit's preview and checked by shared vectors on a synthetic palette, so no mod and no test contains the game's palette.
+  - Replaced art is drawn through a `Textures` layer over the base assets, used only when a mod has art; the simulation never sees assets. Sounds keep the original AdLib chunk's priority. Mod music plays through the CD music's stream voice, generalised to QOA and Ogg Vorbis (`lewton`) with looping, or through the OPL for IMF.
+- **Alternatives**: Indexed images in the game palette (needs the palette in authors' tools and in mods); new codes and states for added art (needs a behaviour language, ruled out by DESIGN); MIDI (needs a synthesiser and sound bank); MP3/FLAC (larger decoders; Ogg Vorbis and QOA cover the need).
+- **Consequences**: New dependency `lewton` (MIT OR Apache-2.0). Package limits raised to 2,000 files and 128 MiB. Bigger-than-64×64 art, pictures, fonts and sequences remain the original's.
+
+## ADR-026 — Mod arenas and network identity
+
+- **Status**: Accepted (2026-11-15), at the owner's request
+- **Context**: The owner asked for network floors in mods. Network play is not lockstep, but peers place each other by coordinates and replay each other's Use on their own maps, so every peer must have the same floors; today only the release name is compared.
+- **Decision**:
+  - A mod may list up to ten `[[arena]]` floors (its own maps). With such a mod active, a network game plays them as slots 50 + i; an exit on the last arena returns to the first. Without arenas, the original's.
+  - The network header's release id becomes FNV-1a of the release name plus, with a mod active, its id, version and the SHA-256 of all its contents. Different mods never connect, with no protocol change.
+  - Arena maps must have one player start and no enemies (they cannot be killed in a network game); in a mod arena, respawns are restricted to cells connected to the start. The original arenas keep the original's rules.
+- **Alternatives**: Sending maps between peers (a download protocol, and a peer could send anything); a header field for the mod (a protocol bump for no gain over folding it into the existing id).
+- **Consequences**: Players must install the same version of the mod. The setup screen names where the arenas come from.
