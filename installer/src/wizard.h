@@ -63,6 +63,7 @@ private:
     QCheckBox *menu_;
     QCheckBox *desktop_;
     QCheckBox *pathLink_ = nullptr;
+    QCheckBox *editor_ = nullptr;
 };
 
 class InstallPage : public QWizardPage {

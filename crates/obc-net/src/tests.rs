@@ -69,8 +69,11 @@ fn redundancy_recovers_losses_without_duplicates() {
     assert_eq!(sorted.len(), got.len(), "no duplicates");
     assert!(got.windows(2).all(|w| w[0][0] < w[1][0]), "in order");
     // 30 % loss per datagram, each record in three datagrams plus resends:
-    // nearly all arrive.
-    assert!(got.len() >= 190, "{} of 200 arrived", got.len());
+    // nearly all arrive. The loss is random (a new seed every run): 60 runs
+    // measured 185-200 arrivals, mean 195, so the bound sits about five
+    // standard deviations below the mean. Without redundancy about 140 would
+    // arrive. (The old bound of 190 failed about one run in thirty.)
+    assert!(got.len() >= 180, "{} of 200 arrived", got.len());
 }
 
 #[test]

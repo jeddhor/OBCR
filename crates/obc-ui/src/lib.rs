@@ -2,6 +2,7 @@
 
 pub mod assets;
 pub mod bindings;
+pub mod campaign;
 pub mod cdaudio;
 pub mod controls;
 pub mod game;

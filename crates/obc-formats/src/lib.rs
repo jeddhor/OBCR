@@ -13,10 +13,12 @@ mod error;
 pub mod exe;
 pub mod flc;
 pub mod maps;
+pub mod modpack;
 pub mod qoa;
 pub mod release;
 pub mod vgagraph;
 pub mod vswap;
+pub mod zip;
 
 pub use datadir::DataDir;
 pub use error::{FormatError, Result};

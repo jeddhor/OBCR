@@ -202,3 +202,29 @@ fn write_file(path: &PathBuf, data: &[u8]) -> Result<(), String> {
     println!("wrote\t{}", path.display());
     Ok(())
 }
+
+/// `--check-mod PATH`: checks a mod as the MODS screen does and prints
+/// `mod id title version floors`, one `problem severity floor cell message`
+/// per finding (floor and cell `-` when they do not apply) and `result ok` or
+/// `result errors`, tab separated. Exit code 0 ok, 2 errors, 1 unreadable.
+pub fn check_mod(path: &Path) -> i32 {
+    let (m, problems) = match obc_ui::campaign::check(path) {
+        Ok(r) => r,
+        Err(e) => {
+            println!("problem\terror\t-\t-\t{e}");
+            println!("result\terrors");
+            return 1;
+        }
+    };
+    let i = &m.manifest.info;
+    println!("mod\t{}\t{}\t{}\t{}", i.id, i.title, i.version, m.manifest.levels.len());
+    for p in &problems {
+        let floor = p.level.map_or("-".to_owned(), |l| l.to_string());
+        let cell = p.at.map_or("-".to_owned(), |(x, y)| format!("{x},{y}"));
+        let sev = if p.error { "error" } else { "warning" };
+        println!("problem\t{sev}\t{floor}\t{cell}\t{}", p.message);
+    }
+    let bad = problems.iter().any(|p| p.error);
+    println!("result\t{}", if bad { "errors" } else { "ok" });
+    if bad { 2 } else { 0 }
+}

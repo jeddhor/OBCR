@@ -2,6 +2,38 @@
 
 All notable changes to OBCR. Versions follow [Semantic Versioning](https://semver.org).
 
+## 1.0.0-beta.3 — 2026-11-15 (pre-release)
+
+The third beta. It adds mods and custom maps, and OBCEdit, a level editor for making them.
+
+### Installers
+
+- **Windows**: `OBCR-Setup-1.0.0-beta.3-windows-x64.exe`. **Linux** (x86-64, glibc 2.35 or newer, such as Ubuntu 22.04+): `OBCR-Setup-1.0.0-beta.3-linux-x86_64` (make it executable and run it).
+- Setup now offers to install OBCEdit beside the game (on by default; `--no-editor` in an unattended install leaves it out). The installers are larger because the editor carries its own Python and Qt.
+- Running Setup over an earlier beta updates the installation; settings, saved games and high scores are kept.
+- Built by GitHub Actions from the tagged source. `SHA256SUMS.txt` lists the files' checksums. They are not code-signed: Windows SmartScreen warns on first run (*More info* > *Run anyway*).
+
+### Changes
+
+- **Mods and custom maps**: OBCR plays mods, campaigns of new floors made from the game's own walls, objects and enemies. Put a `.obcmod` file or mod folder in the mods folder, press **D** in the main menu and choose it; each mod keeps its own saves and high scores. `obcr --mod <file>` plays one directly, and `obcr --check-mod <file>` checks one. A mod's floor can reuse an original floor from your own copy of the game, and can behave like any original floor (darkness, sewer walls, music, sequences). The format: [docs/modding.md](docs/modding.md).
+- **OBCEdit**, a level editor, ships with OBCR. It is a port of EC7Edit from the Corridor 7 port EC7Wolf, and lets you:
+  - draw floors from a palette of the game's real walls, objects and enemies;
+  - place doors, push walls, exits and the other compound features with one click;
+  - check a floor as you draw, including whether it can be finished;
+  - test it in OBCR with **F5**, or photograph it through OBCR's renderer;
+  - export or install a mod.
+
+  The manual: [docs/obcedit-manual.md](docs/obcedit-manual.md).
+- Saved games use a new format that records the mod they belong to. Saves from earlier betas still load.
+
+### Known limitations
+
+- Behaviour follows the disassembly of the original; it has not yet been checked frame by frame against the original running in DOSBox-X.
+- Mods can use only the game's own art, sounds and music, and are single-player only.
+- OBCEdit has no tool for drawing patrol routes; patrol arrows are placed one at a time.
+- Saved games are tied to the release they were made with: floppy saves do not load with CD files, and the other way round.
+- Multiplayer has been tested on one machine (several game processes), not yet across a real network.
+
 ## 1.0.0-beta.2 — 2026-11-14 (pre-release)
 
 The second beta. It adds the CD release that Steam and GOG sell, full control rebinding, and fixes push walls.

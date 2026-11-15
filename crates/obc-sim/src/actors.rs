@@ -732,7 +732,8 @@ pub fn spawn_grenade(w: &mut World, target: Option<ObjId>) {
 /// and the remaining fields follow the other projectiles (HYPOTHESIS).
 #[doc(alias = "SpawnFaceApparition")]
 pub fn spawn_face_apparition(w: &mut World) {
-    if w.gamestate.mapon < 6 {
+    // `mapon >= 6` in the original (the profile's `face`).
+    if !w.level.face {
         return;
     }
     let Some(n) = w.get_new_actor() else { return };

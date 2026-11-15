@@ -3,6 +3,7 @@
 //! Exports derived from the original data belong in `.local/exports/` and must
 //! never be committed (AGENT_GUIDE §10.3).
 
+mod catalog;
 mod out;
 
 use std::collections::BTreeMap;
@@ -32,6 +33,16 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Write OBCEdit's catalog (every map value's meaning, from the engine's
+    /// code) as JSON, or with --verify compare it with an existing file.
+    Catalog {
+        /// Output file (default: standard output).
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Compare with this file instead of writing; fails if they differ.
+        #[arg(long)]
+        verify: Option<PathBuf>,
+    },
     /// Identify the data release and check every file.
     Info,
     /// Export walls, sprites and digitized sounds from GFXTILES.
@@ -105,6 +116,29 @@ fn main() -> Result<()> {
         .context("no Operation Body Count data found (use --data or OBC_DATA_DIR)")?;
     let data = DataDir::open(&dir)?;
     match cli.command {
+        Command::Catalog { out, verify } => {
+            let text = serde_json::to_string_pretty(&catalog::build(&data)?)? + "\n";
+            if let Some(path) = verify {
+                let old = std::fs::read_to_string(&path)
+                    .with_context(|| format!("reading {}", path.display()))?;
+                // A checkout may have turned the line endings into CRLF.
+                if old.replace("\r\n", "\n") != text {
+                    bail!(
+                        "{} is out of date: regenerate it with obc-tool catalog --out",
+                        path.display()
+                    );
+                }
+                println!("{} is up to date", path.display());
+                Ok(())
+            } else if let Some(path) = out {
+                std::fs::write(&path, text)?;
+                println!("wrote {}", path.display());
+                Ok(())
+            } else {
+                print!("{text}");
+                Ok(())
+            }
+        }
         Command::Info => info(&data),
         Command::Vswap { out } => vswap(&data, &out),
         Command::Maps { command } => maps(&data, command),
@@ -153,7 +187,7 @@ fn parse_hex(s: &str) -> Result<usize, std::num::ParseIntError> {
 
 fn palette(data: &DataDir) -> Result<Palette> {
     let id = release::identify(data);
-    let exe = MzExe::parse(data.read("COUNT.EXE")?)?;
+    let exe = MzExe::parse(data.read(id.release.exe)?)?;
     Ok(exe.palette(id.release.gamepal_offset)?)
 }
 

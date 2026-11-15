@@ -77,7 +77,7 @@ impl SceneBuffers {
 
 /// Floor/ceiling parameters for a level (docs/re/RENDERER.md §3.1).
 pub fn floor_params(levels: &LevelTables, w: &World, mode: u8) -> FloorParams {
-    let m = LevelTables::index(w.gamestate.mapon);
+    let m = LevelTables::index(w.level.colors);
     let r = usize::from(levels.rindex.get(m).copied().unwrap_or(0)).min(levels.ramps.len() - 1);
     let f = usize::from(levels.findex.get(m).copied().unwrap_or(0)).min(levels.ramps.len() - 1);
     FloorParams {
@@ -88,7 +88,7 @@ pub fn floor_params(levels: &LevelTables, w: &World, mode: u8) -> FloorParams {
         rlim: levels.ramps[r].0,
         rf: levels.ramps[f].0,
         fl: levels.ramps[f].1,
-        quad: if (0..=4).contains(&w.gamestate.mapon) { 0x8400 } else { 0x7600 },
+        quad: if w.level.sewer { 0x8400 } else { 0x7600 },
         sets: w.floor_sets,
     }
 }

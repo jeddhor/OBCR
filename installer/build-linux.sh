@@ -73,6 +73,19 @@ find "$deploy/plugins" -name '*.so' -exec patchelf --set-rpath '$ORIGIN/../../li
     echo "setup-runtime.txt"
 } > "$deploy/setup-runtime.txt"
 
+# OBCEdit, the level editor: frozen with PyInstaller and carried beside Setup
+# (after the runtime list, so the uninstaller's copy does not carry it).
+# OBCEDIT=0 builds the installer without it; PYTHON picks the interpreter.
+if [ "${OBCEDIT:-1}" != 0 ]; then
+    python=${PYTHON:-}
+    if [ -z "$python" ]; then
+        if [ -x .local/obcedit-venv/bin/python ]; then python=.local/obcedit-venv/bin/python; else python=python3; fi
+    fi
+    echo "== freeze OBCEdit"
+    "$python" obcedit/scripts/package.py --output target/obcedit
+    cp -a target/obcedit/OBCEdit "$deploy/obcedit"
+fi
+
 echo "== pack"
 cargo xtask pack-installer target/release/obcr-setup "$deploy" "$out"
 echo "== done: $out ($(du -h "$out" | cut -f1))"

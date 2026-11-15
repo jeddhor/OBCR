@@ -55,6 +55,24 @@ pub struct GameSettings {
     /// The high-score table (the original keeps it in `CONFIG.DAT`); empty
     /// means the defaults from `COUNT.EXE`.
     pub scores: Vec<Score>,
+    /// The mod chosen in the MODS screen (its id); empty for the original game.
+    pub active_mod: String,
+    /// Each mod's own high-score table, by mod id.
+    pub mod_scores: std::collections::BTreeMap<String, Vec<Score>>,
+    /// `--mod PATH`: a mod for this run only (not saved).
+    #[serde(skip)]
+    pub mod_path: Option<std::path::PathBuf>,
+}
+
+impl GameSettings {
+    /// The high-score table of campaign `id` (empty: the original game).
+    pub fn scores_for(&mut self, id: &str) -> &mut Vec<Score> {
+        if id.is_empty() {
+            &mut self.scores
+        } else {
+            self.mod_scores.entry(id.to_owned()).or_default()
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -74,6 +92,9 @@ impl Default for GameSettings {
             nsr250: false,
             quicksave_slot: None,
             scores: Vec::new(),
+            active_mod: String::new(),
+            mod_scores: Default::default(),
+            mod_path: None,
         }
     }
 }

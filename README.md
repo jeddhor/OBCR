@@ -4,7 +4,7 @@
 
 It plays the original game, floor for floor and tic for tic, from your own copy of the game files. You can play it in the original 320×200 picture, or in a modern one: high resolution and widescreen, smooth motion, xBRZ-upscaled textures, mouse and gamepad controls, and network play over the Internet.
 
-> **Status: beta, in testing.** The whole single-player game and network play run. Behaviour follows the disassembly of the original, but it has not yet been compared frame by frame with the original running in DOSBox-X. The current version is **1.0.0-beta.2** ([CHANGELOG.md](CHANGELOG.md), [releases](https://github.com/jeddhor/OBCR/releases)); progress is tracked in [docs/STATUS.md](docs/STATUS.md).
+> **Status: beta, in testing.** The whole single-player game and network play run. Behaviour follows the disassembly of the original, but it has not yet been compared frame by frame with the original running in DOSBox-X. The current version is **1.0.0-beta.3** ([CHANGELOG.md](CHANGELOG.md), [releases](https://github.com/jeddhor/OBCR/releases)); progress is tracked in [docs/STATUS.md](docs/STATUS.md).
 
 > ### 🎮 The controls are modern by default
 >
@@ -25,6 +25,7 @@ It plays the original game, floor for floor and tic for tic, from your own copy 
 - [Running it](#running-it)
 - [Controls](#controls)
 - [Multiplayer](#multiplayer)
+- [Mods and OBCEdit](#mods-and-obcedit)
 - [When it goes wrong](#when-it-goes-wrong)
 - [Building from source](#building-from-source)
 - [How it is built](#how-it-is-built)
@@ -118,6 +119,8 @@ Every option is described in [docs/options.md](docs/options.md).
 | [docs/options.md](docs/options.md) | Every menu option, every command-line option, the settings file, and where OBCR keeps things. |
 | [docs/cd-release.md](docs/cd-release.md) | Playing the Steam/GOG CD release: installing from the disc image, the movies, the CD music and how the CD version plays differently. |
 | [docs/multiplayer.md](docs/multiplayer.md) | Network play: game types, setting up a LAN or Internet game, ports and routers, the rules, troubleshooting. |
+| [docs/modding.md](docs/modding.md) | Mods: installing and playing them, and making them: the `mod.toml` manifest, map rules, checking and sharing. |
+| [docs/obcedit-manual.md](docs/obcedit-manual.md) | OBCEdit, the level editor that comes with OBCR: drawing floors, testing them in OBCR, building a mod. |
 | [installer/README.md](installer/README.md) | OBCR Setup: what it installs, where, the command line, and how the installers are built. |
 | [docs/obcr.6](docs/obcr.6) | A manual page (`man -l docs/obcr.6`). |
 | [CHANGELOG.md](CHANGELOG.md) | What changed in each release. |
@@ -129,6 +132,8 @@ Every option is described in [docs/options.md](docs/options.md).
 | [docs/DESIGN.md](docs/DESIGN.md) | The design: goals, the fidelity model, architecture, every subsystem, verification. |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Architecture decision records: every significant choice and why (ADR-001 onward). |
 | [docs/MECHANICS_AUDIT.md](docs/MECHANICS_AUDIT.md) | Every Operation Body Count mechanic, what the original's code does, and where OBCR implements it. |
+| [docs/MODS_AND_OBCEDIT.md](docs/MODS_AND_OBCEDIT.md) | The plan for mods and OBCEdit: the format, the engine changes, how EC7Edit became OBCEdit. |
+| [obcedit/README.md](obcedit/README.md) | OBCEdit's source tree. |
 | [docs/re/](docs/re/README.md) | The reverse-engineering knowledge base: file formats, the executable's layout, actors, player, allies, renderer, audio, game flow, network, the CD release, and open questions. Every claim carries a confidence grade and a citation. |
 | [docs/ci.md](docs/ci.md) | The test gates, what GitHub Actions runs and cannot run, and how a release is cut. |
 | [docs/STATUS.md](docs/STATUS.md), [docs/MILESTONES.md](docs/MILESTONES.md) | Where the project stands, and the milestone plan it follows. |
@@ -250,6 +255,7 @@ Start OBCR from the menu entry, or run `obcr`. You get the original's opening (t
 | **AUDIO MIX** | OBCR's OPTIONS, opened at the sound settings |
 | **HIGH SCORES**, **CONTINUE**, **ABORT GAME**, **EXIT TO DOS** | As in the original |
 | **O** | OBCR's **OPTIONS**: display, textures, controls, key bindings, sound and music |
+| **D** | **MODS**: choose the original game or an installed mod ([docs/modding.md](docs/modding.md)) |
 | **H** | The original's help page, followed by the key bindings |
 
 | Where things go | Windows | Linux |
@@ -325,6 +331,22 @@ obcr --net N --net-join example.org:16387     # call a player over the Internet
 ```
 
 Network games are not compatible with the DOS original, and floppy and CD copies cannot play together. So far network play has been tested with several copies on one machine, not yet across a real network. Everything else, including the rules, scoring, the KILLS table, ports and troubleshooting, is in [docs/multiplayer.md](docs/multiplayer.md).
+
+---
+
+## Mods and OBCEdit
+
+OBCR plays **mods**: campaigns of new floors, built from the original game's walls, objects and enemies. Put a `.obcmod` file or a mod folder in the mods folder (`%APPDATA%\OBCR\data\mods\` on Windows, `~/.local/share/obcr/mods/` on Linux), press **D** in the main menu, choose it, and START GAME plays its floors in order. Each mod keeps its own saved games and high scores. `obcr --mod <file>` plays one without installing it.
+
+**OBCEdit**, the level editor, comes with OBCR. Setup installs it unless you untick the option, with its own menu entry. It is a port of EC7Edit, the editor of the owner's Corridor 7 port. In OBCEdit you can:
+- open the original floors to study them;
+- draw new ones from a palette of the game's real walls, objects and enemies;
+- place doors, push walls, exits and the other compound features with one click;
+- have it check your map as you draw, including whether the exit can be reached and the quota met;
+- press **F5** to play your floor in OBCR at once;
+- export a mod ready to share.
+
+How mods work and how to write one by hand: [docs/modding.md](docs/modding.md). The editor's manual: [docs/obcedit-manual.md](docs/obcedit-manual.md).
 
 ---
 

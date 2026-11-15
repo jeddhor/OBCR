@@ -13,6 +13,7 @@ use obc_render::Framebuffer;
 use obc_render::palette::{Palette, expand6, faded};
 use obc_render::view3d::{Scene, SplatView, View3D, build_shade_table};
 use obc_sim::events::SimEvent;
+use obc_sim::level::LevelSequence;
 use obc_sim::world::{TicCmd, World, ex};
 
 use crate::assets::Assets;
@@ -123,6 +124,10 @@ pub struct Game {
     net: Option<crate::netui::NetLink>,
     /// Developer: where to put the player after each network respawn.
     pub dev_place: Option<(i32, i32, i16)>,
+    /// The floors this game plays: the original's, or a mod's.
+    campaign: std::sync::Arc<crate::campaign::Campaign>,
+    /// `--start X,Y,DIR`: the first floor's player start (OBCEdit playtests).
+    pub start_override: Option<(u8, u8, u16)>,
 }
 
 impl Game {
@@ -154,7 +159,11 @@ impl Game {
         g
     }
 
-    fn build(ctx: &mut Ctx, difficulty: i16, mapon: i16) -> Self {
+    pub(crate) fn build(ctx: &mut Ctx, difficulty: i16, mapon: i16) -> Self {
+        let (campaign, why) = crate::campaign::active(ctx);
+        if let Some(why) = why {
+            eprintln!("playing the original game: {why}");
+        }
         let a = ctx.assets;
         let mut world = World::new(a.game.clone(), a.trig.clone());
         obc_sim::player::new_game(&mut world, difficulty);
@@ -203,6 +212,8 @@ impl Game {
             interpolate: false,
             net: None,
             dev_place: None,
+            campaign,
+            start_override: None,
         }
     }
 
@@ -247,10 +258,10 @@ impl Game {
             self.hud.message("UNABLE TO SAVE".into());
             return;
         }
-        let name = crate::saves::list(ctx.save_dir)[slot]
+        let name = crate::saves::list(ctx)[slot]
             .as_ref()
             .map_or_else(|| format!("SLOT {}", slot + 1), |h| h.name.clone());
-        match crate::saves::write(ctx.save_dir, slot, &self.world, &name, ctx.assets) {
+        match crate::saves::write(ctx, slot, &self.world, &name) {
             Ok(()) => self.hud.message(format!("SAVED {name}")),
             Err(e) => {
                 eprintln!("quicksave: {e}");
@@ -260,15 +271,29 @@ impl Game {
     }
 
     /// `SetupGameLevel`, `StartMusic`, then the `PlayLoop` entry.
-    fn start_level(&mut self, ctx: &mut Ctx) {
+    pub(crate) fn start_level(&mut self, ctx: &mut Ctx) {
         let mapon = self.world.gamestate.mapon;
-        let Ok(Some(map)) = ctx.assets.maps.map(mapon.max(0) as usize) else {
+        // The campaign's floor, or (network games, the warp cheat's floors
+        // 51-60) the original map slot with its own behaviour.
+        let (map, profile) = match self.campaign.level(mapon) {
+            Some(l) if self.net.is_none() => {
+                (self.campaign.map(ctx.assets, mapon), l.profile.clone())
+            }
+            _ => (
+                ctx.assets.maps.map(mapon.max(0) as usize).ok().flatten(),
+                obc_sim::level::LevelProfile::stock(mapon, ctx.assets.game.cd),
+            ),
+        };
+        let Some(mut map) = map else {
             eprintln!("map {mapon} missing; returning to the menu");
             self.phase = Phase::Sequence(After::Menu);
             return;
         };
+        if let Some((x, y, dir)) = self.start_override.take() {
+            move_player_start(&mut map, x, y, dir);
+        }
         self.set_view_size(ctx.settings.game.viewsize);
-        self.world.setup_game_level(&map, mapon);
+        self.world.setup_game_level_with(&map, mapon, profile);
         prepare_textures(ctx.assets, &self.world);
         self.start_music(ctx);
         self.lighting = self.world.start_play_loop();
@@ -470,13 +495,7 @@ impl Game {
                 let w = &self.world;
                 if w.gamestate.difficulty < 4
                     && self.net.is_none()
-                    && let Err(e) = crate::saves::write(
-                        ctx.save_dir,
-                        crate::saves::AUTOSAVE,
-                        w,
-                        "AutoSave",
-                        ctx.assets,
-                    )
+                    && let Err(e) = crate::saves::write(ctx, crate::saves::AUTOSAVE, w, "AutoSave")
                 {
                     eprintln!("autosave: {e}");
                 }
@@ -489,13 +508,28 @@ impl Game {
         }
     }
 
-    /// The exit sequence for the level just finished (GAMEFLOW §5.3).
-    fn exit_sequence(&self) -> &'static str {
-        match self.world.gamestate.mapon {
-            0..=4 => "F2",
-            22 => "F5",
-            _ if self.world.ply.exitkind == 1 => "F4",
-            _ => "F3",
+    /// After the last floor of a campaign: the victory path, as killing Victor
+    /// does (a mod's campaign; the original's floor 40 has no working exit).
+    fn campaign_won(&mut self) -> bool {
+        let m = self.world.gamestate.mapon;
+        if self.net.is_some() || usize::try_from(m).ok() != Some(self.campaign.len()) {
+            return false;
+        }
+        self.world.gamestate.mapon = m - 1; // the floor reached, for the scores
+        // VictoryScreen, then F7, then the scores, as after Victor (GAMEFLOW §5.5).
+        self.phase = Phase::Sequence(After::Victory);
+        true
+    }
+
+    /// The exit sequence for the level just finished (GAMEFLOW §5.3), from
+    /// the floor's profile: F2 after the sewers, F5 after floor 23, otherwise
+    /// F3 (stairs, ladder) or F4 (elevator) by the exit used.
+    fn exit_sequence(&self) -> Option<String> {
+        match &self.world.level.sequence {
+            LevelSequence::Fixed(name) => Some(name.clone()),
+            LevelSequence::None => None,
+            LevelSequence::Auto if self.world.ply.exitkind == 1 => Some("F4".into()),
+            LevelSequence::Auto => Some("F3".into()),
         }
     }
 
@@ -745,8 +779,11 @@ impl Screen for Game {
                     return Transition::None;
                 }
                 if t >= FADE_OUT {
-                    let name = self.exit_sequence();
-                    return self.push_sequence(ctx, name, After::NextLevel);
+                    let Some(name) = self.exit_sequence() else {
+                        self.phase = Phase::Sequence(After::NextLevel);
+                        return Transition::None;
+                    };
+                    return self.push_sequence(ctx, &name, After::NextLevel);
                 }
                 self.phase = Phase::ExitFade(t);
                 Transition::None
@@ -754,6 +791,9 @@ impl Screen for Game {
             Phase::Sequence(After::NextLevel) => {
                 // ClearFloorItems, mapon++, health += 35.
                 self.world.advance_level();
+                if self.campaign_won() {
+                    return Transition::Push(Box::new(crate::menu::VictoryPic::default()));
+                }
                 crate::cdaudio::floor_done(ctx);
                 self.start_level(ctx);
                 Transition::None
@@ -780,6 +820,10 @@ impl Screen for Game {
                     }
                     After::NextLevel => {
                         self.world.advance_level();
+                        if self.campaign_won() {
+                            ctx.audio.send(AudioCommand::StopMusic);
+                            return Transition::Push(Box::new(crate::menu::VictoryPic::default()));
+                        }
                         crate::cdaudio::floor_done(ctx);
                     }
                     _ => {}
@@ -925,11 +969,16 @@ impl Screen for Game {
 pub struct Boot {
     pub difficulty: i16,
     pub mapon: i16,
+    /// `--start X,Y,DIR`: where the player starts on that floor.
+    pub start: Option<(u8, u8, u16)>,
 }
 
 impl Screen for Boot {
     fn tick(&mut self, ctx: &mut Ctx) -> Transition {
-        Transition::Replace(Box::new(Game::new_at(ctx, self.difficulty, self.mapon)))
+        let mut g = Game::build(ctx, self.difficulty, self.mapon);
+        g.start_override = self.start;
+        g.start_level(ctx);
+        Transition::Replace(Box::new(g))
     }
 
     fn draw(&mut self, _a: &Assets, out: &mut Frame) {
@@ -1065,4 +1114,18 @@ pub fn draw_box(fb: &mut Framebuffer, a: &Assets, text: &str) {
     fb.bar(x - 1, y - 1, w + 2, h + 2, 0);
     fb.bar(x, y, w, h, 0x1C);
     obc_render::draw2d::draw_text(fb, font, text.as_bytes(), x + 8, y + 5, 0x0F);
+}
+
+/// Moves a map's player start to `(x, y)` facing compass `dir` (0 N .. 3 W),
+/// removing the others: `--start`, for OBCEdit's "play from here".
+fn move_player_start(map: &mut obc_formats::maps::Map, x: u8, y: u8, dir: u16) {
+    let w = usize::from(map.width);
+    for c in &mut map.planes[1] {
+        if (19..=22).contains(c) {
+            *c = 18;
+        }
+    }
+    if let Some(c) = map.planes[1].get_mut(usize::from(y) * w + usize::from(x)) {
+        *c = 19 + dir.min(3);
+    }
 }

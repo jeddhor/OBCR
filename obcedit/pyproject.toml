@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jason Tripp
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "obcedit"
+# OBCR's number, read from the workspace Cargo.toml (obcedit_core/version.py):
+# one product, one version.
+dynamic = ["version"]
+description = "OBCEdit, the level editor for Operation Body Count that ships with OBCR"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+requires-python = ">=3.10"
+authors = [{ name = "Jason Tripp" }]
+keywords = ["operation body count", "obcr", "level editor", "mod", "wolf3d"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: X11 Applications :: Qt",
+    "Environment :: Win32 (MS Windows)",
+    "Intended Audience :: End Users/Desktop",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Games/Entertainment :: First Person Shooters",
+]
+
+# The core has none, deliberately: everything it needs to read and write
+# Operation Body Count's formats is in the standard library, so the codec tests
+# run anywhere Python does -- including a CI runner with no right to the game
+# data and no display. PySide6 arrives with the GUI, as an optional extra.
+dependencies = []
+
+[project.optional-dependencies]
+gui = ["PySide6>=6.8,<7"]
+
+[project.scripts]
+obcedit = "obcedit_core.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/jeddhor/OBCR"
+Documentation = "https://github.com/jeddhor/OBCR/blob/main/docs/MODS_AND_OBCEDIT.md"
+
+[tool.setuptools.dynamic]
+# PEP 440: 1.0.0b2 for 1.0.0-beta.2. Only packaging tools see it.
+version = { attr = "obcedit_core.__pep440__" }
+
+[tool.setuptools]
+packages = ["obcedit_core"]
+
+[tool.setuptools.package-data]
+obcedit_core = ["py.typed"]

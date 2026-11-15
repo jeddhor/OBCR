@@ -11,8 +11,11 @@ publish.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 hound.workspace = true
+obc-core.workspace = true
 obc-formats.workspace = true
+obc-sim.workspace = true
 png.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

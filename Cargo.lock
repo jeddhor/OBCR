@@ -468,6 +468,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
 
 [[package]]
+name = "itoa"
+version = "1.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3bd1574e617a9a6c1f8f8181bd7e841e1f20e4277607ef28945765188d6284d4"
+
+[[package]]
 name = "libc"
 version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -540,7 +546,7 @@ dependencies = [
 
 [[package]]
 name = "obc-audio"
-version = "1.0.0-beta.2"
+version = "1.0.0-beta.3"
 dependencies = [
  "nuked-opl3",
  "obc-core",
@@ -549,28 +555,31 @@ dependencies = [
 
 [[package]]
 name = "obc-core"
-version = "1.0.0-beta.2"
+version = "1.0.0-beta.3"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "obc-formats"
-version = "1.0.0-beta.2"
+version = "1.0.0-beta.3"
 dependencies = [
+ "miniz_oxide 0.8.9",
  "obc-testdata",
  "proptest",
+ "serde",
  "sha2",
  "thiserror",
+ "toml",
 ]
 
 [[package]]
 name = "obc-net"
-version = "1.0.0-beta.2"
+version = "1.0.0-beta.3"
 
 [[package]]
 name = "obc-platform"
-version = "1.0.0-beta.2"
+version = "1.0.0-beta.3"
 dependencies = [
  "obc-core",
  "sdl3",
@@ -579,7 +588,7 @@ dependencies = [
 
 [[package]]
 name = "obc-render"
-version = "1.0.0-beta.2"
+version = "1.0.0-beta.3"
 dependencies = [
  "obc-core",
  "obc-formats",
@@ -588,7 +597,7 @@ dependencies = [
 
 [[package]]
 name = "obc-sim"
-version = "1.0.0-beta.2"
+version = "1.0.0-beta.3"
 dependencies = [
  "obc-core",
  "obc-formats",
@@ -600,22 +609,25 @@ dependencies = [
 
 [[package]]
 name = "obc-testdata"
-version = "1.0.0-beta.2"
+version = "1.0.0-beta.3"
 
 [[package]]
 name = "obc-tool"
-version = "1.0.0-beta.2"
+version = "1.0.0-beta.3"
 dependencies = [
  "anyhow",
  "clap",
  "hound",
+ "obc-core",
  "obc-formats",
+ "obc-sim",
  "png",
+ "serde_json",
 ]
 
 [[package]]
 name = "obc-ui"
-version = "1.0.0-beta.2"
+version = "1.0.0-beta.3"
 dependencies = [
  "obc-audio",
  "obc-core",
@@ -630,7 +642,7 @@ dependencies = [
 
 [[package]]
 name = "obcr"
-version = "1.0.0-beta.2"
+version = "1.0.0-beta.3"
 dependencies = [
  "anyhow",
  "clap",
@@ -646,7 +658,7 @@ dependencies = [
 
 [[package]]
 name = "obcr-setup"
-version = "1.0.0-beta.2"
+version = "1.0.0-beta.3"
 dependencies = [
  "miniz_oxide 0.8.9",
 ]
@@ -978,6 +990,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_json"
+version = "1.0.154"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7e9cc8b1b85264074fbcc02a88680c4096b1e47df8f739dceb03bf482f04bd6"
+dependencies = [
+ "itoa",
+ "memchr",
+ "serde",
+ "serde_core",
+ "zmij",
+]
+
+[[package]]
 name = "serde_spanned"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1190,7 +1215,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "1.0.0-beta.2"
+version = "1.0.0-beta.3"
 dependencies = [
  "anyhow",
  "miniz_oxide 0.8.9",
@@ -1201,3 +1226,9 @@ name = "zlib-rs"
 version = "0.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b268e58e7c693d7c271f93ffc4ba3b380412554231c85bf61ca7af91042a4112"
+
+[[package]]
+name = "zmij"
+version = "1.0.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"

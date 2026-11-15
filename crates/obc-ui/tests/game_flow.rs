@@ -121,7 +121,7 @@ fn completing_a_floor_autosaves_plays_the_sequence_and_starts_the_next() {
     assert_eq!(w.gamestate.mapon, 1);
     // +35 on the floor change, then the new level's start-health cap (400).
     assert_eq!(w.gamestate.health, (health + 35).min(400));
-    let slots = obc_ui::saves::list(&h.saves);
+    let slots = h.with_ctx(|ctx| obc_ui::saves::list(ctx));
     let auto = slots[obc_ui::saves::AUTOSAVE].as_ref().expect("AutoSave written");
     assert_eq!(auto.mapon, 0, "AutoSave holds the completed floor");
     let _ = std::fs::remove_dir_all(&h.saves);
@@ -137,9 +137,8 @@ fn a_saved_game_loads_and_plays() {
     h.stack.push(Box::new(g));
     h.idle(300);
     let before = h.game().world().clone();
-    let (saves, assets) = (h.saves.clone(), &h.assets);
-    obc_ui::saves::write(&saves, 3, &before, "TEST", assets).unwrap();
-    let (header, w) = obc_ui::saves::read(&saves, 3, assets).unwrap();
+    h.with_ctx(|ctx| obc_ui::saves::write(ctx, 3, &before, "TEST")).unwrap();
+    let (header, w) = h.with_ctx(|ctx| obc_ui::saves::read(ctx, 3)).unwrap();
     assert_eq!((header.name.as_str(), header.mapon), ("TEST", 6));
     let g = h.with_ctx(|ctx| Game::from_world(ctx, w));
     h.stack.clear();

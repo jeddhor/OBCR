@@ -215,6 +215,29 @@ QString uninstallerName() {
 #endif
 }
 
+QString editorExeName() {
+#ifdef Q_OS_WIN
+    return QStringLiteral("OBCEdit.exe");
+#else
+    return QStringLiteral("OBCEdit");
+#endif
+}
+
+namespace {
+// The frozen OBCEdit folder the build scripts put beside Setup.
+QString editorSource() { return join(QCoreApplication::applicationDirPath(), QStringLiteral("obcedit")); }
+constexpr auto kEditorDir = "obcedit";
+}  // namespace
+
+bool editorAvailable() { return QFileInfo::exists(join(editorSource(), editorExeName())); }
+
+qint64 editorSize() {
+    qint64 bytes = 0;
+    QDirIterator it(editorSource(), QDir::Files | QDir::Hidden, QDirIterator::Subdirectories);
+    while (it.hasNext()) bytes += QFileInfo(it.next()).size();
+    return bytes;
+}
+
 QString defaultInstallDir() {
 #ifdef Q_OS_WIN
     // %LOCALAPPDATA%\Programs\OBCR, where per-user programs go.
@@ -510,6 +533,33 @@ bool install(const Options &o, const DataCheck &check, const Progress &progress,
         m.file(to);
     }
 
+    // OBCEdit, the level editor (optional): its frozen folder, as built.
+    const QString editorDir = join(target, kEditorDir);
+    const QString editorExe = join(editorDir, editorExeName());
+    const bool withEditor = o.editor && editorAvailable();
+    if (withEditor) {
+        report(progress, 70, QStringLiteral("Installing OBCEdit"));
+        const QString src = editorSource();
+        m.dir(editorDir);
+        QDirIterator it(src, QDir::Files | QDir::Hidden, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            const QString from = it.next();
+            const QString rel = QDir(src).relativeFilePath(from);
+            const QString to = join(editorDir, rel);
+            QString parent = QFileInfo(to).absolutePath();
+            QStringList parents;
+            while (parent.size() > editorDir.size()) {
+                parents.prepend(parent);
+                parent = QFileInfo(parent).absolutePath();
+            }
+            for (const QString &d : parents) m.dir(d);
+            QDir().mkpath(QFileInfo(to).absolutePath());
+            if (!copyFile(from, to, error)) return fail(*error);
+            if (QFileInfo(from).isExecutable()) makeExecutable(to);
+            m.file(to);
+        }
+    }
+
     // The icon (generated).
     const QString iconPath = join(target, kIconFile);
     if (!icon(256).save(iconPath, "PNG")) return fail(QStringLiteral("Cannot write %1").arg(iconPath));
@@ -530,6 +580,12 @@ bool install(const Options &o, const DataCheck &check, const Progress &progress,
         m.file(game);
         if (!QFile::link(uninstExe, remove)) return fail(QStringLiteral("Cannot create %1").arg(remove));
         m.file(remove);
+        if (withEditor) {
+            const QString ed = join(menu, QStringLiteral("OBCEdit.lnk"));
+            QFile::remove(ed);
+            if (!QFile::link(editorExe, ed)) return fail(QStringLiteral("Cannot create %1").arg(ed));
+            m.file(ed);
+        }
     }
     if (o.desktopShortcut) {
         const QString link = join(QStandardPaths::writableLocation(QStandardPaths::DesktopLocation),
@@ -576,6 +632,15 @@ bool install(const Options &o, const DataCheck &check, const Progress &progress,
                        error))
             return fail(*error);
         m.file(remove);
+        if (withEditor) {
+            const QString ed = join(apps, QStringLiteral("obcedit.desktop"));
+            if (!writeText(ed, desktopEntry(QStringLiteral("OBCEdit"),
+                                            QStringLiteral("Level editor for OBCR: make Operation Body Count mods"),
+                                            editorExe, editorDir, iconPath),
+                           error))
+                return fail(*error);
+            m.file(ed);
+        }
         QProcess::execute(QStringLiteral("update-desktop-database"), {apps});
     }
     if (o.desktopShortcut) {
@@ -600,6 +665,12 @@ bool install(const Options &o, const DataCheck &check, const Progress &progress,
             QDir().mkpath(bin);
             QFile::remove(link);
             if (QFile::link(exe, link)) m.file(link);
+        }
+        const QString edLink = join(bin, QStringLiteral("obcedit"));
+        const QFileInfo ei(edLink);
+        if (withEditor && (!ei.exists() || ei.isSymLink())) {
+            QFile::remove(edLink);
+            if (QFile::link(editorExe, edLink)) m.file(edLink);
         }
     }
 #endif

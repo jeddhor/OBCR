@@ -277,6 +277,10 @@ pub struct Menu {
     gametype: i16,
     /// The game as it was when the panel opened, for SAVE GAME.
     world: Option<Box<World>>,
+    /// The active mod's title (none for the original game), and the settings
+    /// it was looked up for.
+    campaign_title: Option<String>,
+    campaign_key: Option<(String, Option<std::path::PathBuf>)>,
 }
 
 /// The main menu, out of game.
@@ -302,6 +306,8 @@ impl Menu {
             mode: Mode::FadeIn(0),
             viewsize: 18,
             gametype: 1,
+            campaign_title: None,
+            campaign_key: None,
         }
     }
 
@@ -399,6 +405,18 @@ impl Screen for Menu {
         let t = self.tick_mode(ctx, dir, edge);
         self.viewsize = ctx.settings.game.viewsize;
         self.gametype = ctx.settings.game.gametype;
+        let key = (ctx.settings.game.active_mod.clone(), ctx.settings.game.mod_path.clone());
+        if self.campaign_key.as_ref() != Some(&key) {
+            let path = match &key {
+                (_, Some(p)) => Some(p.clone()),
+                (id, None) if id.is_empty() => None,
+                (id, None) => crate::campaign::find_installed(ctx.save_dir, id),
+            };
+            self.campaign_title = path
+                .and_then(|p| obc_formats::modpack::open(&p).ok())
+                .map(|m| m.manifest.info.title);
+            self.campaign_key = Some(key);
+        }
         t
     }
 
@@ -432,6 +450,10 @@ impl Menu {
                 }
                 if input.pressed(sc::O) {
                     return Transition::Push(Box::new(Options::new(false)));
+                }
+                // D: the MODS screen (out of game only: a game keeps its campaign).
+                if input.pressed(0x20) && !self.in_game {
+                    return Transition::Push(Box::new(Mods::new(ctx)));
                 }
                 if let Some(i) = ITEMS
                     .iter()
@@ -550,7 +572,11 @@ impl Menu {
             if matches!(self.mode, Mode::ViewSize | Mode::GameType) {
                 draw_text(out.layer, font, b"UP / DOWN", 4, 186, fg);
             } else if !self.in_game {
-                draw_text(out.layer, font, b"O  OPTIONS", 4, 186, fg);
+                draw_text(out.layer, font, b"O OPTIONS   D MODS", 4, 186, fg);
+            }
+            if let Some(t) = &self.campaign_title {
+                let t = fit(font, &format!("MOD: {}", t.to_ascii_uppercase()), 200);
+                draw_text(out.layer, font, t.as_bytes(), 4, 174, nearest(&pal, [255, 220, 0]));
             }
         }
         match &self.mode {
@@ -608,7 +634,7 @@ pub struct SlotMenu {
 impl SlotMenu {
     /// `world` set: save it; otherwise load.
     fn new(ctx: &Ctx, world: Option<Box<World>>) -> Self {
-        let slots = saves::list(ctx.save_dir);
+        let slots = saves::list(ctx);
         let cur = if world.is_some() {
             ctx.settings.game.quicksave_slot.map_or(0, usize::from).min(saves::AUTOSAVE - 1)
         } else {
@@ -634,7 +660,7 @@ impl SlotMenu {
     /// Writes the held world to the current slot; true on success.
     fn save(&mut self, ctx: &mut Ctx, name: &str) -> bool {
         let Some(w) = &self.world else { return false };
-        match saves::write(ctx.save_dir, self.cur, w, name, ctx.assets) {
+        match saves::write(ctx, self.cur, w, name) {
             Ok(()) => {
                 ctx.settings.game.quicksave_slot = Some(self.cur as u8);
                 true
@@ -704,7 +730,7 @@ impl Screen for SlotMenu {
             self.editing = Some(LineInput { text, max: saves::NAME_MAX });
             ctx.requests.text_input = Some(true);
         } else if self.slots[self.cur].is_some() {
-            return match saves::read(ctx.save_dir, self.cur, ctx.assets) {
+            return match saves::read(ctx, self.cur) {
                 Ok((_, w)) => {
                     ctx.audio.send(AudioCommand::StopMusic);
                     Transition::Reset(Box::new(Game::from_world(ctx, w)))
@@ -784,10 +810,14 @@ pub struct HighScores {
 impl HighScores {
     /// `entry`: the finished game's score and floor, if it may enter the table.
     pub fn new(ctx: &mut Ctx, entry: Option<(i32, u16)>) -> Self {
-        if ctx.settings.game.scores.len() != 7 {
-            ctx.settings.game.scores = default_scores(ctx.assets);
+        // Each campaign keeps its own table (the original's in `scores`).
+        let id = crate::campaign::active_id(ctx);
+        let defaults = default_scores(ctx.assets);
+        let table = ctx.settings.game.scores_for(&id);
+        if table.len() != 7 {
+            *table = defaults;
         }
-        let mut scores = ctx.settings.game.scores.clone();
+        let mut scores = table.clone();
         let mut editing = None;
         if let Some((score, completed)) = entry
             && let Some(i) = scores.iter().position(|s| s.score <= score)
@@ -828,7 +858,8 @@ impl Screen for HighScores {
                     edit.text.clone()
                 };
                 self.scores[*i].name = name;
-                ctx.settings.game.scores = self.scores.clone();
+                let id = crate::campaign::active_id(ctx);
+                *ctx.settings.game.scores_for(&id) = self.scores.clone();
                 self.editing = None;
                 ctx.requests.text_input = Some(false);
                 self.t = 0;
@@ -1273,5 +1304,202 @@ impl Screen for Options {
             draw_text(out.layer, font, v.as_bytes(), 180, y, if i == self.cur { hi } else { dim });
         }
         out.palette = pal;
+    }
+}
+
+// ---------------------------------------------------------------- mods
+
+/// One row of the MODS screen.
+struct ModRow {
+    /// Empty for the original game.
+    id: String,
+    title: String,
+    detail: Vec<String>,
+    /// Why it cannot be played, if it cannot.
+    error: Option<String>,
+}
+
+/// The MODS screen (docs/MODS_AND_OBCEDIT.md §4.4): the original game and
+/// every installed mod; Enter makes one the active campaign. Opened with D
+/// from the main menu.
+pub struct Mods {
+    rows: Vec<ModRow>,
+    cur: usize,
+    /// The active campaign's id when the list was built.
+    active: String,
+}
+
+/// Fits `s` into `width` pixels, ending in "..." when it is cut.
+fn fit(font: &obc_formats::vgagraph::Font, s: &str, width: i32) -> String {
+    if text_width(font, s.as_bytes()) <= width {
+        return s.to_owned();
+    }
+    let mut t = s.to_owned();
+    while !t.is_empty() && text_width(font, format!("{t}...").as_bytes()) > width {
+        t.pop();
+    }
+    format!("{t}...")
+}
+
+/// Splits `s` into lines of at most `n` characters, on spaces.
+fn wrap(s: &str, n: usize) -> Vec<String> {
+    let mut lines = vec![String::new()];
+    for w in s.split_whitespace() {
+        let last = lines.last_mut().expect("one line");
+        if !last.is_empty() && last.len() + 1 + w.len() > n {
+            lines.push(w.to_owned());
+        } else {
+            if !last.is_empty() {
+                last.push(' ');
+            }
+            last.push_str(w);
+        }
+    }
+    lines.retain(|l| !l.is_empty());
+    lines
+}
+
+impl Mods {
+    pub fn new(ctx: &Ctx) -> Self {
+        let release = ctx.assets.release.release.id;
+        let mut rows = vec![ModRow {
+            id: String::new(),
+            title: "ORIGINAL GAME".into(),
+            detail: vec!["OPERATION BODY COUNT, 40 FLOORS".into()],
+            error: None,
+        }];
+        for (path, r) in crate::campaign::installed(ctx.save_dir) {
+            let file =
+                path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            rows.push(match r {
+                Ok((m, problems)) => {
+                    let i = &m.manifest.info;
+                    let mut detail = vec![format!(
+                        "{}{}  {} FLOORS",
+                        if i.author.is_empty() {
+                            String::new()
+                        } else {
+                            format!("BY {}  ", i.author)
+                        },
+                        if i.version.is_empty() {
+                            String::new()
+                        } else {
+                            format!("V{}", i.version)
+                        },
+                        m.manifest.levels.len()
+                    )];
+                    detail.extend(wrap(&i.description, 34).into_iter().take(3));
+                    ModRow {
+                        id: i.id.clone(),
+                        title: i.title.clone(),
+                        detail,
+                        error: crate::campaign::playable(&m, &problems, release).err(),
+                    }
+                }
+                Err(e) => {
+                    ModRow { id: String::new(), title: file, detail: Vec::new(), error: Some(e) }
+                }
+            });
+        }
+        let active = crate::campaign::active_id(ctx);
+        let cur = rows.iter().position(|r| r.id == active && r.error.is_none()).unwrap_or(0);
+        Self { rows, cur, active }
+    }
+
+    /// Whether row `i` can be chosen.
+    fn choosable(&self, i: usize) -> bool {
+        let r = &self.rows[i];
+        r.error.is_none() && (i == 0 || !r.id.is_empty())
+    }
+}
+
+impl Screen for Mods {
+    fn name(&self) -> &'static str {
+        "mods"
+    }
+
+    fn tick(&mut self, ctx: &mut Ctx) -> Transition {
+        let input = ctx.input;
+        ctx.requests.relative_mouse = Some(false);
+        if back(input) {
+            return Transition::Pop;
+        }
+        let n = self.rows.len();
+        if input.pressed(sc::UP) || input.pad_pressed(pad::DPAD_UP) {
+            self.cur = (self.cur + n - 1) % n;
+            play_digi(ctx, MOVE_SOUND);
+        }
+        if input.pressed(sc::DOWN) || input.pad_pressed(pad::DPAD_DOWN) {
+            self.cur = (self.cur + 1) % n;
+            play_digi(ctx, MOVE_SOUND);
+        }
+        if select(input) && self.choosable(self.cur) {
+            ctx.settings.game.active_mod = self.rows[self.cur].id.clone();
+            ctx.settings.game.mod_path = None;
+            return Transition::Pop;
+        }
+        Transition::None
+    }
+
+    fn draw(&mut self, a: &Assets, out: &mut Frame) {
+        out.frame.clear(0);
+        out.layer.clear(0);
+        out.layer_key = None;
+        let pal = a.gamepal;
+        let (fg, hi, dim, red) = (
+            nearest(&pal, [255, 255, 255]),
+            nearest(&pal, [255, 220, 0]),
+            nearest(&pal, [150, 150, 150]),
+            nearest(&pal, [255, 60, 60]),
+        );
+        out.layer.bar(8, 4, 304, 192, nearest(&pal, [16, 16, 56]));
+        out.palette = pal;
+        let Some(font) = a.fonts.first() else { return };
+        draw_text(out.layer, font, b"MODS", 142, 7, hi);
+        const ROWS: usize = 6;
+        let first = self.cur.saturating_sub(ROWS - 1);
+        for (i, row) in self.rows.iter().enumerate().skip(first).take(ROWS) {
+            let y = 24 + (i - first) as i32 * 13;
+            let c = match (i == self.cur, row.error.is_some()) {
+                (true, _) => hi,
+                (false, true) => dim,
+                (false, false) => fg,
+            };
+            if row.id == self.active && self.choosable(i) {
+                draw_text(out.layer, font, b">", 14, y, hi);
+            }
+            let title = fit(font, &row.title.to_ascii_uppercase(), 270);
+            draw_text(out.layer, font, title.as_bytes(), 26, y, c);
+        }
+        if first + ROWS < self.rows.len() {
+            draw_text(out.layer, font, b"v", 300, 24 + 5 * 13, dim);
+        }
+        let row = &self.rows[self.cur];
+        let mut y = 108;
+        for line in &row.detail {
+            draw_text(
+                out.layer,
+                font,
+                fit(font, &line.to_ascii_uppercase(), 288).as_bytes(),
+                16,
+                y,
+                dim,
+            );
+            y += 12;
+        }
+        if let Some(e) = &row.error {
+            for line in wrap(e, 34).iter().take(2) {
+                draw_text(
+                    out.layer,
+                    font,
+                    fit(font, &line.to_ascii_uppercase(), 288).as_bytes(),
+                    16,
+                    y,
+                    red,
+                );
+                y += 12;
+            }
+        }
+        draw_text(out.layer, font, b"ENTER  PLAY THIS    ESC  BACK", 16, 182, fg);
     }
 }

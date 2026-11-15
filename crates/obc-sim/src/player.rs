@@ -590,8 +590,9 @@ pub fn play_loop_start(w: &mut World) {
     w.godmode = false;
     w.thermosensor = false;
     clear_screen_splats(w);
-    if w.gamestate.mapon == 23 && !w.data.cd {
-        message(w, "UN BUILDING 2");
+    // `mapon == 23` in the original (the profile's `message`).
+    if let Some(m) = w.level.message.clone() {
+        message(w, m);
     }
 }
 
