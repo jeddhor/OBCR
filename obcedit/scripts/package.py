@@ -70,12 +70,32 @@ PRUNE = [
     "**/*Qt6Network*",
     "**/plugins/tls",
     "**/plugins/networkinformation",
-    "**/plugins/platforminputcontexts",
     "**/plugins/imageformats/*pdf*",
     "**/plugins/platforms/*direct2d*",
     "**/libcrypto-3-x64.dll",
     "**/libssl-3-x64.dll",
 ]
+
+# Linux only, on top of PRUNE: Qt's translations (the editor is English
+# only), the GTK platform theme (Qt's own widgets and the XDG portal theme
+# serve instead), and the platforms a desktop editor never runs on (EGLFS,
+# framebuffer, VNC, Vulkan display). The libraries only these used are then
+# found and removed by prune_orphans. The xcb, Wayland and offscreen
+# platforms and the input-method plugins (compose key, IBus) stay.
+PRUNE_LINUX = [
+    "**/PySide6/Qt/translations",
+    "**/plugins/platformthemes/libqgtk3.so",
+    "**/plugins/egldeviceintegrations",
+    "**/plugins/platforms/libqeglfs.so",
+    "**/plugins/platforms/libqminimalegl.so",
+    "**/plugins/platforms/libqlinuxfb.so",
+    "**/plugins/platforms/libqvnc.so",
+    "**/plugins/platforms/libqvkkhrdisplay.so",
+]
+
+# Libraries prune_orphans keeps even when nothing links them any more: the X
+# client libraries are small and Qt's xcb support can load some at run time.
+KEEP_ORPHANS = re.compile(r"^libX")
 
 # Files of the original game: none may end up in the package.
 GAME_FILES = re.compile(
@@ -91,6 +111,96 @@ def obcr_version() -> str:
     if not m:
         raise SystemExit("FAIL: no version in Cargo.toml")
     return m.group(1)
+
+
+def elf_needed(path: Path) -> list[str] | None:
+    """The DT_NEEDED names of a 64-bit little-endian ELF file, [] for a file
+    that is not ELF, None when it is ELF but cannot be read (the caller then
+    removes nothing: an unreadable file might need anything)."""
+    import struct
+
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+    if data[:4] != b"\x7fELF":
+        return []
+    if data[4] != 2 or data[5] != 1:
+        return None
+    try:
+        shoff, = struct.unpack_from("<Q", data, 0x28)
+        shentsize, shnum = struct.unpack_from("<HH", data, 0x3A)
+        sections = [struct.unpack_from("<IIQQQQIIQQ", data, shoff + i * shentsize) for i in range(shnum)]
+        names = []
+        for _, kind, _, _, off, size, link, _, _, entsize in sections:
+            if kind != 6:  # SHT_DYNAMIC
+                continue
+            stroff = sections[link][4]
+            for at in range(off, off + size, entsize or 16):
+                tag, val = struct.unpack_from("<qQ", data, at)
+                if tag == 0:
+                    break
+                if tag == 1:  # DT_NEEDED
+                    end = data.index(b"\0", stroff + val)
+                    names.append(data[stroff + val:end].decode())
+        return names
+    except (struct.error, IndexError, ValueError, UnicodeDecodeError):
+        return None
+
+
+def linked_libraries(root: Path) -> set[Path] | None:
+    """Every shared library under `root` that another ELF file under it
+    links, following PyInstaller's top-level links to the real files; None
+    when a file could not be read."""
+    files = [p for p in root.rglob("*") if p.is_file() and not p.is_symlink()]
+    by_name: dict[str, list[Path]] = {}
+    for p in files:
+        by_name.setdefault(p.name, []).append(p)
+    for p in root.rglob("*"):
+        if p.is_symlink() and p.exists():
+            by_name.setdefault(p.name, []).append(p.resolve())
+    linked = set()
+    for p in files:
+        needed = elf_needed(p)
+        if needed is None:
+            return None
+        for name in needed:
+            linked.update(by_name.get(name, []))
+    return linked
+
+
+def prune_orphans(root: Path, before: set[Path] | None) -> int:
+    """Removes the libraries that were linked before pruning and are linked
+    by nothing now (GTK and the rest that only the GTK theme pulled in).
+    Libraries nothing linked to begin with are left alone: they may be
+    loaded with dlopen. Returns the bytes removed."""
+    removed = 0
+    while before is not None:
+        now = linked_libraries(root)
+        if now is None:
+            break
+        orphans = [p for p in before - now
+                   if p.is_file() and not KEEP_ORPHANS.match(p.name)]
+        if not orphans:
+            break
+        for p in orphans:
+            removed += p.stat().st_size
+            p.unlink()
+            before.discard(p)
+    return removed
+
+
+def remove_dangling_links(root: Path) -> None:
+    """Links whose target was pruned (PyInstaller links libraries into the
+    top folder on Linux)."""
+    for p in list(root.rglob("*")):
+        if p.is_symlink() and not p.exists():
+            p.unlink()
+
+
+def tree_size(root: Path) -> int:
+    """Bytes on disk, counting a link as nothing rather than as its target."""
+    return sum(p.lstat().st_size for p in root.rglob("*") if p.is_file() and not p.is_symlink())
 
 
 def third_party(path: Path) -> None:
@@ -182,12 +292,21 @@ def main() -> int:
         if not exe.is_file():
             print(f"FAIL: no {exe.name} in the freeze")
             return 1
-        pruned = 0
-        for pattern in PRUNE:
+        linux = sys.platform.startswith("linux")
+        before = linked_libraries(built) if linux else None
+        start = tree_size(built)
+        for pattern in PRUNE + (PRUNE_LINUX if linux else []):
             for p in list(built.glob(pattern)):
-                pruned += sum(f.stat().st_size for f in ([p] if p.is_file() else p.rglob("*")) if f.is_file())
-                shutil.rmtree(p) if p.is_dir() else p.unlink()
-        print(f"  pruned {pruned / 1e6:.1f} MB of unused Qt")
+                if p.is_symlink() or p.is_file():
+                    p.unlink()
+                elif p.is_dir():
+                    shutil.rmtree(p)
+        if linux:
+            remove_dangling_links(built)
+            orphans = prune_orphans(built, before)
+            remove_dangling_links(built)
+            print(f"  of which {orphans / 1e6:.1f} MB of libraries only pruned plugins used")
+        print(f"  pruned {(start - tree_size(built)) / 1e6:.1f} MB of unused Qt")
         shutil.copy2(REPO / "LICENSE", built / "LICENSE.txt")
         third_party(built / "THIRD-PARTY.txt")
         bad = [p for p in built.rglob("*") if p.is_file() and GAME_FILES.match(p.name)]
@@ -210,8 +329,7 @@ def main() -> int:
     if probe.returncode != 0:
         print(f"FAIL: {exe.name} --selftest exited {probe.returncode}")
         return 1
-    size = sum(p.stat().st_size for p in target.rglob("*") if p.is_file())
-    print(f"wrote {target} ({size / 1e6:.1f} MB)")
+    print(f"wrote {target} ({tree_size(target) / 1e6:.1f} MB)")
     return 0
 
 

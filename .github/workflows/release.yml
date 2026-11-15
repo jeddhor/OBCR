@@ -63,6 +63,11 @@ jobs:
             libdecor-0-dev libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev libdrm-dev \
             libgbm-dev libasound2-dev libpulse-dev libpipewire-0.3-dev libdbus-1-dev \
             libudev-dev libibus-1.0-dev
+          # The X11 helpers PySide6's xcb plugin links (libxcb-cursor0 since
+          # Qt 6.5). Installed so the OBCEdit freeze bundles them: without
+          # them the editor starts only under Wayland.
+          sudo apt-get install -y libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-render-util0 libxcb-xkb1 libxkbcommon-x11-0
       - name: Rust toolchain (rust-toolchain.toml)
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@v2
