@@ -18,11 +18,20 @@ pub const PUSHABLETILE: u16 = 98;
 
 /// Sewer floor/ceiling overrides for sets 0–3 on maps 0–4 (ghidra 30d6:1c02),
 /// as `(floor page + 1, ceiling page + 1)`.
-const SEWER_FLOOR_SETS: [(u8, u8); 4] = [(12, 12), (106, 108), (110, 112), (12, 108)];
+pub const SEWER_FLOOR_SETS: [(u8, u8); 4] = [(12, 12), (106, 108), (110, 112), (12, 108)];
 
 impl World {
-    /// `SetupGameLevel` for `map` as level `mapon`.
+    /// `SetupGameLevel` for `map` as original floor `mapon`, with that
+    /// floor's behaviour ([`LevelProfile::stock`]).
     pub fn setup_game_level(&mut self, map: &Map, mapon: i16) {
+        let profile = LevelProfile::stock(mapon, self.data.cd);
+        self.setup_game_level_with(map, mapon, profile);
+    }
+
+    /// `SetupGameLevel` for `map` as floor `mapon` of the current campaign,
+    /// behaving as `profile` says (a mod floor, docs/MODS_AND_OBCEDIT.md §4.1).
+    pub fn setup_game_level_with(&mut self, map: &Map, mapon: i16, profile: LevelProfile) {
+        self.level = profile;
         if !self.loadedgame {
             let g = &mut self.gamestate;
             g.killcount = 0;
@@ -102,9 +111,9 @@ impl World {
                 self.set_mapspot(x, y, 0, code);
             }
         }
-        self.level_floor_sets(mapon);
+        self.level_floor_sets();
         // Sewers are dark (PlayLoop sets DS:0x33B8 = mapon <= 4).
-        self.dark = (0..=4).contains(&mapon);
+        self.dark = self.level.dark;
         self.quake = 0;
         self.shake = 0;
         self.playstate = crate::world::ex::STILLPLAYING;
@@ -167,76 +176,30 @@ impl World {
         for y in 0..MAPSIZE as u16 {
             for x in 0..MAPSIZE as u16 {
                 let code = self.mapspot(x as i32, y as i32, 1);
-                if code < 19 {
+                let (what, min_skill) = classify_info(code);
+                if skill < min_skill {
                     continue;
                 }
-                // Three skill tiers: (base, tier-1 offset, tier-2 offset).
-                let tier = |c: u16, base: u16, step: u16, width: u16| -> Option<u16> {
-                    for t in 0..3u16 {
-                        let start = base + t * step;
-                        if (start..start + width).contains(&c) {
-                            let ok = match t {
-                                0 => true,
-                                1 => skill >= 1,
-                                _ => skill >= 2,
-                            };
-                            return ok.then_some(c - start);
-                        }
+                match what {
+                    InfoCode::Nothing => {}
+                    InfoCode::Player { dir } => player::spawn_player(self, x, y, dir),
+                    InfoCode::Static { index } => {
+                        self.spawn_static_scan(x as u8, y as u8, usize::from(index))
                     }
-                    None
-                };
-                match code {
-                    19..=22 => player::spawn_player(self, x, y, code - 19),
-                    23..=85 => self.spawn_static_scan(x as u8, y as u8, (code - 23) as usize),
-                    86..=88 => self.spawn_anim_wall(x, y, code - 83),
-                    PUSHABLETILE => {
+                    InfoCode::AnimWall { kind } => self.spawn_anim_wall(x, y, kind),
+                    InfoCode::PushWall => {
                         if !self.loadedgame {
                             self.gamestate.secrettotal += 1;
                         }
                     }
-                    103 => self.spawn_anim_wall(x, y, 6),
-                    106 => self.spawn_anim_wall(x, y, 1),
-                    107 => self.spawn_anim_wall(x, y, 2),
-                    124 => self.spawn_anim_wall(x, y, 6),
-                    142 | 143 | 160 | 161 => {
-                        let d = if code >= 160 { code - 160 } else { code - 142 };
-                        actors::spawn_stand(self, 12, x, y, d);
+                    InfoCode::Stand { which, dir } => actors::spawn_stand(self, which, x, y, dir),
+                    InfoCode::Patrol { which, dir, hover } => {
+                        actors::spawn_patrol(self, which, x, y, dir, hover)
                     }
-                    179 => actors::spawn_special(self, crate::world::class::FAT_MAN, x, y),
-                    196 => actors::spawn_special(self, crate::world::class::GUNNER, x, y),
-                    197 => actors::spawn_special(self, crate::world::class::MANHOLE, x, y),
-                    214 => actors::spawn_special(self, crate::world::class::BOSS, x, y),
-                    215 => actors::spawn_special(self, crate::world::class::SWAMP, x, y),
-                    232 | 233 | 250 | 251 => {
-                        actors::spawn_special(self, crate::world::class::RED_GIANT, x, y)
-                    }
-                    282..=285 => {
+                    InfoCode::Special { class } => actors::spawn_special(self, class, x, y),
+                    InfoCode::Ally { dir } => allies::spawn_ally(self, x, y, dir),
+                    InfoCode::Fire => {
                         actors::spawn_fire_actor(self, x, y);
-                    }
-                    _ => {
-                        if let Some(d) = tier(code, 108, 36, 4) {
-                            actors::spawn_stand(self, 0, x, y, d);
-                        } else if let Some(d) = tier(code, 112, 36, 4) {
-                            actors::spawn_patrol(self, 0, x, y, d, false);
-                        } else if let Some(d) = tier(code, 116, 36, 4) {
-                            actors::spawn_stand(self, 1, x, y, d);
-                        } else if let Some(d) = tier(code, 120, 36, 4) {
-                            actors::spawn_patrol(self, 1, x, y, d, false);
-                        } else if let Some(i) = tier(code, 126, 36, 16) {
-                            actors::spawn_stand(self, 5 + i / 4, x, y, i % 4);
-                        } else if let Some(d) = tier(code, 216, 18, 4) {
-                            actors::spawn_stand(self, 4, x, y, d);
-                        } else if let Some(d) = tier(code, 220, 18, 4) {
-                            actors::spawn_patrol(self, 4, x, y, d, false);
-                        } else if let Some(d) = tier(code, 224, 18, 4) {
-                            allies::spawn_ally(self, x, y, d);
-                        } else if let Some(d) = tier(code, 270, 18, 4) {
-                            actors::spawn_patrol(self, 3, x, y, d, true);
-                        } else if let Some(d) = tier(code, 274, 18, 4) {
-                            actors::spawn_patrol(self, 3, x, y, d, false);
-                        } else if let Some(d) = tier(code, 278, 18, 4) {
-                            actors::spawn_stand(self, 9, x, y, d);
-                        }
                     }
                 }
             }
@@ -268,9 +231,9 @@ impl World {
     }
 
     /// Floor/ceiling texture sets for this map (sewers override sets 0–3).
-    fn level_floor_sets(&mut self, mapon: i16) {
+    fn level_floor_sets(&mut self) {
         let mut sets = self.data.levels.floor_sets;
-        if (0..=4).contains(&mapon) {
+        if self.level.sewer {
             sets[..4].copy_from_slice(&SEWER_FLOOR_SETS);
         }
         self.floor_sets = sets;
@@ -279,11 +242,10 @@ impl World {
     /// Song for a level: table for maps 0–9, `US_RndT() % 9` otherwise
     /// (`StartMusic` ghidra 1942:0d2d). Audio chunk = song + 300.
     pub fn level_song(&mut self) -> u16 {
-        let m = self.gamestate.mapon;
-        if (0..10).contains(&m) {
-            self.data.levels.songs[m as usize]
-        } else {
-            (self.rnd() % 9) as u16
+        match self.level.music {
+            LevelMusic::Table(m) => self.data.levels.songs[usize::from(m).min(9)],
+            LevelMusic::Song(n) => n,
+            LevelMusic::Random => (self.rnd() % 9) as u16,
         }
     }
 }
@@ -302,4 +264,183 @@ impl World {
 pub fn starthealth(difficulty: i16) -> i16 {
     const T: [i16; 8] = [400, 400, 400, 400, 800, 800, 800, 400];
     T[(difficulty.clamp(0, 7)) as usize]
+}
+
+/// What a plane-1 code makes `ScanInfoPlane` spawn (ghidra 1823:01c8, jump
+/// table 1823:06c3; docs/re/LEVEL_CODES.md §4). Markers that other code reads
+/// (patrol arrows, see-through cells, explosion-proofing) spawn nothing here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InfoCode {
+    Nothing,
+    /// Player start, compass direction 0 N, 1 E, 2 S, 3 W.
+    Player {
+        dir: u16,
+    },
+    /// `statinfo[index]`.
+    Static {
+        index: u16,
+    },
+    AnimWall {
+        kind: u16,
+    },
+    PushWall,
+    /// `SpawnStand(which, dir)`; `dir` is a `dirtype` / 2 (0 E, 1 N, 2 W, 3 S).
+    Stand {
+        which: u16,
+        dir: u16,
+    },
+    Patrol {
+        which: u16,
+        dir: u16,
+        hover: bool,
+    },
+    /// A special spawner by class (bosses, swamp creatures, manholes...).
+    Special {
+        class: u16,
+    },
+    Ally {
+        dir: u16,
+    },
+    Fire,
+}
+
+/// Classifies a plane-1 code: what it spawns and the lowest game type
+/// (`gamestate.difficulty`) that spawns it. Actor codes come in three tiers;
+/// the second needs game type 1 or more, the third 2 or more. CONFIRMED.
+pub fn classify_info(code: u16) -> (InfoCode, i16) {
+    use crate::world::class;
+    if code < 19 {
+        return (InfoCode::Nothing, 0);
+    }
+    // Three skill tiers: (base, tier step, width).
+    let tier = |base: u16, step: u16, width: u16| -> Option<(u16, i16)> {
+        (0..3u16).find_map(|t| {
+            let start = base + t * step;
+            (start..start + width).contains(&code).then(|| (code - start, t as i16))
+        })
+    };
+    let what = match code {
+        19..=22 => InfoCode::Player { dir: code - 19 },
+        23..=85 => InfoCode::Static { index: code - 23 },
+        86..=88 => InfoCode::AnimWall { kind: code - 83 },
+        PUSHABLETILE => InfoCode::PushWall,
+        103 | 124 => InfoCode::AnimWall { kind: 6 },
+        106 => InfoCode::AnimWall { kind: 1 },
+        107 => InfoCode::AnimWall { kind: 2 },
+        142 | 143 => InfoCode::Stand { which: 12, dir: code - 142 },
+        160 | 161 => InfoCode::Stand { which: 12, dir: code - 160 },
+        179 => InfoCode::Special { class: class::FAT_MAN },
+        196 => InfoCode::Special { class: class::GUNNER },
+        197 => InfoCode::Special { class: class::MANHOLE },
+        214 => InfoCode::Special { class: class::BOSS },
+        215 => InfoCode::Special { class: class::SWAMP },
+        232 | 233 | 250 | 251 => InfoCode::Special { class: class::RED_GIANT },
+        282..=285 => InfoCode::Fire,
+        _ => {
+            let found = [
+                (108, 36, 4, 0),
+                (112, 36, 4, 1),
+                (116, 36, 4, 2),
+                (120, 36, 4, 3),
+                (126, 36, 16, 4),
+                (216, 18, 4, 5),
+                (220, 18, 4, 6),
+                (224, 18, 4, 7),
+                (270, 18, 4, 8),
+                (274, 18, 4, 9),
+                (278, 18, 4, 10),
+            ]
+            .into_iter()
+            .find_map(|(base, step, width, k)| tier(base, step, width).map(|(i, t)| (k, i, t)));
+            let Some((k, i, t)) = found else { return (InfoCode::Nothing, 0) };
+            let what = match k {
+                0 => InfoCode::Stand { which: 0, dir: i },
+                1 => InfoCode::Patrol { which: 0, dir: i, hover: false },
+                2 => InfoCode::Stand { which: 1, dir: i },
+                3 => InfoCode::Patrol { which: 1, dir: i, hover: false },
+                4 => InfoCode::Stand { which: 5 + i / 4, dir: i % 4 },
+                5 => InfoCode::Stand { which: 4, dir: i },
+                6 => InfoCode::Patrol { which: 4, dir: i, hover: false },
+                7 => InfoCode::Ally { dir: i },
+                8 => InfoCode::Patrol { which: 3, dir: i, hover: true },
+                9 => InfoCode::Patrol { which: 3, dir: i, hover: false },
+                _ => InfoCode::Stand { which: 9, dir: i },
+            };
+            return (what, t);
+        }
+    };
+    (what, 0)
+}
+
+/// Where a floor's music comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum LevelMusic {
+    /// The song table entry of original floor `n` (0–9).
+    Table(u8),
+    /// AdLib song `n` (`AUDIOT` chunk 300 + n).
+    Song(u16),
+    /// `US_RndT() % 9`, as the original does from floor 11 on.
+    Random,
+}
+
+/// The sequence played after a floor (GAMEFLOW §5.3).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum LevelSequence {
+    /// Stairs (`F3`) or elevator (`F4`) by the exit used.
+    Auto,
+    /// Always this one (`F2` after the sewers, `F5` after floor 23).
+    Fixed(String),
+    None,
+}
+
+/// Everything the original decides from the map slot, as data, so a mod's
+/// floor can take any original floor's behaviour (docs/MODS_AND_OBCEDIT.md §4.1).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LevelProfile {
+    /// Starts dark (`DS:0x33B8`, the sewers).
+    pub dark: bool,
+    /// Sewer floor and ceiling sets and the sewer render tint.
+    pub sewer: bool,
+    /// Map slot whose roof/floor colour and ramp entries apply ([`crate::data::LevelTables::index`]).
+    pub colors: i16,
+    pub music: LevelMusic,
+    /// The random face apparition can appear (floppy, floors 7 on).
+    pub face: bool,
+    /// Shown when the floor starts.
+    pub message: Option<String>,
+    /// The exits refuse to work (the original's floor 40: only Victor ends it).
+    pub last: bool,
+    pub sequence: LevelSequence,
+}
+
+impl LevelProfile {
+    /// Original floor `slot`'s behaviour, exactly as the original decides it;
+    /// `cd` for the CD release's differences.
+    pub fn stock(slot: i16, cd: bool) -> Self {
+        Self {
+            dark: (0..=4).contains(&slot),
+            sewer: (0..=4).contains(&slot),
+            colors: slot,
+            music: if (0..10).contains(&slot) {
+                LevelMusic::Table(slot as u8)
+            } else {
+                LevelMusic::Random
+            },
+            face: slot >= 6,
+            // PlayLoop (1942:1315); not in BCCD.EXE (CD_RELEASE.md §3.11).
+            message: (slot == 23 && !cd).then(|| "UN BUILDING 2".to_owned()),
+            last: slot == 39,
+            sequence: match slot {
+                0..=4 => LevelSequence::Fixed("F2".into()),
+                22 => LevelSequence::Fixed("F5".into()),
+                _ => LevelSequence::Auto,
+            },
+        }
+    }
+}
+
+impl Default for LevelProfile {
+    fn default() -> Self {
+        Self::stock(0, false)
+    }
 }

@@ -289,6 +289,7 @@ fn exits_need_half_the_kills() {
     start(&mut w, 1, 14, 12, 1);
     set_wall(&mut w, 15, 12, 0x71);
     w.gamestate.mapon = 39;
+    w.level = obc_sim::level::LevelProfile::stock(39, false);
     frame(&mut w, &with_button(cmd(), bt::USE));
     assert_eq!(w.playstate, ex::STILLPLAYING);
     assert_eq!(w.ply.exitkind, 0);

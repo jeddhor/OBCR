@@ -90,7 +90,7 @@ impl World {
     /// the level's generator switch is off (a tile 96 in `tilemap`), else 1.
     pub fn start_play_loop(&mut self) -> u8 {
         player::play_loop_start(self);
-        self.dark = (0..=4).contains(&self.gamestate.mapon);
+        self.dark = self.level.dark;
         allies::init_allies(self);
         self.lighting = if self.tilemap.contains(&96) { 2 } else { 1 };
         self.lighting

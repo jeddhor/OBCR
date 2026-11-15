@@ -110,8 +110,7 @@ music = 4                          # optional overrides, below
 | `dark` | bool | from `like` | Starts dark, as the sewers do. |
 | `sewer` | bool | from `like` | Sewer floor and ceiling textures and the sewer render tint. |
 | `colors` | 0..50 | from `like` | Which original floor's roof/floor colour and shading ramps to use (the per-level tables). |
-| `sequence` | `"auto"`, `"F2"`, `"F3"`, `"none"` | `"auto"` | The sequence after this floor: auto = ladder (F2) for sewer-like floors, else stairs (F3) or elevator (F4) by the exit used. |
-| `after` | `"F5"`, `"none"` | from `like` | An extra movie after this floor (the CD's F5 plays after floor 23). |
+| `sequence` | `"auto"`, `"F2"`…`"F7"`, `"none"` | from `like` | The sequence after this floor: `auto` = stairs (F3) or elevator (F4) by the exit used; a name plays that one (the original plays F2 after the sewers and the CD's F5 after floor 23); `none` plays nothing. A missing file is skipped, as always. |
 | `message` | text | from `like` | A message when the floor starts (the original greets floor 24 with `UN BUILDING 2`). |
 | `exit` | `"normal"`, `"none"` | from `like` | `none` = the exits refuse to work (the original's floor 40): only killing Victor ends it. |
 
@@ -145,7 +144,7 @@ Today the original's per-floor behaviour is spread through the code as tests on 
 | face apparition only when `mapon >= 6` | `face` | `s >= 6` |
 | `mapon == 23` → `UN BUILDING 2` (floppy) | `message` | that text on slot 23 (floppy only) |
 | `mapon == 39` → exits refuse (`LAST FLOOR` on the CD) | `last` | `s == 39` |
-| exit sequence: `0..=4` → F2, 22 → F5, else F3/F4 | `sequence`, `after` | as now |
+| exit sequence: `0..=4` → F2, 22 → F5, else F3/F4 | `sequence` (`Auto`, `Fixed(name)`, `None`) | as now |
 | status bar floor number `mapon + 1` | unchanged: the campaign index + 1 | |
 
 `LevelProfile::stock(slot, release)` reproduces today's behaviour exactly; a mod level builds its profile from `like` plus overrides. `World::setup_game_level(map, mapon, profile)` stores it; every former `mapon` test reads the profile. **Acceptance**: with no mod, every existing test (soak on both releases, save/load identity, game flow) passes unchanged.

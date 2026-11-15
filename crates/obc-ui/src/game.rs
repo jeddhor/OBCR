@@ -13,6 +13,7 @@ use obc_render::Framebuffer;
 use obc_render::palette::{Palette, expand6, faded};
 use obc_render::view3d::{Scene, SplatView, View3D, build_shade_table};
 use obc_sim::events::SimEvent;
+use obc_sim::level::LevelSequence;
 use obc_sim::world::{TicCmd, World, ex};
 
 use crate::assets::Assets;
@@ -489,13 +490,15 @@ impl Game {
         }
     }
 
-    /// The exit sequence for the level just finished (GAMEFLOW §5.3).
-    fn exit_sequence(&self) -> &'static str {
-        match self.world.gamestate.mapon {
-            0..=4 => "F2",
-            22 => "F5",
-            _ if self.world.ply.exitkind == 1 => "F4",
-            _ => "F3",
+    /// The exit sequence for the level just finished (GAMEFLOW §5.3), from
+    /// the floor's profile: F2 after the sewers, F5 after floor 23, otherwise
+    /// F3 (stairs, ladder) or F4 (elevator) by the exit used.
+    fn exit_sequence(&self) -> Option<String> {
+        match &self.world.level.sequence {
+            LevelSequence::Fixed(name) => Some(name.clone()),
+            LevelSequence::None => None,
+            LevelSequence::Auto if self.world.ply.exitkind == 1 => Some("F4".into()),
+            LevelSequence::Auto => Some("F3".into()),
         }
     }
 
@@ -745,8 +748,11 @@ impl Screen for Game {
                     return Transition::None;
                 }
                 if t >= FADE_OUT {
-                    let name = self.exit_sequence();
-                    return self.push_sequence(ctx, name, After::NextLevel);
+                    let Some(name) = self.exit_sequence() else {
+                        self.phase = Phase::Sequence(After::NextLevel);
+                        return Transition::None;
+                    };
+                    return self.push_sequence(ctx, &name, After::NextLevel);
                 }
                 self.phase = Phase::ExitFade(t);
                 Transition::None

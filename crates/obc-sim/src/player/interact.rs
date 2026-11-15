@@ -143,7 +143,8 @@ fn set_tile(w: &mut World, x: i32, y: i32, tile: u8) {
 #[doc(alias = "TryExit")]
 pub(super) fn try_exit(w: &mut World) {
     let ok = (w.gamestate.killtotal >> 1) <= w.gamestate.killcount;
-    if w.gamestate.mapon == 39 {
+    // `mapon == 39` in the original (the profile's `last`).
+    if w.level.last {
         // The CD says so (cd:32f1:0008, CD_RELEASE.md §3.7).
         if w.data.cd {
             message(w, "LAST FLOOR");

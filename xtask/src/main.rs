@@ -125,7 +125,19 @@ fn test_data(root: &Path) -> Result<()> {
         None => root.join("../OBC"),
     };
     eprintln!("OBC_DATA_DIR={}", dir.display());
-    run_env("cargo", &["test", "--workspace", "--", "--include-ignored"], &[("OBC_DATA_DIR", &dir)])
+    run_env(
+        "cargo",
+        &["test", "--workspace", "--", "--include-ignored"],
+        &[("OBC_DATA_DIR", &dir)],
+    )?;
+    // OBCEdit's catalog must match what the engine's code says (MODS_AND_OBCEDIT.md §5.4).
+    let catalog = root.join("obcedit/resources/catalog.json");
+    let data = dir.to_string_lossy().into_owned();
+    let cat = catalog.to_string_lossy().into_owned();
+    run(
+        "cargo",
+        &["run", "-q", "-p", "obc-tool", "--", "--data", &data, "catalog", "--verify", &cat],
+    )
 }
 
 /// Allowed internal dependencies per crate (DESIGN §6.3).

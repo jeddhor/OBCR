@@ -1,0 +1,4757 @@
+{
+  "floor_sets": [
+    {
+      "ceiling_page": 81,
+      "floor_page": 80,
+      "plane0": 144,
+      "set": 0,
+      "sewer_ceiling_page": 11,
+      "sewer_floor_page": 11
+    },
+    {
+      "ceiling_page": 83,
+      "floor_page": 82,
+      "plane0": 145,
+      "set": 1,
+      "sewer_ceiling_page": 107,
+      "sewer_floor_page": 105
+    },
+    {
+      "ceiling_page": 81,
+      "floor_page": 84,
+      "plane0": 146,
+      "set": 2,
+      "sewer_ceiling_page": 111,
+      "sewer_floor_page": 109
+    },
+    {
+      "ceiling_page": 81,
+      "floor_page": 86,
+      "plane0": 147,
+      "set": 3,
+      "sewer_ceiling_page": 107,
+      "sewer_floor_page": 11
+    },
+    {
+      "ceiling_page": 81,
+      "floor_page": 104,
+      "plane0": 148,
+      "set": 4,
+      "sewer_ceiling_page": null,
+      "sewer_floor_page": null
+    },
+    {
+      "ceiling_page": 81,
+      "floor_page": 106,
+      "plane0": 149,
+      "set": 5,
+      "sewer_ceiling_page": null,
+      "sewer_floor_page": null
+    },
+    {
+      "ceiling_page": 81,
+      "floor_page": 108,
+      "plane0": 150,
+      "set": 6,
+      "sewer_ceiling_page": null,
+      "sewer_floor_page": null
+    },
+    {
+      "ceiling_page": 110,
+      "floor_page": 110,
+      "plane0": 151,
+      "set": 7,
+      "sewer_ceiling_page": null,
+      "sewer_floor_page": null
+    },
+    {
+      "ceiling_page": 91,
+      "floor_page": 91,
+      "plane0": 152,
+      "set": 8,
+      "sewer_ceiling_page": null,
+      "sewer_floor_page": null
+    },
+    {
+      "ceiling_page": 111,
+      "floor_page": 110,
+      "plane0": 153,
+      "set": 9,
+      "sewer_ceiling_page": null,
+      "sewer_floor_page": null
+    }
+  ],
+  "generator": "obc-tool catalog 1.0.0-beta.2",
+  "limits": {
+    "ambushtile": 138,
+    "areatile": 140,
+    "map_size": 64,
+    "map_slots": 100,
+    "max_actors": 100,
+    "max_anim_walls": 32,
+    "max_doors": 64,
+    "max_floor_code": 161,
+    "max_statics": 224,
+    "num_areas": 22,
+    "planes": 3,
+    "wall_pages": 136
+  },
+  "note": "Generated from OBCR's code (cargo run -p obc-tool -- catalog). Do not edit by hand.",
+  "plane0": [
+    {
+      "kind": "invalid",
+      "name": "Nothing (invalid)",
+      "solid": false,
+      "value": 0
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 1",
+      "page": 0,
+      "solid": true,
+      "value": 1
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 2",
+      "page": 1,
+      "solid": true,
+      "value": 2
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 3",
+      "page": 2,
+      "solid": true,
+      "value": 3
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 4",
+      "page": 3,
+      "solid": true,
+      "value": 4
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 5",
+      "page": 4,
+      "solid": true,
+      "value": 5
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 6",
+      "page": 5,
+      "solid": true,
+      "value": 6
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 7",
+      "page": 6,
+      "solid": true,
+      "value": 7
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 8",
+      "page": 7,
+      "solid": true,
+      "value": 8
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 9",
+      "page": 8,
+      "solid": true,
+      "value": 9
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 10",
+      "page": 9,
+      "solid": true,
+      "value": 10
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 11",
+      "page": 10,
+      "solid": true,
+      "value": 11
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 12",
+      "page": 11,
+      "solid": true,
+      "value": 12
+    },
+    {
+      "frames": [
+        13,
+        14,
+        15,
+        16
+      ],
+      "kind": "door_look",
+      "name": "Door-look wall 13",
+      "page": 12,
+      "placeable": true,
+      "solid": true,
+      "value": 13
+    },
+    {
+      "kind": "door_look_frame",
+      "name": "Door-look wall 14 (animation frame)",
+      "page": 13,
+      "placeable": false,
+      "solid": true,
+      "value": 14
+    },
+    {
+      "kind": "door_look_frame",
+      "name": "Door-look wall 15 (animation frame)",
+      "page": 14,
+      "placeable": false,
+      "solid": true,
+      "value": 15
+    },
+    {
+      "kind": "door_look_frame",
+      "name": "Door-look wall 16 (animation frame)",
+      "page": 15,
+      "placeable": false,
+      "solid": true,
+      "value": 16
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 17",
+      "page": 16,
+      "solid": true,
+      "value": 17
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 18",
+      "page": 17,
+      "solid": true,
+      "value": 18
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 19",
+      "page": 18,
+      "solid": true,
+      "value": 19
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 20",
+      "page": 19,
+      "solid": true,
+      "value": 20
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 21",
+      "page": 20,
+      "solid": true,
+      "value": 21
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 22",
+      "page": 21,
+      "solid": true,
+      "value": 22
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 23",
+      "page": 22,
+      "solid": true,
+      "value": 23
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 24",
+      "page": 23,
+      "solid": true,
+      "value": 24
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 25",
+      "page": 24,
+      "solid": true,
+      "value": 25
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 26",
+      "page": 25,
+      "solid": true,
+      "value": 26
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 27",
+      "page": 26,
+      "solid": true,
+      "value": 27
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 28",
+      "page": 27,
+      "solid": true,
+      "value": 28
+    },
+    {
+      "frames": [
+        29,
+        30,
+        31,
+        32
+      ],
+      "kind": "door_look",
+      "name": "Door-look wall 29",
+      "page": 28,
+      "placeable": true,
+      "solid": true,
+      "value": 29
+    },
+    {
+      "kind": "door_look_frame",
+      "name": "Door-look wall 30 (animation frame)",
+      "page": 29,
+      "placeable": false,
+      "solid": true,
+      "value": 30
+    },
+    {
+      "kind": "door_look_frame",
+      "name": "Door-look wall 31 (animation frame)",
+      "page": 30,
+      "placeable": false,
+      "solid": true,
+      "value": 31
+    },
+    {
+      "kind": "door_look_frame",
+      "name": "Door-look wall 32 (animation frame)",
+      "page": 31,
+      "placeable": false,
+      "solid": true,
+      "value": 32
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 33",
+      "page": 32,
+      "solid": true,
+      "value": 33
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 34",
+      "page": 33,
+      "solid": true,
+      "value": 34
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 35",
+      "page": 34,
+      "solid": true,
+      "value": 35
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 36",
+      "page": 35,
+      "solid": true,
+      "value": 36
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 37",
+      "page": 36,
+      "solid": true,
+      "value": 37
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 38",
+      "page": 37,
+      "solid": true,
+      "value": 38
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 39",
+      "page": 38,
+      "solid": true,
+      "value": 39
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 40",
+      "page": 39,
+      "solid": true,
+      "value": 40
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 41",
+      "page": 40,
+      "solid": true,
+      "value": 41
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 42",
+      "page": 41,
+      "solid": true,
+      "value": 42
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 43",
+      "page": 42,
+      "solid": true,
+      "value": 43
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 44",
+      "page": 43,
+      "solid": true,
+      "value": 44
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 45",
+      "page": 44,
+      "solid": true,
+      "value": 45
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 46",
+      "page": 45,
+      "solid": true,
+      "value": 46
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 47",
+      "page": 46,
+      "solid": true,
+      "value": 47
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 48",
+      "page": 47,
+      "solid": true,
+      "value": 48
+    },
+    {
+      "frames": [
+        49,
+        50,
+        51,
+        52
+      ],
+      "kind": "door_look",
+      "name": "Door-look wall 49",
+      "page": 48,
+      "placeable": true,
+      "solid": true,
+      "value": 49
+    },
+    {
+      "kind": "door_look_frame",
+      "name": "Door-look wall 50 (animation frame)",
+      "page": 49,
+      "placeable": false,
+      "solid": true,
+      "value": 50
+    },
+    {
+      "kind": "door_look_frame",
+      "name": "Door-look wall 51 (animation frame)",
+      "page": 50,
+      "placeable": false,
+      "solid": true,
+      "value": 51
+    },
+    {
+      "kind": "door_look_frame",
+      "name": "Door-look wall 52 (animation frame)",
+      "page": 51,
+      "placeable": false,
+      "solid": true,
+      "value": 52
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 53",
+      "page": 52,
+      "solid": true,
+      "value": 53
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 54",
+      "page": 53,
+      "solid": true,
+      "value": 54
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 55",
+      "page": 54,
+      "solid": true,
+      "value": 55
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 56",
+      "page": 55,
+      "solid": true,
+      "value": 56
+    },
+    {
+      "broken": 60,
+      "kind": "glass",
+      "name": "Glass pane",
+      "page": 56,
+      "solid": true,
+      "value": 57
+    },
+    {
+      "kind": "glass_frame",
+      "name": "Glass pane (cracking, 58)",
+      "page": 57,
+      "placeable": false,
+      "solid": true,
+      "value": 58
+    },
+    {
+      "kind": "glass_frame",
+      "name": "Glass pane (cracking, 59)",
+      "page": 58,
+      "placeable": false,
+      "solid": true,
+      "value": 59
+    },
+    {
+      "kind": "glass_broken",
+      "name": "Glass pane (broken)",
+      "page": 59,
+      "solid": true,
+      "value": 60
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 61",
+      "page": 60,
+      "solid": true,
+      "value": 61
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 62",
+      "page": 61,
+      "solid": true,
+      "value": 62
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 63",
+      "page": 62,
+      "solid": true,
+      "value": 63
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 64",
+      "page": 63,
+      "solid": true,
+      "value": 64
+    },
+    {
+      "frames": [
+        65,
+        66,
+        67,
+        68
+      ],
+      "kind": "door_look",
+      "name": "Door-look wall 65",
+      "page": 64,
+      "placeable": true,
+      "solid": true,
+      "value": 65
+    },
+    {
+      "kind": "door_look_frame",
+      "name": "Door-look wall 66 (animation frame)",
+      "page": 65,
+      "placeable": false,
+      "solid": true,
+      "value": 66
+    },
+    {
+      "kind": "door_look_frame",
+      "name": "Door-look wall 67 (animation frame)",
+      "page": 66,
+      "placeable": false,
+      "solid": true,
+      "value": 67
+    },
+    {
+      "kind": "door_look_frame",
+      "name": "Door-look wall 68 (animation frame)",
+      "page": 67,
+      "placeable": false,
+      "solid": true,
+      "value": 68
+    },
+    {
+      "frames": [
+        69,
+        70,
+        71,
+        72
+      ],
+      "kind": "door_look",
+      "name": "Door-look wall 69",
+      "page": 68,
+      "placeable": true,
+      "solid": true,
+      "value": 69
+    },
+    {
+      "kind": "door_look_frame",
+      "name": "Door-look wall 70 (animation frame)",
+      "page": 69,
+      "placeable": false,
+      "solid": true,
+      "value": 70
+    },
+    {
+      "kind": "door_look_frame",
+      "name": "Door-look wall 71 (animation frame)",
+      "page": 70,
+      "placeable": false,
+      "solid": true,
+      "value": 71
+    },
+    {
+      "kind": "door_look_frame",
+      "name": "Door-look wall 72 (animation frame)",
+      "page": 71,
+      "placeable": false,
+      "solid": true,
+      "value": 72
+    },
+    {
+      "frames": [
+        73,
+        74,
+        75,
+        76
+      ],
+      "kind": "fan",
+      "name": "Porthole fan",
+      "page": 72,
+      "solid": true,
+      "value": 73
+    },
+    {
+      "kind": "fan_frame",
+      "name": "Porthole fan (frame 1)",
+      "page": 73,
+      "placeable": false,
+      "solid": true,
+      "value": 74
+    },
+    {
+      "kind": "fan_frame",
+      "name": "Porthole fan (frame 2)",
+      "page": 74,
+      "placeable": false,
+      "solid": true,
+      "value": 75
+    },
+    {
+      "kind": "fan_frame",
+      "name": "Porthole fan (frame 3)",
+      "page": 75,
+      "placeable": false,
+      "solid": true,
+      "value": 76
+    },
+    {
+      "kind": "damaged",
+      "name": "Damaged wall",
+      "page": 76,
+      "solid": true,
+      "value": 77
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 78",
+      "page": 77,
+      "solid": true,
+      "value": 78
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 79",
+      "page": 78,
+      "solid": true,
+      "value": 79
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 80",
+      "page": 79,
+      "solid": true,
+      "value": 80
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 81",
+      "page": 80,
+      "solid": true,
+      "value": 81
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 82",
+      "page": 81,
+      "solid": true,
+      "value": 82
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 83",
+      "page": 82,
+      "solid": true,
+      "value": 83
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 84",
+      "page": 83,
+      "solid": true,
+      "value": 84
+    },
+    {
+      "kind": "panel",
+      "name": "Special panel",
+      "page": 84,
+      "solid": true,
+      "value": 85
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 86",
+      "page": 85,
+      "solid": true,
+      "value": 86
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 87",
+      "page": 86,
+      "solid": true,
+      "value": 87
+    },
+    {
+      "kind": "rock_opening",
+      "name": "Rock opening (sewer)",
+      "needs_plane1": 107,
+      "page": 87,
+      "solid": true,
+      "value": 88
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 89",
+      "page": 88,
+      "solid": true,
+      "value": 89
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 90",
+      "page": 89,
+      "solid": true,
+      "value": 90
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 91",
+      "page": 90,
+      "solid": true,
+      "value": 91
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 92",
+      "page": 91,
+      "solid": true,
+      "value": 92
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 93",
+      "page": 92,
+      "solid": true,
+      "value": 93
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 94",
+      "page": 93,
+      "solid": true,
+      "value": 94
+    },
+    {
+      "kind": "generator",
+      "name": "Generator switch (off)",
+      "on": false,
+      "page": 94,
+      "solid": true,
+      "value": 95
+    },
+    {
+      "kind": "generator",
+      "name": "Generator switch (on)",
+      "on": true,
+      "page": 95,
+      "solid": true,
+      "value": 96
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 97",
+      "page": 96,
+      "solid": true,
+      "value": 97
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 98",
+      "page": 97,
+      "solid": true,
+      "value": 98
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 99",
+      "page": 98,
+      "solid": true,
+      "value": 99
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 100",
+      "page": 99,
+      "solid": true,
+      "value": 100
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 101",
+      "page": 100,
+      "solid": true,
+      "value": 101
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 102",
+      "page": 101,
+      "solid": true,
+      "value": 102
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 103",
+      "page": 102,
+      "solid": true,
+      "value": 103
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 104",
+      "page": 103,
+      "solid": true,
+      "value": 104
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 105",
+      "page": 104,
+      "solid": true,
+      "value": 105
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 106",
+      "page": 105,
+      "solid": true,
+      "value": 106
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 107",
+      "page": 106,
+      "solid": true,
+      "value": 107
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 108",
+      "page": 107,
+      "solid": true,
+      "value": 108
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 109",
+      "page": 108,
+      "solid": true,
+      "value": 109
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 110",
+      "page": 109,
+      "solid": true,
+      "value": 110
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 111",
+      "page": 110,
+      "solid": true,
+      "value": 111
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 112",
+      "page": 111,
+      "solid": true,
+      "value": 112
+    },
+    {
+      "exit": "ladder",
+      "exitkind": 0,
+      "kind": "exit",
+      "name": "Exit: ladder",
+      "page": 112,
+      "solid": true,
+      "value": 113
+    },
+    {
+      "exit": "stairs",
+      "exitkind": 0,
+      "kind": "exit",
+      "name": "Exit: stairs",
+      "page": 113,
+      "solid": true,
+      "value": 114
+    },
+    {
+      "exit": "elevator",
+      "exitkind": 1,
+      "kind": "exit",
+      "name": "Exit: elevator",
+      "page": 114,
+      "solid": true,
+      "value": 115
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 116",
+      "page": 115,
+      "solid": true,
+      "value": 116
+    },
+    {
+      "broken": 120,
+      "kind": "glass",
+      "name": "Screen pane",
+      "page": 116,
+      "solid": true,
+      "value": 117
+    },
+    {
+      "kind": "glass_frame",
+      "name": "Screen pane (cracking, 118)",
+      "page": 117,
+      "placeable": false,
+      "solid": true,
+      "value": 118
+    },
+    {
+      "kind": "glass_frame",
+      "name": "Screen pane (cracking, 119)",
+      "page": 118,
+      "placeable": false,
+      "solid": true,
+      "value": 119
+    },
+    {
+      "kind": "glass_broken",
+      "name": "Screen pane (broken)",
+      "page": 119,
+      "solid": true,
+      "value": 120
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 121",
+      "page": 120,
+      "solid": true,
+      "value": 121
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 122",
+      "page": 121,
+      "solid": true,
+      "value": 122
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 123",
+      "page": 122,
+      "solid": true,
+      "value": 123
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 124",
+      "page": 123,
+      "solid": true,
+      "value": 124
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 125",
+      "page": 124,
+      "solid": true,
+      "value": 125
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 126",
+      "page": 125,
+      "solid": true,
+      "value": 126
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 127",
+      "page": 126,
+      "solid": true,
+      "value": 127
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 128",
+      "page": 127,
+      "solid": true,
+      "value": 128
+    },
+    {
+      "kind": "wall",
+      "name": "Wall 129",
+      "page": 128,
+      "solid": true,
+      "value": 129
+    },
+    {
+      "kind": "door",
+      "lock": 0,
+      "name": "Door, look 1 (vertical)",
+      "page": 128,
+      "solid": true,
+      "value": 130,
+      "vertical": true
+    },
+    {
+      "kind": "door",
+      "lock": 0,
+      "name": "Door, look 1 (horizontal)",
+      "page": 128,
+      "solid": true,
+      "value": 131,
+      "vertical": false
+    },
+    {
+      "kind": "door",
+      "lock": 1,
+      "name": "Door, look 2 (vertical)",
+      "page": 132,
+      "solid": true,
+      "value": 132,
+      "vertical": true
+    },
+    {
+      "kind": "door",
+      "lock": 1,
+      "name": "Door, look 2 (horizontal)",
+      "page": 132,
+      "solid": true,
+      "value": 133,
+      "vertical": false
+    },
+    {
+      "kind": "door",
+      "lock": 2,
+      "name": "Door, look 3 (vertical)",
+      "page": 133,
+      "solid": true,
+      "value": 134,
+      "vertical": true
+    },
+    {
+      "kind": "door",
+      "lock": 2,
+      "name": "Door, look 3 (horizontal)",
+      "page": 133,
+      "solid": true,
+      "value": 135,
+      "vertical": false
+    },
+    {
+      "kind": "door",
+      "lock": 3,
+      "name": "Door, look 4 (vertical)",
+      "page": 132,
+      "solid": true,
+      "value": 136,
+      "vertical": true
+    },
+    {
+      "kind": "door",
+      "lock": 3,
+      "name": "Door, look 4 (horizontal)",
+      "page": 132,
+      "solid": true,
+      "value": 137,
+      "vertical": false
+    },
+    {
+      "kind": "ambush",
+      "name": "Ambush marker",
+      "note": "Under a standing enemy: cleared to the neighbouring floor, the enemy waits in ambush",
+      "solid": false,
+      "value": 138
+    },
+    {
+      "kind": "unused",
+      "name": "Unused solid code",
+      "solid": true,
+      "value": 139
+    },
+    {
+      "area": 0,
+      "automap_flag": false,
+      "floor_set": null,
+      "kind": "floor",
+      "name": "Floor, area 0",
+      "solid": false,
+      "value": 140
+    },
+    {
+      "area": 1,
+      "automap_flag": false,
+      "floor_set": null,
+      "kind": "floor",
+      "name": "Floor, area 1",
+      "solid": false,
+      "value": 141
+    },
+    {
+      "area": 2,
+      "automap_flag": false,
+      "floor_set": null,
+      "kind": "floor",
+      "name": "Floor, area 2",
+      "solid": false,
+      "value": 142
+    },
+    {
+      "area": 3,
+      "automap_flag": true,
+      "floor_set": null,
+      "kind": "floor",
+      "name": "Floor, area 3",
+      "solid": false,
+      "value": 143
+    },
+    {
+      "area": 4,
+      "automap_flag": false,
+      "floor_set": 0,
+      "kind": "floor",
+      "name": "Floor, area 4, texture set 0",
+      "solid": false,
+      "value": 144
+    },
+    {
+      "area": 5,
+      "automap_flag": false,
+      "floor_set": 1,
+      "kind": "floor",
+      "name": "Floor, area 5, texture set 1",
+      "solid": false,
+      "value": 145
+    },
+    {
+      "area": 6,
+      "automap_flag": false,
+      "floor_set": 2,
+      "kind": "floor",
+      "name": "Floor, area 6, texture set 2",
+      "solid": false,
+      "value": 146
+    },
+    {
+      "area": 7,
+      "automap_flag": false,
+      "floor_set": 3,
+      "kind": "floor",
+      "name": "Floor, area 7, texture set 3",
+      "solid": false,
+      "value": 147
+    },
+    {
+      "area": 8,
+      "automap_flag": false,
+      "floor_set": 4,
+      "kind": "floor",
+      "name": "Floor, area 8, texture set 4",
+      "solid": false,
+      "value": 148
+    },
+    {
+      "area": 9,
+      "automap_flag": false,
+      "floor_set": 5,
+      "kind": "floor",
+      "name": "Floor, area 9, texture set 5",
+      "solid": false,
+      "value": 149
+    },
+    {
+      "area": 10,
+      "automap_flag": false,
+      "floor_set": 6,
+      "kind": "floor",
+      "name": "Floor, area 10, texture set 6",
+      "solid": false,
+      "value": 150
+    },
+    {
+      "area": 11,
+      "automap_flag": false,
+      "floor_set": 7,
+      "kind": "floor",
+      "name": "Floor, area 11, texture set 7",
+      "solid": false,
+      "value": 151
+    },
+    {
+      "area": 12,
+      "automap_flag": false,
+      "floor_set": 8,
+      "kind": "floor",
+      "name": "Floor, area 12, texture set 8",
+      "solid": false,
+      "value": 152
+    },
+    {
+      "area": 13,
+      "automap_flag": false,
+      "floor_set": 9,
+      "kind": "floor",
+      "name": "Floor, area 13, texture set 9",
+      "solid": false,
+      "value": 153
+    },
+    {
+      "area": 14,
+      "automap_flag": false,
+      "floor_set": null,
+      "kind": "floor",
+      "name": "Floor, area 14",
+      "solid": false,
+      "value": 154
+    },
+    {
+      "area": 15,
+      "automap_flag": false,
+      "floor_set": null,
+      "kind": "floor",
+      "name": "Floor, area 15",
+      "solid": false,
+      "value": 155
+    },
+    {
+      "area": 16,
+      "automap_flag": false,
+      "floor_set": null,
+      "kind": "floor",
+      "name": "Floor, area 16",
+      "solid": false,
+      "value": 156
+    },
+    {
+      "area": 17,
+      "automap_flag": false,
+      "floor_set": null,
+      "kind": "floor",
+      "name": "Floor, area 17",
+      "solid": false,
+      "value": 157
+    },
+    {
+      "area": 18,
+      "automap_flag": false,
+      "floor_set": null,
+      "kind": "floor",
+      "name": "Floor, area 18",
+      "solid": false,
+      "value": 158
+    },
+    {
+      "area": 19,
+      "automap_flag": false,
+      "floor_set": null,
+      "kind": "floor",
+      "name": "Floor, area 19",
+      "solid": false,
+      "value": 159
+    },
+    {
+      "area": 20,
+      "automap_flag": false,
+      "floor_set": null,
+      "kind": "floor",
+      "name": "Floor, area 20",
+      "solid": false,
+      "value": 160
+    },
+    {
+      "area": 21,
+      "automap_flag": false,
+      "floor_set": null,
+      "kind": "floor",
+      "name": "Floor, area 21",
+      "solid": false,
+      "value": 161
+    }
+  ],
+  "plane1": [
+    {
+      "kind": "empty",
+      "name": "Empty (background)",
+      "value": 18
+    },
+    {
+      "facing": "north",
+      "kind": "player",
+      "name": "Player start, facing north",
+      "value": 19
+    },
+    {
+      "facing": "east",
+      "kind": "player",
+      "name": "Player start, facing east",
+      "value": 20
+    },
+    {
+      "facing": "south",
+      "kind": "player",
+      "name": "Player start, facing south",
+      "value": 21
+    },
+    {
+      "facing": "west",
+      "kind": "player",
+      "name": "Player start, facing west",
+      "value": 22
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 23",
+      "sprite": 1,
+      "statinfo_kind": 17,
+      "value": 23
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 24",
+      "sprite": 2,
+      "statinfo_kind": 17,
+      "value": 24
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 25",
+      "sprite": 3,
+      "statinfo_kind": 17,
+      "value": 25
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 26",
+      "sprite": 4,
+      "statinfo_kind": 17,
+      "value": 26
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 27",
+      "sprite": 5,
+      "statinfo_kind": 1,
+      "value": 27
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 28",
+      "sprite": 6,
+      "statinfo_kind": 1,
+      "value": 28
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 29",
+      "sprite": 7,
+      "statinfo_kind": 17,
+      "value": 29
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 30",
+      "sprite": 8,
+      "statinfo_kind": 17,
+      "value": 30
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 31",
+      "sprite": 9,
+      "statinfo_kind": 17,
+      "value": 31
+    },
+    {
+      "blocking": false,
+      "kind": "static",
+      "name": "Decoration 32",
+      "sprite": 10,
+      "statinfo_kind": 0,
+      "value": 32
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 33",
+      "sprite": 11,
+      "statinfo_kind": 1,
+      "value": 33
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 34",
+      "sprite": 12,
+      "statinfo_kind": 17,
+      "value": 34
+    },
+    {
+      "blocking": false,
+      "kind": "static",
+      "name": "Decoration 35",
+      "sprite": 13,
+      "statinfo_kind": 0,
+      "value": 35
+    },
+    {
+      "blocking": false,
+      "kind": "static",
+      "name": "Decoration 36",
+      "sprite": 14,
+      "statinfo_kind": 0,
+      "value": 36
+    },
+    {
+      "blocking": false,
+      "kind": "static",
+      "name": "Decoration 37",
+      "sprite": 15,
+      "statinfo_kind": 0,
+      "value": 37
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 38",
+      "sprite": 16,
+      "statinfo_kind": 17,
+      "value": 38
+    },
+    {
+      "blocking": false,
+      "kind": "static",
+      "name": "Decoration 39",
+      "sprite": 17,
+      "statinfo_kind": 0,
+      "value": 39
+    },
+    {
+      "blocking": false,
+      "kind": "static",
+      "name": "Decoration 40",
+      "sprite": 18,
+      "statinfo_kind": 0,
+      "value": 40
+    },
+    {
+      "blocking": false,
+      "kind": "static",
+      "name": "Decoration 41",
+      "sprite": 19,
+      "statinfo_kind": 0,
+      "value": 41
+    },
+    {
+      "blocking": false,
+      "kind": "static",
+      "name": "Decoration 42",
+      "sprite": 20,
+      "statinfo_kind": 0,
+      "value": 42
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 43",
+      "sprite": 21,
+      "statinfo_kind": 1,
+      "value": 43
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 44",
+      "sprite": 22,
+      "statinfo_kind": 17,
+      "value": 44
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 45",
+      "sprite": 23,
+      "statinfo_kind": 17,
+      "value": 45
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 46",
+      "sprite": 24,
+      "statinfo_kind": 17,
+      "value": 46
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 47",
+      "sprite": 25,
+      "statinfo_kind": 17,
+      "value": 47
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 48",
+      "sprite": 26,
+      "statinfo_kind": 17,
+      "value": 48
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 49",
+      "sprite": 27,
+      "statinfo_kind": 17,
+      "value": 49
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 50",
+      "sprite": 28,
+      "statinfo_kind": 17,
+      "value": 50
+    },
+    {
+      "blocking": false,
+      "kind": "static",
+      "name": "Decoration 51",
+      "sprite": 29,
+      "statinfo_kind": 0,
+      "value": 51
+    },
+    {
+      "blocking": false,
+      "kind": "pickup",
+      "name": "Uzi",
+      "sprite": 30,
+      "statinfo_kind": 11,
+      "value": 52
+    },
+    {
+      "blocking": false,
+      "kind": "pickup",
+      "name": "Galil",
+      "sprite": 31,
+      "statinfo_kind": 5,
+      "value": 53
+    },
+    {
+      "blocking": false,
+      "kind": "pickup",
+      "name": "Flame thrower",
+      "sprite": 32,
+      "statinfo_kind": 12,
+      "value": 54
+    },
+    {
+      "blocking": false,
+      "kind": "pickup",
+      "name": "Grenade launcher",
+      "sprite": 33,
+      "statinfo_kind": 13,
+      "value": 55
+    },
+    {
+      "blocking": false,
+      "kind": "pickup",
+      "name": "Ammo",
+      "sprite": 34,
+      "statinfo_kind": 3,
+      "value": 56
+    },
+    {
+      "blocking": false,
+      "kind": "pickup",
+      "name": "Grenades",
+      "sprite": 35,
+      "statinfo_kind": 4,
+      "value": 57
+    },
+    {
+      "blocking": false,
+      "kind": "pickup",
+      "name": "Fuel pack",
+      "sprite": 36,
+      "statinfo_kind": 14,
+      "value": 58
+    },
+    {
+      "blocking": false,
+      "kind": "pickup",
+      "name": "Flak jacket",
+      "sprite": 37,
+      "statinfo_kind": 8,
+      "value": 59
+    },
+    {
+      "blocking": false,
+      "kind": "pickup",
+      "name": "Increased health",
+      "sprite": 38,
+      "statinfo_kind": 9,
+      "value": 60
+    },
+    {
+      "blocking": false,
+      "kind": "pickup",
+      "name": "Booby trap",
+      "sprite": 39,
+      "statinfo_kind": 20,
+      "value": 61
+    },
+    {
+      "blocking": false,
+      "kind": "pickup",
+      "name": "Booby trap",
+      "sprite": 40,
+      "statinfo_kind": 20,
+      "value": 62
+    },
+    {
+      "blocking": false,
+      "kind": "static",
+      "name": "Decoration 63",
+      "sprite": 41,
+      "statinfo_kind": 0,
+      "value": 63
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 64",
+      "sprite": 42,
+      "statinfo_kind": 17,
+      "value": 64
+    },
+    {
+      "blocking": false,
+      "kind": "static",
+      "name": "Decoration 65",
+      "sprite": 43,
+      "statinfo_kind": 0,
+      "value": 65
+    },
+    {
+      "blocking": false,
+      "kind": "static",
+      "name": "Decoration 66",
+      "sprite": 44,
+      "statinfo_kind": 0,
+      "value": 66
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 67",
+      "sprite": 45,
+      "statinfo_kind": 17,
+      "value": 67
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 68",
+      "sprite": 46,
+      "statinfo_kind": 17,
+      "value": 68
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 69",
+      "sprite": 47,
+      "statinfo_kind": 17,
+      "value": 69
+    },
+    {
+      "blocking": false,
+      "kind": "static",
+      "name": "Decoration 70",
+      "sprite": 48,
+      "statinfo_kind": 0,
+      "value": 70
+    },
+    {
+      "blocking": false,
+      "blocking_cd": true,
+      "kind": "static",
+      "name": "Decoration 71 (blocks on the CD)",
+      "sprite": 49,
+      "statinfo_kind": 0,
+      "value": 71
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 72",
+      "sprite": 50,
+      "statinfo_kind": 17,
+      "value": 72
+    },
+    {
+      "blocking": false,
+      "kind": "static",
+      "name": "Decoration 73",
+      "sprite": 51,
+      "statinfo_kind": 0,
+      "value": 73
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 74",
+      "sprite": 52,
+      "statinfo_kind": 17,
+      "value": 74
+    },
+    {
+      "blocking": false,
+      "kind": "static",
+      "name": "Decoration 75",
+      "sprite": 53,
+      "statinfo_kind": 0,
+      "value": 75
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 76",
+      "sprite": 54,
+      "statinfo_kind": 17,
+      "value": 76
+    },
+    {
+      "blocking": false,
+      "kind": "static",
+      "name": "Decoration 77",
+      "sprite": 55,
+      "statinfo_kind": 0,
+      "value": 77
+    },
+    {
+      "blocking": false,
+      "kind": "static",
+      "name": "Decoration 78",
+      "sprite": 56,
+      "statinfo_kind": 0,
+      "value": 78
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 79",
+      "sprite": 57,
+      "statinfo_kind": 17,
+      "value": 79
+    },
+    {
+      "blocking": false,
+      "kind": "static",
+      "name": "Decoration 80",
+      "sprite": 58,
+      "statinfo_kind": 0,
+      "value": 80
+    },
+    {
+      "blocking": false,
+      "kind": "static",
+      "name": "Decoration 81",
+      "sprite": 59,
+      "statinfo_kind": 0,
+      "value": 81
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 82",
+      "sprite": 60,
+      "statinfo_kind": 1,
+      "value": 82
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 83",
+      "sprite": 61,
+      "statinfo_kind": 17,
+      "value": 83
+    },
+    {
+      "blocking": true,
+      "kind": "static",
+      "name": "Obstacle 84",
+      "sprite": 62,
+      "statinfo_kind": 17,
+      "value": 84
+    },
+    {
+      "blocking": false,
+      "kind": "pickup",
+      "name": "Map ThermoSensor",
+      "sprite": 63,
+      "statinfo_kind": 10,
+      "value": 85
+    },
+    {
+      "anim_type": 3,
+      "kind": "anim_wall",
+      "name": "Fan speed: slow",
+      "placed_on": "fan",
+      "see_through": false,
+      "unused_in_maps": false,
+      "value": 86
+    },
+    {
+      "anim_type": 4,
+      "kind": "anim_wall",
+      "name": "Fan speed: medium",
+      "placed_on": "fan",
+      "see_through": false,
+      "unused_in_maps": false,
+      "value": 87
+    },
+    {
+      "anim_type": 5,
+      "kind": "anim_wall",
+      "name": "Fan speed: fast",
+      "placed_on": "fan",
+      "see_through": false,
+      "unused_in_maps": false,
+      "value": 88
+    },
+    {
+      "kind": "marker",
+      "marker": "indestructible",
+      "name": "Explosion-proof wall",
+      "value": 89
+    },
+    {
+      "direction": "east",
+      "kind": "patrol_arrow",
+      "name": "Patrol turn: east",
+      "value": 90
+    },
+    {
+      "direction": "northeast",
+      "kind": "patrol_arrow",
+      "name": "Patrol turn: northeast",
+      "value": 91
+    },
+    {
+      "direction": "north",
+      "kind": "patrol_arrow",
+      "name": "Patrol turn: north",
+      "value": 92
+    },
+    {
+      "direction": "northwest",
+      "kind": "patrol_arrow",
+      "name": "Patrol turn: northwest",
+      "value": 93
+    },
+    {
+      "direction": "west",
+      "kind": "patrol_arrow",
+      "name": "Patrol turn: west",
+      "value": 94
+    },
+    {
+      "direction": "southwest",
+      "kind": "patrol_arrow",
+      "name": "Patrol turn: southwest",
+      "value": 95
+    },
+    {
+      "direction": "south",
+      "kind": "patrol_arrow",
+      "name": "Patrol turn: south",
+      "value": 96
+    },
+    {
+      "direction": "southeast",
+      "kind": "patrol_arrow",
+      "name": "Patrol turn: southeast",
+      "value": 97
+    },
+    {
+      "kind": "push_wall",
+      "name": "Push wall (secret)",
+      "travel_cells": 2,
+      "value": 98
+    },
+    {
+      "anim_type": 6,
+      "kind": "anim_wall",
+      "name": "Sliding panel (103)",
+      "placed_on": "door_look",
+      "see_through": false,
+      "unused_in_maps": false,
+      "value": 103
+    },
+    {
+      "kind": "marker",
+      "marker": "window",
+      "name": "Window (see-through, blocks enemy sight)",
+      "value": 104
+    },
+    {
+      "kind": "marker",
+      "marker": "grille",
+      "name": "Grille (see-through for all)",
+      "value": 105
+    },
+    {
+      "anim_type": 1,
+      "kind": "anim_wall",
+      "name": "Sliding see-through panel",
+      "placed_on": "door_look",
+      "see_through": true,
+      "unused_in_maps": false,
+      "value": 106
+    },
+    {
+      "anim_type": 2,
+      "kind": "anim_wall",
+      "name": "Thin open passage",
+      "placed_on": "opening",
+      "see_through": true,
+      "unused_in_maps": false,
+      "value": 107
+    },
+    {
+      "class": 3,
+      "class_name": "Rat",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Rat, standing east",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 64,
+      "value": 108
+    },
+    {
+      "class": 3,
+      "class_name": "Rat",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Rat, standing north",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 64,
+      "value": 109
+    },
+    {
+      "class": 3,
+      "class_name": "Rat",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Rat, standing west",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 64,
+      "value": 110
+    },
+    {
+      "class": 3,
+      "class_name": "Rat",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Rat, standing south",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 64,
+      "value": 111
+    },
+    {
+      "class": 3,
+      "class_name": "Rat",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Rat, patrolling east",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 72,
+      "value": 112
+    },
+    {
+      "class": 3,
+      "class_name": "Rat",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Rat, patrolling north",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 72,
+      "value": 113
+    },
+    {
+      "class": 3,
+      "class_name": "Rat",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Rat, patrolling west",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 72,
+      "value": 114
+    },
+    {
+      "class": 3,
+      "class_name": "Rat",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Rat, patrolling south",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 72,
+      "value": 115
+    },
+    {
+      "class": 4,
+      "class_name": "Soldier",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Soldier, standing east",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 187,
+      "value": 116
+    },
+    {
+      "class": 4,
+      "class_name": "Soldier",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Soldier, standing north",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 187,
+      "value": 117
+    },
+    {
+      "class": 4,
+      "class_name": "Soldier",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Soldier, standing west",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 187,
+      "value": 118
+    },
+    {
+      "class": 4,
+      "class_name": "Soldier",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Soldier, standing south",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 187,
+      "value": 119
+    },
+    {
+      "class": 4,
+      "class_name": "Soldier",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Soldier, patrolling east",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 195,
+      "value": 120
+    },
+    {
+      "class": 4,
+      "class_name": "Soldier",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Soldier, patrolling north",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 195,
+      "value": 121
+    },
+    {
+      "class": 4,
+      "class_name": "Soldier",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Soldier, patrolling west",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 195,
+      "value": 122
+    },
+    {
+      "class": 4,
+      "class_name": "Soldier",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Soldier, patrolling south",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 195,
+      "value": 123
+    },
+    {
+      "anim_type": 6,
+      "kind": "anim_wall",
+      "name": "Sliding panel (124)",
+      "placed_on": "door_look",
+      "see_through": false,
+      "unused_in_maps": true,
+      "value": 124
+    },
+    {
+      "kind": "marker",
+      "marker": "door_frame",
+      "name": "Door-frame wall (damage only)",
+      "value": 125
+    },
+    {
+      "class": 8,
+      "class_name": "Soldier on a stool",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Soldier on a stool, standing east",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 113,
+      "value": 126
+    },
+    {
+      "class": 8,
+      "class_name": "Soldier on a stool",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Soldier on a stool, standing north",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 113,
+      "value": 127
+    },
+    {
+      "class": 8,
+      "class_name": "Soldier on a stool",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Soldier on a stool, standing west",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 113,
+      "value": 128
+    },
+    {
+      "class": 8,
+      "class_name": "Soldier on a stool",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Soldier on a stool, standing south",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 113,
+      "value": 129
+    },
+    {
+      "class": 9,
+      "class_name": "Crouching soldier",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Crouching soldier, standing east",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 118,
+      "value": 130
+    },
+    {
+      "class": 9,
+      "class_name": "Crouching soldier",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Crouching soldier, standing north",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 118,
+      "value": 131
+    },
+    {
+      "class": 9,
+      "class_name": "Crouching soldier",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Crouching soldier, standing west",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 118,
+      "value": 132
+    },
+    {
+      "class": 9,
+      "class_name": "Crouching soldier",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Crouching soldier, standing south",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 118,
+      "value": 133
+    },
+    {
+      "class": 10,
+      "class_name": "Soldier on a toilet",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Soldier on a toilet, standing east",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 123,
+      "value": 134
+    },
+    {
+      "class": 10,
+      "class_name": "Soldier on a toilet",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Soldier on a toilet, standing north",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 123,
+      "value": 135
+    },
+    {
+      "class": 10,
+      "class_name": "Soldier on a toilet",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Soldier on a toilet, standing west",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 123,
+      "value": 136
+    },
+    {
+      "class": 10,
+      "class_name": "Soldier on a toilet",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Soldier on a toilet, standing south",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 123,
+      "value": 137
+    },
+    {
+      "class": 11,
+      "class_name": "Prone soldier",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Prone soldier, standing east",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 128,
+      "value": 138
+    },
+    {
+      "class": 11,
+      "class_name": "Prone soldier",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Prone soldier, standing north",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 128,
+      "value": 139
+    },
+    {
+      "class": 11,
+      "class_name": "Prone soldier",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Prone soldier, standing west",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 128,
+      "value": 140
+    },
+    {
+      "class": 11,
+      "class_name": "Prone soldier",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Prone soldier, standing south",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 128,
+      "value": 141
+    },
+    {
+      "class": 15,
+      "class_name": "Red-vest brute",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Red-vest brute, standing east",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 452,
+      "value": 142
+    },
+    {
+      "class": 15,
+      "class_name": "Red-vest brute",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Red-vest brute, standing north",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 452,
+      "value": 143
+    },
+    {
+      "class": 3,
+      "class_name": "Rat",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Rat, standing east",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 64,
+      "value": 144
+    },
+    {
+      "class": 3,
+      "class_name": "Rat",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Rat, standing north",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 64,
+      "value": 145
+    },
+    {
+      "class": 3,
+      "class_name": "Rat",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Rat, standing west",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 64,
+      "value": 146
+    },
+    {
+      "class": 3,
+      "class_name": "Rat",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Rat, standing south",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 64,
+      "value": 147
+    },
+    {
+      "class": 3,
+      "class_name": "Rat",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Rat, patrolling east",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 72,
+      "value": 148
+    },
+    {
+      "class": 3,
+      "class_name": "Rat",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Rat, patrolling north",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 72,
+      "value": 149
+    },
+    {
+      "class": 3,
+      "class_name": "Rat",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Rat, patrolling west",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 72,
+      "value": 150
+    },
+    {
+      "class": 3,
+      "class_name": "Rat",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Rat, patrolling south",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 72,
+      "value": 151
+    },
+    {
+      "class": 4,
+      "class_name": "Soldier",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Soldier, standing east",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 187,
+      "value": 152
+    },
+    {
+      "class": 4,
+      "class_name": "Soldier",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Soldier, standing north",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 187,
+      "value": 153
+    },
+    {
+      "class": 4,
+      "class_name": "Soldier",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Soldier, standing west",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 187,
+      "value": 154
+    },
+    {
+      "class": 4,
+      "class_name": "Soldier",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Soldier, standing south",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 187,
+      "value": 155
+    },
+    {
+      "class": 4,
+      "class_name": "Soldier",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Soldier, patrolling east",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 195,
+      "value": 156
+    },
+    {
+      "class": 4,
+      "class_name": "Soldier",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Soldier, patrolling north",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 195,
+      "value": 157
+    },
+    {
+      "class": 4,
+      "class_name": "Soldier",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Soldier, patrolling west",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 195,
+      "value": 158
+    },
+    {
+      "class": 4,
+      "class_name": "Soldier",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Soldier, patrolling south",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 195,
+      "value": 159
+    },
+    {
+      "class": 15,
+      "class_name": "Red-vest brute",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Red-vest brute, standing east",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 452,
+      "value": 160
+    },
+    {
+      "class": 15,
+      "class_name": "Red-vest brute",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Red-vest brute, standing north",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 452,
+      "value": 161
+    },
+    {
+      "class": 8,
+      "class_name": "Soldier on a stool",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Soldier on a stool, standing east",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 113,
+      "value": 162
+    },
+    {
+      "class": 8,
+      "class_name": "Soldier on a stool",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Soldier on a stool, standing north",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 113,
+      "value": 163
+    },
+    {
+      "class": 8,
+      "class_name": "Soldier on a stool",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Soldier on a stool, standing west",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 113,
+      "value": 164
+    },
+    {
+      "class": 8,
+      "class_name": "Soldier on a stool",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Soldier on a stool, standing south",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 113,
+      "value": 165
+    },
+    {
+      "class": 9,
+      "class_name": "Crouching soldier",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Crouching soldier, standing east",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 118,
+      "value": 166
+    },
+    {
+      "class": 9,
+      "class_name": "Crouching soldier",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Crouching soldier, standing north",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 118,
+      "value": 167
+    },
+    {
+      "class": 9,
+      "class_name": "Crouching soldier",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Crouching soldier, standing west",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 118,
+      "value": 168
+    },
+    {
+      "class": 9,
+      "class_name": "Crouching soldier",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Crouching soldier, standing south",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 118,
+      "value": 169
+    },
+    {
+      "class": 10,
+      "class_name": "Soldier on a toilet",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Soldier on a toilet, standing east",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 123,
+      "value": 170
+    },
+    {
+      "class": 10,
+      "class_name": "Soldier on a toilet",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Soldier on a toilet, standing north",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 123,
+      "value": 171
+    },
+    {
+      "class": 10,
+      "class_name": "Soldier on a toilet",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Soldier on a toilet, standing west",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 123,
+      "value": 172
+    },
+    {
+      "class": 10,
+      "class_name": "Soldier on a toilet",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Soldier on a toilet, standing south",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 123,
+      "value": 173
+    },
+    {
+      "class": 11,
+      "class_name": "Prone soldier",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Prone soldier, standing east",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 128,
+      "value": 174
+    },
+    {
+      "class": 11,
+      "class_name": "Prone soldier",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Prone soldier, standing north",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 128,
+      "value": 175
+    },
+    {
+      "class": 11,
+      "class_name": "Prone soldier",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Prone soldier, standing west",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 128,
+      "value": 176
+    },
+    {
+      "class": 11,
+      "class_name": "Prone soldier",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Prone soldier, standing south",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 128,
+      "value": 177
+    },
+    {
+      "class": 17,
+      "class_name": "Fat man",
+      "ends_game": false,
+      "kind": "enemy",
+      "name": "Fat man",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 510,
+      "value": 179
+    },
+    {
+      "class": 3,
+      "class_name": "Rat",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Rat, standing east",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 64,
+      "value": 180
+    },
+    {
+      "class": 3,
+      "class_name": "Rat",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Rat, standing north",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 64,
+      "value": 181
+    },
+    {
+      "class": 3,
+      "class_name": "Rat",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Rat, standing west",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 64,
+      "value": 182
+    },
+    {
+      "class": 3,
+      "class_name": "Rat",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Rat, standing south",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 64,
+      "value": 183
+    },
+    {
+      "class": 3,
+      "class_name": "Rat",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Rat, patrolling east",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 72,
+      "value": 184
+    },
+    {
+      "class": 3,
+      "class_name": "Rat",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Rat, patrolling north",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 72,
+      "value": 185
+    },
+    {
+      "class": 3,
+      "class_name": "Rat",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Rat, patrolling west",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 72,
+      "value": 186
+    },
+    {
+      "class": 3,
+      "class_name": "Rat",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Rat, patrolling south",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 72,
+      "value": 187
+    },
+    {
+      "class": 4,
+      "class_name": "Soldier",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Soldier, standing east",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 187,
+      "value": 188
+    },
+    {
+      "class": 4,
+      "class_name": "Soldier",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Soldier, standing north",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 187,
+      "value": 189
+    },
+    {
+      "class": 4,
+      "class_name": "Soldier",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Soldier, standing west",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 187,
+      "value": 190
+    },
+    {
+      "class": 4,
+      "class_name": "Soldier",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Soldier, standing south",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 187,
+      "value": 191
+    },
+    {
+      "class": 4,
+      "class_name": "Soldier",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Soldier, patrolling east",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 195,
+      "value": 192
+    },
+    {
+      "class": 4,
+      "class_name": "Soldier",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Soldier, patrolling north",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 195,
+      "value": 193
+    },
+    {
+      "class": 4,
+      "class_name": "Soldier",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Soldier, patrolling west",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 195,
+      "value": 194
+    },
+    {
+      "class": 4,
+      "class_name": "Soldier",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Soldier, patrolling south",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 195,
+      "value": 195
+    },
+    {
+      "class": 14,
+      "class_name": "Gunner",
+      "ends_game": false,
+      "kind": "enemy",
+      "name": "Gunner",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 440,
+      "value": 196
+    },
+    {
+      "class": 22,
+      "class_name": "Manhole fat man",
+      "ends_game": false,
+      "kind": "enemy",
+      "name": "Manhole fat man",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 504,
+      "value": 197
+    },
+    {
+      "class": 8,
+      "class_name": "Soldier on a stool",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Soldier on a stool, standing east",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 113,
+      "value": 198
+    },
+    {
+      "class": 8,
+      "class_name": "Soldier on a stool",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Soldier on a stool, standing north",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 113,
+      "value": 199
+    },
+    {
+      "class": 8,
+      "class_name": "Soldier on a stool",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Soldier on a stool, standing west",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 113,
+      "value": 200
+    },
+    {
+      "class": 8,
+      "class_name": "Soldier on a stool",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Soldier on a stool, standing south",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 113,
+      "value": 201
+    },
+    {
+      "class": 9,
+      "class_name": "Crouching soldier",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Crouching soldier, standing east",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 118,
+      "value": 202
+    },
+    {
+      "class": 9,
+      "class_name": "Crouching soldier",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Crouching soldier, standing north",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 118,
+      "value": 203
+    },
+    {
+      "class": 9,
+      "class_name": "Crouching soldier",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Crouching soldier, standing west",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 118,
+      "value": 204
+    },
+    {
+      "class": 9,
+      "class_name": "Crouching soldier",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Crouching soldier, standing south",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 118,
+      "value": 205
+    },
+    {
+      "class": 10,
+      "class_name": "Soldier on a toilet",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Soldier on a toilet, standing east",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 123,
+      "value": 206
+    },
+    {
+      "class": 10,
+      "class_name": "Soldier on a toilet",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Soldier on a toilet, standing north",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 123,
+      "value": 207
+    },
+    {
+      "class": 10,
+      "class_name": "Soldier on a toilet",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Soldier on a toilet, standing west",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 123,
+      "value": 208
+    },
+    {
+      "class": 10,
+      "class_name": "Soldier on a toilet",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Soldier on a toilet, standing south",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 123,
+      "value": 209
+    },
+    {
+      "class": 11,
+      "class_name": "Prone soldier",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Prone soldier, standing east",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 128,
+      "value": 210
+    },
+    {
+      "class": 11,
+      "class_name": "Prone soldier",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Prone soldier, standing north",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 128,
+      "value": 211
+    },
+    {
+      "class": 11,
+      "class_name": "Prone soldier",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Prone soldier, standing west",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 128,
+      "value": 212
+    },
+    {
+      "class": 11,
+      "class_name": "Prone soldier",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Prone soldier, standing south",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 128,
+      "value": 213
+    },
+    {
+      "class": 13,
+      "class_name": "Victor (final boss)",
+      "ends_game": true,
+      "kind": "enemy",
+      "name": "Victor (final boss)",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 424,
+      "value": 214
+    },
+    {
+      "class": 23,
+      "class_name": "Swamp creature",
+      "ends_game": false,
+      "kind": "enemy",
+      "name": "Swamp creature",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 526,
+      "value": 215
+    },
+    {
+      "class": 7,
+      "class_name": "Giant rat",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Giant rat, standing east",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 133,
+      "value": 216
+    },
+    {
+      "class": 7,
+      "class_name": "Giant rat",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Giant rat, standing north",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 133,
+      "value": 217
+    },
+    {
+      "class": 7,
+      "class_name": "Giant rat",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Giant rat, standing west",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 133,
+      "value": 218
+    },
+    {
+      "class": 7,
+      "class_name": "Giant rat",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Giant rat, standing south",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 133,
+      "value": 219
+    },
+    {
+      "class": 7,
+      "class_name": "Giant rat",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Giant rat, patrolling east",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 141,
+      "value": 220
+    },
+    {
+      "class": 7,
+      "class_name": "Giant rat",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Giant rat, patrolling north",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 141,
+      "value": 221
+    },
+    {
+      "class": 7,
+      "class_name": "Giant rat",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Giant rat, patrolling west",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 141,
+      "value": 222
+    },
+    {
+      "class": 7,
+      "class_name": "Giant rat",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Giant rat, patrolling south",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 141,
+      "value": 223
+    },
+    {
+      "class": 5,
+      "class_name": "Ally",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "east",
+      "kind": "ally",
+      "name": "Ally, standing east",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 246,
+      "value": 224
+    },
+    {
+      "class": 5,
+      "class_name": "Ally",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "north",
+      "kind": "ally",
+      "name": "Ally, standing north",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 246,
+      "value": 225
+    },
+    {
+      "class": 5,
+      "class_name": "Ally",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "west",
+      "kind": "ally",
+      "name": "Ally, standing west",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 246,
+      "value": 226
+    },
+    {
+      "class": 5,
+      "class_name": "Ally",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "south",
+      "kind": "ally",
+      "name": "Ally, standing south",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 246,
+      "value": 227
+    },
+    {
+      "class": 16,
+      "class_name": "Red giant",
+      "ends_game": false,
+      "kind": "enemy",
+      "name": "Red giant",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 464,
+      "value": 232
+    },
+    {
+      "class": 16,
+      "class_name": "Red giant",
+      "ends_game": false,
+      "kind": "enemy",
+      "name": "Red giant",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 464,
+      "value": 233
+    },
+    {
+      "class": 7,
+      "class_name": "Giant rat",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Giant rat, standing east",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 133,
+      "value": 234
+    },
+    {
+      "class": 7,
+      "class_name": "Giant rat",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Giant rat, standing north",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 133,
+      "value": 235
+    },
+    {
+      "class": 7,
+      "class_name": "Giant rat",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Giant rat, standing west",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 133,
+      "value": 236
+    },
+    {
+      "class": 7,
+      "class_name": "Giant rat",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Giant rat, standing south",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 133,
+      "value": 237
+    },
+    {
+      "class": 7,
+      "class_name": "Giant rat",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Giant rat, patrolling east",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 141,
+      "value": 238
+    },
+    {
+      "class": 7,
+      "class_name": "Giant rat",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Giant rat, patrolling north",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 141,
+      "value": 239
+    },
+    {
+      "class": 7,
+      "class_name": "Giant rat",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Giant rat, patrolling west",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 141,
+      "value": 240
+    },
+    {
+      "class": 7,
+      "class_name": "Giant rat",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Giant rat, patrolling south",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 141,
+      "value": 241
+    },
+    {
+      "class": 5,
+      "class_name": "Ally",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "east",
+      "kind": "ally",
+      "name": "Ally, standing east",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 246,
+      "value": 242
+    },
+    {
+      "class": 5,
+      "class_name": "Ally",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "north",
+      "kind": "ally",
+      "name": "Ally, standing north",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 246,
+      "value": 243
+    },
+    {
+      "class": 5,
+      "class_name": "Ally",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "west",
+      "kind": "ally",
+      "name": "Ally, standing west",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 246,
+      "value": 244
+    },
+    {
+      "class": 5,
+      "class_name": "Ally",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "south",
+      "kind": "ally",
+      "name": "Ally, standing south",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 246,
+      "value": 245
+    },
+    {
+      "class": 16,
+      "class_name": "Red giant",
+      "ends_game": false,
+      "kind": "enemy",
+      "name": "Red giant",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 464,
+      "value": 250
+    },
+    {
+      "class": 16,
+      "class_name": "Red giant",
+      "ends_game": false,
+      "kind": "enemy",
+      "name": "Red giant",
+      "patrol": false,
+      "rotates": false,
+      "sprite": 464,
+      "value": 251
+    },
+    {
+      "class": 7,
+      "class_name": "Giant rat",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Giant rat, standing east",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 133,
+      "value": 252
+    },
+    {
+      "class": 7,
+      "class_name": "Giant rat",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Giant rat, standing north",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 133,
+      "value": 253
+    },
+    {
+      "class": 7,
+      "class_name": "Giant rat",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Giant rat, standing west",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 133,
+      "value": 254
+    },
+    {
+      "class": 7,
+      "class_name": "Giant rat",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Giant rat, standing south",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 133,
+      "value": 255
+    },
+    {
+      "class": 7,
+      "class_name": "Giant rat",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Giant rat, patrolling east",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 141,
+      "value": 256
+    },
+    {
+      "class": 7,
+      "class_name": "Giant rat",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Giant rat, patrolling north",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 141,
+      "value": 257
+    },
+    {
+      "class": 7,
+      "class_name": "Giant rat",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Giant rat, patrolling west",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 141,
+      "value": 258
+    },
+    {
+      "class": 7,
+      "class_name": "Giant rat",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Giant rat, patrolling south",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 141,
+      "value": 259
+    },
+    {
+      "class": 5,
+      "class_name": "Ally",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "east",
+      "kind": "ally",
+      "name": "Ally, standing east",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 246,
+      "value": 260
+    },
+    {
+      "class": 5,
+      "class_name": "Ally",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "north",
+      "kind": "ally",
+      "name": "Ally, standing north",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 246,
+      "value": 261
+    },
+    {
+      "class": 5,
+      "class_name": "Ally",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "west",
+      "kind": "ally",
+      "name": "Ally, standing west",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 246,
+      "value": 262
+    },
+    {
+      "class": 5,
+      "class_name": "Ally",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "south",
+      "kind": "ally",
+      "name": "Ally, standing south",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 246,
+      "value": 263
+    },
+    {
+      "class": 6,
+      "class_name": "Saucer drone",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Saucer drone, hovering east",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 304,
+      "value": 270
+    },
+    {
+      "class": 6,
+      "class_name": "Saucer drone",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Saucer drone, hovering north",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 304,
+      "value": 271
+    },
+    {
+      "class": 6,
+      "class_name": "Saucer drone",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Saucer drone, hovering west",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 304,
+      "value": 272
+    },
+    {
+      "class": 6,
+      "class_name": "Saucer drone",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Saucer drone, hovering south",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 304,
+      "value": 273
+    },
+    {
+      "class": 6,
+      "class_name": "Saucer drone",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Saucer drone, moving east",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 304,
+      "value": 274
+    },
+    {
+      "class": 6,
+      "class_name": "Saucer drone",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Saucer drone, moving north",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 304,
+      "value": 275
+    },
+    {
+      "class": 6,
+      "class_name": "Saucer drone",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Saucer drone, moving west",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 304,
+      "value": 276
+    },
+    {
+      "class": 6,
+      "class_name": "Saucer drone",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Saucer drone, moving south",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 304,
+      "value": 277
+    },
+    {
+      "class": 12,
+      "class_name": "Man in a black suit",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Man in a black suit, standing east",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 371,
+      "value": 278
+    },
+    {
+      "class": 12,
+      "class_name": "Man in a black suit",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Man in a black suit, standing north",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 371,
+      "value": 279
+    },
+    {
+      "class": 12,
+      "class_name": "Man in a black suit",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Man in a black suit, standing west",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 371,
+      "value": 280
+    },
+    {
+      "class": 12,
+      "class_name": "Man in a black suit",
+      "difficulty": {
+        "min_game_type": 0,
+        "tier": 0
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Man in a black suit, standing south",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 371,
+      "value": 281
+    },
+    {
+      "class": 21,
+      "kind": "fire",
+      "name": "Fire",
+      "value": 282
+    },
+    {
+      "class": 21,
+      "kind": "fire",
+      "name": "Fire",
+      "value": 283
+    },
+    {
+      "class": 21,
+      "kind": "fire",
+      "name": "Fire",
+      "value": 284
+    },
+    {
+      "class": 21,
+      "kind": "fire",
+      "name": "Fire",
+      "value": 285
+    },
+    {
+      "class": 6,
+      "class_name": "Saucer drone",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Saucer drone, hovering east",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 304,
+      "value": 288
+    },
+    {
+      "class": 6,
+      "class_name": "Saucer drone",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Saucer drone, hovering north",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 304,
+      "value": 289
+    },
+    {
+      "class": 6,
+      "class_name": "Saucer drone",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Saucer drone, hovering west",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 304,
+      "value": 290
+    },
+    {
+      "class": 6,
+      "class_name": "Saucer drone",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Saucer drone, hovering south",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 304,
+      "value": 291
+    },
+    {
+      "class": 6,
+      "class_name": "Saucer drone",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Saucer drone, moving east",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 304,
+      "value": 292
+    },
+    {
+      "class": 6,
+      "class_name": "Saucer drone",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Saucer drone, moving north",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 304,
+      "value": 293
+    },
+    {
+      "class": 6,
+      "class_name": "Saucer drone",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Saucer drone, moving west",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 304,
+      "value": 294
+    },
+    {
+      "class": 6,
+      "class_name": "Saucer drone",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Saucer drone, moving south",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 304,
+      "value": 295
+    },
+    {
+      "class": 12,
+      "class_name": "Man in a black suit",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Man in a black suit, standing east",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 371,
+      "value": 296
+    },
+    {
+      "class": 12,
+      "class_name": "Man in a black suit",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Man in a black suit, standing north",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 371,
+      "value": 297
+    },
+    {
+      "class": 12,
+      "class_name": "Man in a black suit",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Man in a black suit, standing west",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 371,
+      "value": 298
+    },
+    {
+      "class": 12,
+      "class_name": "Man in a black suit",
+      "difficulty": {
+        "min_game_type": 1,
+        "tier": 1
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Man in a black suit, standing south",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 371,
+      "value": 299
+    },
+    {
+      "class": 6,
+      "class_name": "Saucer drone",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Saucer drone, hovering east",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 304,
+      "value": 306
+    },
+    {
+      "class": 6,
+      "class_name": "Saucer drone",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Saucer drone, hovering north",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 304,
+      "value": 307
+    },
+    {
+      "class": 6,
+      "class_name": "Saucer drone",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Saucer drone, hovering west",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 304,
+      "value": 308
+    },
+    {
+      "class": 6,
+      "class_name": "Saucer drone",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Saucer drone, hovering south",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 304,
+      "value": 309
+    },
+    {
+      "class": 6,
+      "class_name": "Saucer drone",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Saucer drone, moving east",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 304,
+      "value": 310
+    },
+    {
+      "class": 6,
+      "class_name": "Saucer drone",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Saucer drone, moving north",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 304,
+      "value": 311
+    },
+    {
+      "class": 6,
+      "class_name": "Saucer drone",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Saucer drone, moving west",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 304,
+      "value": 312
+    },
+    {
+      "class": 6,
+      "class_name": "Saucer drone",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Saucer drone, moving south",
+      "patrol": true,
+      "rotates": true,
+      "sprite": 304,
+      "value": 313
+    },
+    {
+      "class": 12,
+      "class_name": "Man in a black suit",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "east",
+      "kind": "enemy",
+      "name": "Man in a black suit, standing east",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 371,
+      "value": 314
+    },
+    {
+      "class": 12,
+      "class_name": "Man in a black suit",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "north",
+      "kind": "enemy",
+      "name": "Man in a black suit, standing north",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 371,
+      "value": 315
+    },
+    {
+      "class": 12,
+      "class_name": "Man in a black suit",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "west",
+      "kind": "enemy",
+      "name": "Man in a black suit, standing west",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 371,
+      "value": 316
+    },
+    {
+      "class": 12,
+      "class_name": "Man in a black suit",
+      "difficulty": {
+        "min_game_type": 2,
+        "tier": 2
+      },
+      "facing": "south",
+      "kind": "enemy",
+      "name": "Man in a black suit, standing south",
+      "patrol": false,
+      "rotates": true,
+      "sprite": 371,
+      "value": 317
+    }
+  ],
+  "release_differences": [
+    {
+      "note": "Blocks movement in the CD release only (statinfo entry 48)",
+      "plane": 1,
+      "value": 71
+    }
+  ],
+  "schema": "obcedit-catalog",
+  "version": 1
+}

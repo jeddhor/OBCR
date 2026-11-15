@@ -307,6 +307,10 @@ pub enum Cheat {
 pub struct World {
     #[serde(skip)]
     pub data: Arc<GameData>,
+    /// This floor's behaviour (crate::level::LevelProfile). Saved separately
+    /// from the world (crate::save), so it is skipped here.
+    #[serde(skip)]
+    pub level: crate::level::LevelProfile,
     #[serde(skip, default = "empty_tables")]
     pub trig: Arc<Tables>,
     pub rng: Rng,
@@ -404,6 +408,7 @@ impl World {
     /// An empty world (no level loaded) using the given tables.
     pub fn new(data: Arc<GameData>, trig: Arc<Tables>) -> Self {
         let mut w = Self {
+            level: crate::level::LevelProfile::stock(0, data.cd),
             data,
             trig,
             rng: Rng::new(),
