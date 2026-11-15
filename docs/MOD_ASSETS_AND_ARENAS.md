@@ -52,7 +52,7 @@ sounds/NN.wav      replaces digitized sound NN (0-98)
 music/NAME.ogg     music files a floor or arena names (also .qoa, .imf)
 ```
 
-File names are matched case-insensitively. A file in these folders that does not match the pattern is an error (a mistyped number must not be silently ignored); files anywhere else are ignored and reported, as in format 1. A format-1 manifest that has these folders gets a warning that they are not used.
+File names are matched case-insensitively. Numbers are decimal, 1–3 digits for walls and sprites and 1–2 for sounds, leading zeros allowed (OBCEdit writes `walls/012.png`, `sprites/450.png`, `sounds/07.wav`); two files naming the same number are an error. A music name is 1–32 characters of `A–Z a–z 0–9 _ -` plus `.ogg`, `.qoa` or `.imf`, and a manifest names it without the folder (`music = "theme.ogg"`). A file in these folders that does not match the pattern is an error (a mistyped number must not be silently ignored); files anywhere else are ignored and reported, as in format 1. A format-1 manifest that has these folders gets a warning that they are not used.
 
 **Why PNG and nearest-colour, not palette-indexed data.** Authors draw in ordinary tools. OBCR converts each image to the game's palette when it loads it, by one rule that OBCEdit's preview implements identically (§2.4). The mod therefore never contains the game's palette (which is original data), and an author's file stays editable.
 
