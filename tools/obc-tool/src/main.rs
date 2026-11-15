@@ -117,18 +117,12 @@ fn main() -> Result<()> {
     let data = DataDir::open(&dir)?;
     match cli.command {
         Command::Catalog { out, verify } => {
-            let text = serde_json::to_string_pretty(&catalog::build(&data)?)?
-                + "
-";
+            let text = serde_json::to_string_pretty(&catalog::build(&data)?)? + "\n";
             if let Some(path) = verify {
                 let old = std::fs::read_to_string(&path)
                     .with_context(|| format!("reading {}", path.display()))?;
-                if old.replace(
-                    "
-", "
-",
-                ) != text
-                {
+                // A checkout may have turned the line endings into CRLF.
+                if old.replace("\r\n", "\n") != text {
                     bail!(
                         "{} is out of date: regenerate it with obc-tool catalog --out",
                         path.display()

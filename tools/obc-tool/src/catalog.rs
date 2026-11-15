@@ -163,7 +163,7 @@ fn plane0_entry(v: u16) -> Value {
         115 => wall("Exit: elevator".into(), "exit", json!({"exit": "elevator", "exitkind": 1})),
         1..=129 => wall(format!("Wall {v}"), "wall", json!({})),
         130..=137 => {
-            let vertical = v % 2 == 0;
+            let vertical = v.is_multiple_of(2);
             let lock = (v - 130) / 2;
             // HitHorizDoor/HitVertDoor tables (LEVEL_CODES §3.4): DOORWALL 128 + {0, 4, 5, 4}.
             let page = 128 + [0u16, 4, 5, 4][usize::from(lock)];
