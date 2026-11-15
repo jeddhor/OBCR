@@ -28,6 +28,7 @@ from PySide6.QtCore import QObject, Qt, Signal
 from obcedit_core.catalog import CatalogEntry
 from obcedit_core.commands import Command, write_words
 from obcedit_core.document import MapDocument
+from obcedit_core.patrol import Route, plan_route
 from obcedit_core.prefabs import Prefab
 from obcedit_core.tools import (
     FILL_BUDGET,
@@ -56,6 +57,7 @@ class Tool(Enum):
     EYEDROPPER = "eyedropper"
     PREFAB = "prefab"
     CAMERA = "camera"
+    PATROL = "patrol"
 
     @property
     def label(self) -> str:
@@ -69,6 +71,7 @@ class Tool(Enum):
             Tool.EYEDROPPER: "Pick",
             Tool.PREFAB: "Place",
             Tool.CAMERA: "Camera",
+            Tool.PATROL: "Patrol route",
         }[self]
 
     @property
@@ -77,6 +80,7 @@ class Tool(Enum):
             Tool.POINTER: "S", Tool.BRUSH: "B", Tool.LINE: "L",
             Tool.RECTANGLE: "R", Tool.FILL: "F", Tool.ERASER: "E",
             Tool.EYEDROPPER: "I", Tool.PREFAB: "P", Tool.CAMERA: "K",
+            Tool.PATROL: "T",
         }[self]
 
 
@@ -115,6 +119,9 @@ class ToolController(QObject):
     #: Where a snapshot should be taken from: tile center, in tile units. Not a
     #: document change -- the camera is a view of the map, not a thing in it.
     camera_placed = Signal(float, float)
+    #: The patrol route being drawn (a `Route`, for the canvas to preview), or
+    #: None when there is none.
+    route_changed = Signal(object)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -129,10 +136,16 @@ class ToolController(QObject):
         self._gesture = ""
         self._anchor: tuple[int, int] | None = None
         self._preview: list[tuple[int, int]] = []
+        #: The catalog, for patrol routes (arrow words, which actors patrol).
+        self.catalog = None
+        #: The cells clicked so far for a patrol route.
+        self.route: list[tuple[int, int]] = []
 
     # -- configuration ----------------------------------------------------
 
     def set_tool(self, tool: Tool) -> None:
+        if tool is not self.tool:
+            self.cancel_pending()
         self.tool = tool
         self._anchor = None
         self.message.emit(f"{tool.label} tool")
@@ -184,8 +197,80 @@ class ToolController(QObject):
             self.command_ready.emit(command)
 
     def cancel_pending(self) -> None:
-        """Nothing in Operation Body Count needs a second click; kept so the
-        window can call it whenever a tool changes."""
+        """Drop a patrol route half drawn: the only tool that takes more
+        than one click. The window calls this whenever the tool changes."""
+        if self.route:
+            self.route = []
+            self.route_changed.emit(None)
+
+    # -- patrol routes ----------------------------------------------------
+
+    def _route_click(self, x: int, y: int) -> None:
+        """One click of a patrol route: start it, add a turn, or finish it.
+
+        Clicking the last cell again (a double-click does) finishes the
+        route there; clicking the first cell again closes the loop and
+        finishes. A click the route cannot take is refused with the reason
+        and leaves the route as it was.
+        """
+        if not self.route:
+            route = plan_route(self.document, [(x, y)], self.catalog)
+            if not route.ok:
+                self.message.emit(route.reason)
+                self.route_changed.emit(route)
+                return
+            self.route = [(x, y)]
+            self.route_changed.emit(route)
+            self.message.emit("Patrol route: click each turn. Double-click, Enter or the first "
+                              "cell again to finish; Esc cancels")
+            return
+        if (x, y) == self.route[-1]:
+            self.finish_route()
+            return
+        route = plan_route(self.document, self.route + [(x, y)], self.catalog)
+        if not route.ok:
+            self.message.emit(route.reason)
+            self.route_changed.emit(route)
+            return
+        self.route.append((x, y))
+        if route.closed:
+            self.finish_route()
+            return
+        self.route_changed.emit(route)
+
+    def hover(self, x: int, y: int) -> None:
+        """Preview the next leg of a route as the pointer moves."""
+        if self.tool is not Tool.PATROL or not self.route or self.document is None:
+            return
+        cells = list(self.route)
+        if x >= 0 and (x, y) != cells[-1]:
+            cells.append((x, y))
+        self.route_changed.emit(plan_route(self.document, cells, self.catalog))
+
+    def finish_route(self) -> None:
+        """Place the route's arrows as one command (one undo step)."""
+        if self.tool is not Tool.PATROL or not self.route or self.document is None:
+            return
+        route: Route = plan_route(self.document, self.route, self.catalog)
+        if not route.complete:
+            self.message.emit(route.reason if not route.ok
+                              else "A route needs a second cell: click where it turns")
+            return
+        self.route = []
+        self.route_changed.emit(None)
+        command = write_words(self.document, route.writes, label="Patrol route",
+                              gesture=uuid.uuid4().hex)
+        if not command.changes_anything:
+            self.message.emit("The route's arrows were already there")
+            return
+        self.command_ready.emit(command)
+        arrows = len(route.arrows)
+        text = f"Patrol route placed: {arrows} arrow{'s' if arrows != 1 else ''}"
+        if route.closed:
+            text += ", a closed loop"
+        if route.turned:
+            text += "; the enemy was turned to face the first leg"
+        self.message.emit(text)
 
     def set_document(self, document: MapDocument | None) -> None:
         """Point at a map, or at a newer snapshot of the one already open.
@@ -204,6 +289,7 @@ class ToolController(QObject):
         if changed:
             self._anchor = None
             self._gesture = ""
+            self.cancel_pending()
 
     # -- what a tool writes -----------------------------------------------
 
@@ -269,6 +355,10 @@ class ToolController(QObject):
 
         if self.tool is Tool.PREFAB:
             self._place_prefab(x, y)
+            return
+
+        if self.tool is Tool.PATROL:
+            self._route_click(x, y)
             return
 
         if self.tool is Tool.CAMERA:

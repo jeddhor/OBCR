@@ -202,6 +202,8 @@ class MainWindow(QMainWindow):
         self.tools.refused.connect(self._on_prefab_refused)
         self.tools.picked.connect(self._on_picked)
         self.tools.camera_placed.connect(self.set_camera)
+        self.tools.catalog = self.catalog
+        self.tools.route_changed.connect(self._on_route_changed)
         self.tools.message.connect(lambda text: self.statusBar().showMessage(text, 3000))
 
         self._build_menus()
@@ -1175,6 +1177,8 @@ class MainWindow(QMainWindow):
         tab.canvas.pressed.connect(self._on_press)
         tab.canvas.dragged.connect(self.tools.drag)
         tab.canvas.released.connect(self.tools.release)
+        tab.canvas.finish_requested.connect(self.tools.finish_route)
+        tab.canvas.cancel_requested.connect(self.tools.cancel_pending)
         index = self.tabs.addTab(tab, document.name or document.label)
         self.tabs.setCurrentIndex(index)
         self._apply_wall_colors()
@@ -1384,8 +1388,19 @@ class MainWindow(QMainWindow):
         if 0 <= row < len(self.project.maps):
             self.open_map(self.project.maps[row].uuid)
 
+    def _on_route_changed(self, route) -> None:
+        """Show the patrol route being drawn on the current map only."""
+        current = self.current_tab
+        for index in range(self.tabs.count()):
+            tab = self.tabs.widget(index)
+            if isinstance(tab, MapTab):
+                tab.canvas.set_route(route if tab is current else None)
+
     def _on_hover(self, x: int, y: int) -> None:
         tab = self.current_tab
+        if tab is not None:
+            self.tools.set_document(self.project.map_by_uuid(tab.map_uuid))
+            self.tools.hover(x, y)
         if tab is None or x < 0:
             self._cell_label.setText("")
             return

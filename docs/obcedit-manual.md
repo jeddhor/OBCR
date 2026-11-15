@@ -82,6 +82,7 @@ Docks can be moved, floated and closed; *View → Reset layout* puts them back.
 | Pick | **I** | Take the value under the cursor into the palette. |
 | Place | **P** | Place the chosen compound structure (section 7). |
 | Camera | **K** | Set where a snapshot looks from (section 10). |
+| Patrol route | **T** | Click the turns of a patrol route; OBCEdit places the arrows (section 7, *Patrol routes*). |
 
 *Edit* has **Undo** (**Ctrl+Z**) and **Redo** (**Ctrl+Y** / **Ctrl+Shift+Z**) for every change, including renames and deleted maps; **Copy** and **Paste** of a selection; and rotation and flipping of what you copied. Rotating turns enemies, the player start and patrol arrows with the region, so a copied room keeps looking the right way. Zoom with **Ctrl+=** / **Ctrl+−** or **Ctrl** and the mouse wheel; **Ctrl+G** toggles the grid.
 
@@ -124,9 +125,23 @@ The first palette tab holds structures that need more than one value, placed wit
 | **Ambush: soldier** | A soldier on an ambush marker: he stays put until he sees you. |
 | **Squad of three allies** | Three allies in a row, as the original lines them up at the start of a floor. |
 
+### Patrol routes
+
+A patrolling enemy walks straight ahead from its own cell, the way it faces. Each time it reaches a cell holding a **patrol arrow** (values 90–97, eight directions) it turns that way; when something blocks it away from an arrow, it stops there for good (until it sees you). A route is therefore a set of arrows on the cells where it turns, and the **Patrol route** tool (**T**) places them for you:
+
+1. Click the cell where the route starts: a patrolling enemy's own cell, or an empty floor cell the enemy walks onto.
+2. Click each cell where the route turns. Legs run straight: horizontally, vertically or at 45 degrees. The dashed preview follows the mouse, and turns red with the reason in the status bar when a leg cannot go that way.
+3. Finish: click the **first cell** again to close a loop, **double-click** the last cell (or press **Enter**) to end an open route. **Esc** drops the route; nothing is written until you finish.
+
+The whole route is one edit, undone with one **Ctrl+Z**. The tool checks each leg with the game's own walking rule: walls, blocking objects and standing enemies stop a patrol, doors do not (the enemy opens them), and a diagonal step needs both cells beside the corner clear and cannot pass a door. Arrows go only on empty cells (or replace an arrow), and a leg may not cross an arrow that points another way.
+
+Starting on the enemy itself: its cell cannot hold an arrow, so if it faces another way the tool turns it to face the first leg (only east, north, west or south; enemies cannot start on a diagonal), and a loop that comes back to it must pass straight through its cell, so start such a loop at a corner. Hovering saucers never move; standing enemies do not patrol.
+
+Arrows draw as arrows on the map in every tool, so a route can be read at a glance.
+
 ## 8. Problems
 
-The Problems pane re-checks the open map as you work. **Errors** stop OBCR from playing it: no player start or more than one, more than 64 doors or the game's limits on objects, animated walls and actors, a floor value outside 140–161. **Warnings** play, but probably not as you meant: a door without walls on both sides, open floor on the map's edge, a push wall whose path is blocked, an unknown value, a crowded map. Notes are advice.
+The Problems pane re-checks the open map as you work. **Errors** stop OBCR from playing it: no player start or more than one, more than 64 doors or the game's limits on objects, animated walls and actors, a floor value outside 140–161. **Warnings** play, but probably not as you meant: a door without walls on both sides, open floor on the map's edge, a push wall whose path is blocked, an unknown value, a crowded map, a patrolling enemy that walks into a wall with no arrow to turn it (it stops there for good), a patrol arrow no patrol ever reaches. Notes are advice; on a floor imported from the original game the patrol findings are notes, because the original's own floors do both.
 
 Above the list, a line answers the question that matters most: **can the floor be finished?** OBCEdit walks the map from the player start through doors, sliding panels and push walls, and reports whether an exit can be reached and how many of the enemies needed for the half-kill quota can be reached. It is advice, not a proof. A floor it calls finishable can still be hard, and an enemy behind a door only explosions open may not count.
 
@@ -182,7 +197,8 @@ Then:
 | **Ctrl+E** / **Ctrl+Shift+E** | Export mod, install in OBCR |
 | **Ctrl+Z** / **Ctrl+Y** | Undo, redo |
 | **Ctrl+C** / **Ctrl+V** | Copy, paste a selection |
-| **S B L R F E I P K** | Select, paint, line, rectangle, fill, erase, pick, place, camera |
+| **S B L R F E I P K T** | Select, paint, line, rectangle, fill, erase, pick, place, camera, patrol route |
+| **Enter** / **Esc** | Finish / drop the patrol route being drawn |
 | **F5** / **Shift+F5** / **Ctrl+F5** | Test, test from the cursor, stop the test |
 | **F7** / **F8** | Snapshot, check this map |
 | **Ctrl+=** / **Ctrl+−** / **Ctrl+G** | Zoom in, zoom out, grid |
@@ -206,7 +222,6 @@ The editor's core runs without a window, which is useful for scripts and checks.
 ## 16. Known limitations
 
 - **Maps and settings only.** A mod arranges what the game already has: no new walls, sprites, sounds or music yet.
-- **Patrol routes** are placed arrow by arrow from the *Markers* tab; there is no route-drawing tool yet.
 - **Test from the cursor** always faces east; **snapshots** are always in the original 320×200 picture.
 - **The test floor** (F5) uses default floor settings; export the campaign to test darkness, music and sequences.
 - **Network floors** cannot be made into mods yet.
