@@ -14,6 +14,7 @@ A Qt 6 installer and uninstaller for OBCR on Windows and Linux (ADR-021). It ins
                                      (BCCD.EXE for the CD release; from a CD image also the ripped
                                      music, TRACK02.QOA .. TRACK05.QOA, made by obcr --extract-data)
    <folder>/obcr.png                 icon (drawn by Setup, not taken from the game)
+   <folder>/obcedit/                 OBCEdit, the level editor (optional, on by default)
    <folder>/uninstall/               OBCR-Uninstall[.exe] and its Qt runtime
    <folder>/install-manifest.txt     everything Setup created, for the uninstaller
    ```
@@ -28,7 +29,7 @@ A Qt 6 installer and uninstaller for OBCR on Windows and Linux (ADR-021). It ins
 
 ```text
 OBCR-Setup                                  the wizard
-OBCR-Setup --unattended --data DIR|IMAGE [--target DIR] [--desktop-shortcut] [--no-menu] [--no-path-link]
+OBCR-Setup --unattended --data DIR|IMAGE [--no-editor] [--target DIR] [--desktop-shortcut] [--no-menu] [--no-path-link]
 OBCR-Setup --uninstall [--target DIR] [--unattended] [--purge]
 OBCR-Uninstall [--unattended] [--purge]     the installed uninstaller
 OBCR-Setup --screenshots DIR [--data DIR]   development: render the pages to PNG

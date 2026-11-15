@@ -1,6 +1,6 @@
 # Mods, custom maps and OBCEdit — the plan
 
-**Milestone M17.** Status: planned 2026-11-15, being implemented on `m17/*` branches.
+**Milestone M17.** Status: implemented 2026-11-15 on `m17/mods`; differences from this plan are noted in §8.
 
 The owner asked for two things that only make sense together:
 
@@ -313,3 +313,17 @@ M17.2–M17.5 (Rust) and M17.6–M17.7 (Python) can proceed in parallel once the
 | Installer size (Python + Qt ≈ 70 MB compressed) | OBCEdit is optional in Setup; download size stated in the release notes |
 | PySide6 not available for a platform or Python version in CI | Pin PySide6 and Python 3.12 in CI; the core has no Qt dependency and always tests |
 | Porting drift between EC7Edit and OBCEdit | OBCEdit is a fork, not a shared library: each evolves for its own game; this plan records the starting point (EC7Wolf `editor/` at the time of the port) |
+
+---
+
+## 8. As built
+
+What changed from the plan while implementing it:
+
+- **F5 plays a one-floor preview of the open map** (`preview_mod`, behaving like original floor 7), not the whole project. Testing one floor is what an author does most; the whole campaign is tested by exporting it (*Install in OBCR*) and choosing it in the MODS screen.
+- **Snapshots run 30 tics** (`--shot 30`), not 2: a floor fades in over its first ~25 tics, so an earlier frame is nearly black. They are always Classic 320×200.
+- **Shift+F5 starts facing east**; the cursor sets the cell only.
+- **Saves are per mod by folder** (`saves/<mod id>/`) rather than by a header field alone, so the slot list never mixes campaigns; the save's extra block still records the mod id and is checked on load.
+- **No patrol-route tool**: patrol arrows (90–97) are placed from the *Markers* tab. Recorded for a later milestone.
+- **The `sequence` field** names one sequence (`auto`, `F1`–`F7`, `none`); the plan's separate `after` field was folded into it.
+- **The frozen editor is about 75 MB** (Qt Quick, QML, PDF, the software OpenGL renderer and the network plugins are pruned after freezing); the Windows installer is about 44 MB with it.

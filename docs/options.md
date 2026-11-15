@@ -23,6 +23,7 @@ These are the original game's own settings, in its main menu. OBCR keeps them as
 | **VIEW SIZE** | The size of the 3D view inside the frame, in five steps (12, 14, 16, 18, 20; default 18). The status bar is always shown. |
 | **GAME TYPE** | **1**, **2**, **3**: difficulty ("for novices", "for those who have played before", "Uhhh, this is hard"). **R**: Random, where enemies and items are scattered from where the map puts them. **N**, **T**, **M**: network deathmatch, network teams and the two-player direct game ([multiplayer.md](multiplayer.md)). What each changes is in the [game guide](game-guide.md#game-types). |
 | **AUDIO MIX** | Opens OPTIONS at its sound settings. |
+| **D** (MODS) | Choose the game START GAME plays: the original or an installed mod ([modding.md](modding.md)). |
 | **F5 / F6** in game | Textured floors and ceilings off / on (the original's `floormode`). Off draws them in flat colours, as the original's low-detail setting did. |
 
 ---
@@ -147,6 +148,14 @@ obcr [OPTIONS]
 
 These change the settings as if you had chosen them in OPTIONS, and they are saved.
 
+### Mods
+
+| Option | What it does |
+|---|---|
+| `--mod PATH\|ID` | Play a mod for this run: a mod folder, a `.obcmod` file, or an installed mod's id. |
+| `--check-mod PATH` | Check a mod and exit: one tab-separated line per finding, then `result ok` or `result errors`; exit code 0 or 2. OBCEdit uses this. |
+| `--start X,Y,DIR` | With `--play`: start the player at cell X,Y (0-63) facing DIR (0 north, 1 east, 2 south, 3 west). OBCEdit's *play from here*. |
+
 ### Settings and the original's parameters
 
 | Option | What it does |
@@ -238,6 +247,10 @@ join = ""                # the address last called
 choice = 0               # character or team last chosen
 
 # data_dir = "D:/Games/OBC/data"   # where the game files are, if not found otherwise
+
+# [game] also keeps:
+# active_mod = "lobby-assault"     # the mod chosen in MODS ("" = the original game)
+# [game.mod_scores]                # each mod's high-score table
 ```
 
 **Binding names.** Keys are named as on a US keyboard: letters and digits, `SPACE`, `ENTER`, `ESC`, `TAB`, `BACKSPACE`, `CTRL`, `ALT`, `LEFT SHIFT`, `RIGHT SHIFT`, `UP`, `DOWN`, `LEFT`, `RIGHT`, `INSERT`, `DELETE`, `HOME`, `END`, `PAGE UP`, `PAGE DOWN`, `F1`–`F12`, `PAUSE`, `KEYPAD +` and so on. The mouse: `MOUSE LEFT`, `MOUSE RIGHT`, `MOUSE MIDDLE`, `MOUSE 4`, `MOUSE 5`, `WHEEL UP`, `WHEEL DOWN`. The gamepad: `PAD A`, `PAD B`, `PAD X`, `PAD Y`, `PAD LB`, `PAD RB`, `PAD LT`, `PAD RT`, `PAD BACK`, `PAD START`, `PAD L3`, `PAD R3`, `DPAD UP`, `DPAD DOWN`, `DPAD LEFT`, `DPAD RIGHT`. Gamepad buttons follow the Xbox layout. On other pads they are the buttons in the same positions: A is the bottom face button, Y the top. An unknown name (a typo, say) is skipped when the file is read, and actions missing from the file take the scheme's defaults.
@@ -250,6 +263,8 @@ choice = 0               # character or team last chosen
 |---|---|---|
 | Settings, `obcr.toml` | `%APPDATA%\OBCR\config\` | `~/.config/obcr/` |
 | Saved games | `%APPDATA%\OBCR\data\saves\` | `~/.local/share/obcr/saves/` |
+| A mod's saved games | `…\saves\<mod id>\` | `…/saves/<mod id>/` |
+| Installed mods | `%APPDATA%\OBCR\data\mods\` | `~/.local/share/obcr/mods/` |
 | An installation made by Setup | `%LOCALAPPDATA%\Programs\OBCR\` | `~/.local/opt/OBCR/` |
 | The game files in it | `…\OBCR\data\` | `…/OBCR/data/` |
 

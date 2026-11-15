@@ -593,3 +593,31 @@ Revised after the RE (ADR-017: the original broadcasts state; it is not lockstep
 - [ ] Clean-machine install tests on Windows, Linux and macOS with each supported data release.
 - [ ] License and notice files complete; `cargo deny check` passes.
 - [ ] Owner sign-off on the release candidate.
+
+## M16 — The CD release
+
+Done (recorded as M15.6–M15.7 in STATUS): release OBC-CD, the CD build's code differences, BIN/CUE reading, CD music and movies, installer support (ADR-022, docs/re/CD_RELEASE.md).
+
+## M17 — Mods and OBCEdit
+
+**Goal:** mods and custom maps in OBCR, and OBCEdit, a level editor ported from EC7Edit, shipped with it. The plan: [MODS_AND_OBCEDIT.md](MODS_AND_OBCEDIT.md) (ADR-023, ADR-024).
+
+| Id | Task |
+|---|---|
+| M17.1 | The plan; ADR-023 (mod format), ADR-024 (OBCEdit). |
+| M17.2 | `LevelProfile`: every map-slot behaviour test moved into a per-floor profile; save format 4. |
+| M17.3 | ZIP reader, mod package and manifest, `check_map`, `--check-mod`. |
+| M17.4 | Campaigns, `--mod`, `--start`, the MODS screen, per-mod saves and high scores. |
+| M17.5 | `obc-tool catalog`: OBCEdit's catalog generated from the engine's code, verified by `cargo xtask test-data`. |
+| M17.6 | OBCEdit core: OBC codec, catalog, rules, prefabs, validation, mod export, OBCR runner, CLI. |
+| M17.7 | OBCEdit GUI. |
+| M17.8 | Packaging: PyInstaller, Setup option, build scripts, CI. |
+| M17.9 | Documentation: modding guide, OBCEdit manual, README, options. |
+
+### Acceptance criteria
+
+- [x] With no mod, every existing test passes unchanged (profile equivalence).
+- [x] A generated mod plays through the real screens to victory, with its own saves and scores.
+- [x] OBCEdit re-encodes both releases' map archives byte-identically.
+- [x] A map drawn in OBCEdit, exported and checked by OBCR, with a snapshot through OBCR's renderer (GUI slice test, data-gated).
+- [x] The installers carry OBCEdit; an unattended install creates it and the uninstaller removes it (Windows checked; Linux by CI).

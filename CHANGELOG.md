@@ -2,6 +2,18 @@
 
 All notable changes to OBCR. Versions follow [Semantic Versioning](https://semver.org).
 
+## Unreleased
+
+- **Mods and custom maps**: OBCR plays mods, campaigns of new floors made from the game's own walls, objects and enemies. Put a `.obcmod` file or mod folder in the mods folder, press **D** in the main menu and choose it; each mod keeps its own saves and high scores. `obcr --mod <file>` plays one directly. The format: [docs/modding.md](docs/modding.md).
+- **OBCEdit**, a level editor, ships with OBCR (an option in Setup, on by default). It is a port of EC7Edit from the Corridor 7 port EC7Wolf, and lets you:
+  - draw floors from a palette of the game's real walls, objects and enemies;
+  - place doors, push walls, exits and the other compound features with one click;
+  - check a floor as you draw, including whether it can be finished;
+  - test it in OBCR with **F5**, or photograph it through OBCR's renderer;
+  - export or install a mod.
+
+  The manual: [docs/obcedit-manual.md](docs/obcedit-manual.md).
+
 ## 1.0.0-beta.2 — 2026-11-14 (pre-release)
 
 The second beta. It adds the CD release that Steam and GOG sell, full control rebinding, and fixes push walls.

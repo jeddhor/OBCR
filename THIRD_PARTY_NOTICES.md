@@ -16,6 +16,16 @@ OBCR is free software under the GNU General Public License, version 3 or later (
 - **Linux**: ICU 70 (Unicode licence), double-conversion (BSD-3-Clause), libb2 (CC0-1.0), md4c (MIT), PCRE2 (BSD-3-Clause with the PCRE2 exception), libxkbcommon (MIT), the xcb-util libraries (MIT), libICE and libSM (X11/MIT), libgomp (GPL-3.0 with the GCC Runtime Library Exception).
 - The self-extracting launcher (`crates/obcr-setup`) uses `miniz_oxide` (MIT OR Zlib OR Apache-2.0).
 
+## In OBCEdit (the level editor, `obcedit/`, installed as `<install>/obcedit/`)
+
+OBCEdit is GPL-3.0-or-later, a port of EC7Edit by the same author. The frozen editor also contains:
+
+- **PySide6 and Shiboken6** (Qt for Python) with **Qt 6** (Core, Gui, Widgets, Svg and their plugins) — LGPL-3.0. Linked dynamically and shipped unmodified in `obcedit/_internal/`; they can be replaced. <https://pypi.org/project/PySide6/>
+- **CPython** — Python Software Foundation License 2.0, with its bundled libraries (OpenSSL, Apache-2.0; libffi, MIT; zlib; and others as listed in the CPython distribution). <https://docs.python.org/3/license.html>
+- **The PyInstaller bootloader** — GPL-2.0-or-later with the bootloader exception. <https://pyinstaller.org/en/stable/license.html>
+
+`obcedit/THIRD-PARTY.txt` in each installation names the exact versions.
+
 ## Rust crates
 
 Generated with `cargo tree -p obcr -p obcr-setup -e normal --target all`; every licence is on the project's allow list (`deny.toml`).
