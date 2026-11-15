@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use obc_formats::maps::{Map, MapArchive};
-use obc_formats::modpack::{self, Mod};
-use obc_sim::level::{LevelProfile, Severity, check_map};
+use obc_formats::modpack::{self, Mod, Package};
+use obc_sim::level::{LevelProfile, Severity, check_arena, check_map};
 
 use crate::assets::Assets;
 use crate::screen::Ctx;
@@ -39,7 +39,13 @@ pub struct Campaign {
     pub title: String,
     pub version: String,
     pub levels: Vec<CampaignLevel>,
+    /// The mod's network arenas (docs/MOD_ASSETS_AND_ARENAS.md §3.5); empty
+    /// for the original game and mods without them, which play the
+    /// original's.
+    pub arenas: Vec<CampaignLevel>,
     maps: Option<MapArchive>,
+    /// The mod's files, for its art, sounds and music.
+    pub package: Option<Arc<Package>>,
 }
 
 impl Campaign {
@@ -58,7 +64,9 @@ impl Campaign {
             title: "OPERATION BODY COUNT".into(),
             version: String::new(),
             levels,
+            arenas: Vec::new(),
             maps: None,
+            package: None,
         }
     }
 
@@ -87,12 +95,33 @@ impl Campaign {
                 CampaignLevel { source, profile: LevelProfile::for_mod_level(l, cd), name }
             })
             .collect();
+        let arenas = m
+            .manifest
+            .arenas
+            .iter()
+            .enumerate()
+            .map(|(i, a)| {
+                let name = a.name.clone().unwrap_or_else(|| {
+                    m.maps
+                        .as_ref()
+                        .and_then(|x| x.name(usize::from(a.map)).ok().flatten())
+                        .unwrap_or_else(|| format!("ARENA {}", i + 1))
+                });
+                CampaignLevel {
+                    source: MapSource::Mod(a.map),
+                    profile: LevelProfile::for_arena(a, i, cd),
+                    name,
+                }
+            })
+            .collect();
         Self {
             id: m.manifest.info.id.clone(),
             title: m.manifest.info.title.clone(),
             version: m.manifest.info.version.clone(),
             levels,
+            arenas,
             maps: m.maps.clone(),
+            package: Some(Arc::clone(&m.package)),
         }
     }
 
@@ -114,7 +143,16 @@ impl Campaign {
 
     /// Floor `floor`'s map.
     pub fn map(&self, assets: &Assets, floor: i16) -> Option<Map> {
-        match self.level(floor)?.source {
+        self.source_map(assets, self.level(floor)?.source)
+    }
+
+    /// Arena `index`'s map.
+    pub fn arena_map(&self, assets: &Assets, index: usize) -> Option<Map> {
+        self.source_map(assets, self.arenas.get(index)?.source)
+    }
+
+    fn source_map(&self, assets: &Assets, source: MapSource) -> Option<Map> {
+        match source {
             MapSource::Stock(s) => assets.maps.map(usize::from(s)).ok().flatten(),
             MapSource::Mod(s) => self.maps.as_ref()?.map(usize::from(s)).ok().flatten(),
         }
@@ -145,6 +183,23 @@ pub fn check(path: &Path) -> Result<(Mod, Vec<Problem>), String> {
                 message: p.message,
             });
         }
+    }
+    for (i, a) in m.manifest.arenas.iter().enumerate() {
+        let Some(map) = m.maps.as_ref().and_then(|x| x.map(usize::from(a.map)).ok().flatten())
+        else {
+            continue;
+        };
+        for p in check_arena(&map) {
+            problems.push(Problem {
+                level: None,
+                at: p.at,
+                error: p.severity == Severity::Error,
+                message: format!("arena {}: {}", i + 1, p.message),
+            });
+        }
+    }
+    for (error, message) in modpack::check_assets(&m) {
+        problems.push(Problem { level: None, at: None, error, message });
     }
     for name in &m.ignored {
         problems.push(Problem {
@@ -235,6 +290,30 @@ pub fn active(ctx: &Ctx) -> (Arc<Campaign>, Option<String>) {
         Err(e) => {
             (Arc::new(Campaign::original(ctx.assets)), Some(format!("{}: {e}", path.display())))
         }
+    }
+}
+
+/// What a network game must agree on (docs/MOD_ASSETS_AND_ARENAS.md §3.5):
+/// the data release and, when the active mod brings arenas, its id, version
+/// and content hash; with the arenas' title for the setup screen. A mod
+/// without arenas does not change what peers simulate, so it is left out.
+pub fn net_identity(ctx: &Ctx) -> (String, Option<String>) {
+    let release = ctx.assets.release.release.id.to_owned();
+    let g = &ctx.settings.game;
+    let path = match (&g.mod_path, g.active_mod.as_str()) {
+        (Some(p), _) => Some(p.clone()),
+        (None, "") => None,
+        (None, id) => find_installed(ctx.save_dir, id),
+    };
+    let Some(path) = path else { return (release, None) };
+    match check(&path).and_then(|(m, p)| playable(&m, &p, &release).map(|()| m)) {
+        Ok(m) if !m.manifest.arenas.is_empty() => {
+            let hash: String = m.content_hash().iter().map(|b| format!("{b:02x}")).collect();
+            let id =
+                format!("{release}+mod:{}:{}:{hash}", m.manifest.info.id, m.manifest.info.version);
+            (id, Some(m.manifest.info.title.clone()))
+        }
+        _ => (release, None),
     }
 }
 

@@ -8,6 +8,7 @@ pub mod controls;
 pub mod game;
 pub mod hud;
 pub mod menu;
+pub mod modmedia;
 pub mod netui;
 pub mod present;
 pub mod rebind;

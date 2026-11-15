@@ -228,3 +228,24 @@ pub fn check_mod(path: &Path) -> i32 {
     println!("result\t{}", if bad { "errors" } else { "ok" });
     if bad { 2 } else { 0 }
 }
+
+/// `--convert-audio IN.wav OUT.qoa`: a WAV as QOA music for a mod (used by
+/// OBCEdit). Exit code 0 done, 1 failed (the reason on stderr).
+pub fn convert_audio(from: &Path, to: &Path) -> i32 {
+    let run = || -> Result<(), String> {
+        let meta = std::fs::metadata(from).map_err(|e| format!("{}: {e}", from.display()))?;
+        if meta.len() > 1 << 30 {
+            return Err(format!("{} is larger than 1 GiB", from.display()));
+        }
+        let bytes = std::fs::read(from).map_err(|e| format!("{}: {e}", from.display()))?;
+        let qoa = obc_formats::modassets::wav_to_qoa(&bytes)?;
+        std::fs::write(to, qoa).map_err(|e| format!("{}: {e}", to.display()))
+    };
+    match run() {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("convert-audio: {e}");
+            1
+        }
+    }
+}

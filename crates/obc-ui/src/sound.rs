@@ -69,6 +69,8 @@ pub struct SoundManager {
     pc: Vec<Option<Arc<PcSound>>>,
     pub effects: Effects,
     digi: Vec<Option<Arc<[u8]>>>,
+    /// Each digitized sound's sample rate: [`DIGI_RATE`], or a mod's own.
+    rates: Vec<u32>,
     game: Arc<GameData>,
     trig: Arc<Tables>,
     /// Digitized voices in use: 1 (original) up to `DIGI_CHANNELS`.
@@ -93,6 +95,7 @@ impl SoundManager {
             pc,
             effects: Effects::Digitized,
             digi,
+            rates: vec![DIGI_RATE; NUMSOUNDS],
             game: a.game.clone(),
             trig: a.trig.clone(),
             channels: channels.clamp(1, DIGI_CHANNELS),
@@ -100,6 +103,17 @@ impl SoundManager {
             adlib_voice: Voice::default(),
             clock: 0,
             enabled: true,
+        }
+    }
+
+    /// A mod's replacement for digitized sound `id` (8-bit unsigned mono at
+    /// `rate`). The id's AdLib chunk still gives its priority and plays when
+    /// digitized sound is off (docs/MOD_ASSETS_AND_ARENAS.md §3.3).
+    pub fn replace_digi(&mut self, id: u16, samples: Arc<[u8]>, rate: u32) {
+        let i = usize::from(id);
+        if i < NUMSOUNDS && !samples.is_empty() && rate > 0 {
+            self.digi[i] = Some(samples);
+            self.rates[i] = rate;
         }
     }
 
@@ -149,12 +163,13 @@ impl SoundManager {
             });
             if let Some(c) = slot {
                 let len = samples.len() as u64;
+                let rate = self.rates[i];
                 self.voices[c] = Voice {
                     priority,
-                    until: self.clock + (len * 70).div_ceil(u64::from(DIGI_RATE)),
+                    until: self.clock + (len * 70).div_ceil(u64::from(rate)),
                     at,
                 };
-                audio.send(AudioCommand::PlayDigi { channel: c, samples, rate: DIGI_RATE, pan });
+                audio.send(AudioCommand::PlayDigi { channel: c, samples, rate, pan });
                 return;
             }
         }

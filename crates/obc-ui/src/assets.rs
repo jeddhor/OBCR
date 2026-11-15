@@ -165,10 +165,28 @@ impl Assets {
         });
     }
 
+    /// The xBRZ colour metric with index 0xFF transparent (walls, sprites).
+    pub(crate) fn keyed_metric(&self) -> &Metric {
+        &self.keyed
+    }
+
+    /// The fully opaque xBRZ colour metric (floors and ceilings).
+    pub(crate) fn opaque_metric(&self) -> &Metric {
+        &self.opaque
+    }
+
     /// Builds the upscaled versions of the given wall pages and sprites now
     /// (on all cores), so that drawing them later does not stall.
     pub fn prepare_upscaled(&self, walls: &[u16], flats: &[u16], sprites: &[u16]) {
-        if self.upscaled.is_none() {
+        prepare_upscaled(self, walls, flats, sprites);
+    }
+}
+
+/// [`Assets::prepare_upscaled`] for any texture source (the game's, or the
+/// game's with a mod's replacements, `modmedia::Layered`).
+pub fn prepare_upscaled(t: &(dyn Textures + Sync), walls: &[u16], flats: &[u16], sprites: &[u16]) {
+    {
+        if t.hires() < 2 {
             return;
         }
         let jobs: Vec<(u8, u16)> = walls
@@ -186,9 +204,9 @@ impl Assets {
                         let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         let Some(&(kind, id)) = jobs.get(i) else { break };
                         match kind {
-                            0 => self.wall_hi(id),
-                            1 => self.flat_hi(id),
-                            _ => self.sprite_hi(id),
+                            0 => t.wall_hi(id),
+                            1 => t.flat_hi(id),
+                            _ => t.sprite_hi(id),
                         };
                     }
                 });

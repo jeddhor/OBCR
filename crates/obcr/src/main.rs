@@ -54,6 +54,9 @@ struct Cli {
     /// ripping the CD music, and exit (used by the installer).
     #[arg(long, num_args = 2, value_names = ["SOURCE", "DIR"])]
     extract_data: Option<Vec<PathBuf>>,
+    /// Convert a WAV file to QOA music for a mod and exit (used by OBCEdit).
+    #[arg(long, num_args = 2, value_names = ["IN.wav", "OUT.qoa"])]
+    convert_audio: Option<Vec<PathBuf>>,
     /// Settings file (default: the OS config directory).
     #[arg(long)]
     config: Option<PathBuf>,
@@ -211,6 +214,9 @@ fn run() -> Result<()> {
     }
     if let Some(path) = &cli.check_mod {
         std::process::exit(install::check_mod(path));
+    }
+    if let Some([from, to]) = cli.convert_audio.as_deref() {
+        std::process::exit(install::convert_audio(from, to));
     }
     let cfg_path = config_path(&cli);
     let saves = save_dir(&cli);
