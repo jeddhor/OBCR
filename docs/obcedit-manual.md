@@ -49,6 +49,7 @@ The first start opens **Setup**, which asks for three things and answers with a 
 | **Maps** (left) | The maps in your project. Double-click to open one; right-click to rename, change its slot, duplicate, check, test or delete it. *New map…* below the list. |
 | **Map tabs** (centre) | The open maps, drawn cell by cell from above: walls, floors, doors, objects and enemies, each in its own colour, with markers for what sits on plane 1. |
 | **Palette** (right) | Everything you can place, in tabs: *Doors and Specials*, then *Walls*, *Special walls*, *Floors*, *Objects*, *Enemies*, *Starts*, *Markers* and *Raw*. Type in the search box to find a thing by name, class or raw value; *Only what this map uses* narrows the tabs to the values already on the map. |
+| **Resources** (right, a tab beside the Palette) | Your own art, sounds and music: replace any wall, floor, sprite or sound of the game, and import music for your floors (section 13). *View → Resources* shows it. |
 | **Inspector** | The cell under the cursor or the selection: its raw values on all three planes, what they mean, a picture, and for enemies their **facing**, whether they stand or patrol, and the **difficulty** that brings them in. Changing those rewrites the cell. |
 | **Snapshot** | A frame of your map rendered by OBCR itself (section 10). |
 | **Problems** (bottom) | What is wrong with the open map, checked as you draw, plus a line saying whether the floor can be finished (section 8). |
@@ -165,6 +166,8 @@ A snapshot is a frame rendered by OBCR, not an imitation of it: there is one ren
 
 A project (`.obcproject`) holds your maps, their names and slots, and the campaign. It is JSON, so it can be read, compared and kept in version control. **Ctrl+S** saves; *Save As* (**Ctrl+Shift+S**) and *Save a Copy* write elsewhere. Saves are written to a temporary file and then renamed into place, so a failed save never damages the previous one.
 
+Art, sounds and music you import (section 13) are kept as files beside the project, in a folder of the same name ending `.assets` (`pack.obcproject` keeps them in `pack.assets/`). Keep the two together when you move or share a project. Until a new project is first saved, they wait in your workspace; saving moves them. If one of those files goes missing or is changed by another program, opening the project lists it under Problems, and exporting names it.
+
 OBCEdit also autosaves your work every minute to a recovery file (`.obcrecovery`), outside the project. After a crash it offers to bring the work back. Projects you opened recently are in *File → Recent*.
 
 OBCEdit's own settings live in your user profile (`OBCR/OBCEdit`); nothing is written into the game's folder or OBCR's installation.
@@ -187,6 +190,24 @@ Everything is checked as you type, with the same list of problems the command li
 Then:
 - *File → Export mod…* (**Ctrl+E**) writes the mod as a folder or as a single `.obcmod` file, reads it back to check it, and asks OBCR to check it too.
 - *File → Install in OBCR* (**Ctrl+Shift+E**) writes it straight into OBCR's mods folder. Start OBCR, press **D** in the main menu, choose your mod and START GAME.
+
+A mod that uses only maps and floor settings is written in the original mod format (1), which every OBCR plays. A mod with your own art, sounds or music, or with network arenas, is written as format 2, which needs an OBCR that has it (the MODS screen of an older one says so).
+
+### Your own art, sounds and music
+
+The **Resources** panel (a tab beside the Palette; *View → Resources*) replaces the game's own pictures and sounds in your mod, and holds its music. Every import is one step that **Ctrl+Z** takes back.
+
+- **Walls** and **Sprites**: every wall page (136, including doors, and the floor and ceiling textures, which are wall pages too) and every sprite (680: objects, every animation frame of every enemy, the weapons in your hands, splats), each named after what uses it. Select one and **Import…** (or double-click) a **64×64 PNG**. Sprites are transparent where the image is (alpha below 128); walls are always solid. A replaced one is marked ★ and shows your picture everywhere, converted to the game's 256 colours exactly as OBCR will: in the panel, the palette, the inspector and the map's colours. **Revert** goes back to the game's own. *Save a copy…* saves your imported file elsewhere.
+- **Sounds**: the 99 sounds by number, with what the game plays each for. **Import…** a WAV (8 or 16-bit or 32-bit float, mono or stereo, 4,000–48,000 Hz, up to 30 seconds).
+- **Music**: your music files and the floors that play them. **Import…** an **Ogg Vorbis** (`.ogg`), **QOA** (`.qoa`) or **IMF** (`.imf`, AdLib) file, up to 16 MB. A **WAV** is converted to QOA by OBCR (it needs the OBCR that came with this OBCEdit). *Rename…* gives it a new name (the floors that play it follow); *Remove* takes it out. Then choose it in the *Music* column of *File → Campaign…*.
+
+Art is drawn in the game's own resolution: 64×64, the game's palette. A replacement changes how something looks, never how it behaves: a replaced soldier still walks, shoots and dies as a soldier. Sounds and music are heard in OBCR (F5), not in the editor.
+
+### Network arenas
+
+The **Network arenas** tab of *File → Campaign…* lists up to ten of your maps as network floors. With your mod active in OBCR, a network game plays them instead of the original ten, in order; the exit of the last one leads back to the first. Every player needs the same version of your mod: OBCR refuses to connect machines with different mods.
+
+An arena needs exactly **one player start** (where the first player appears; later players and respawns appear on random free cells) and **no enemies** (they would be unkillable in a network game). OBCEdit checks maps used as arenas by these rules, and warns about open floor the start cannot reach, since a player could reappear there. Each arena can have its own music, colours (0–59; by default 50 plus its place in the list), darkness and sewer look.
 
 ## 14. Keyboard reference
 
@@ -221,7 +242,8 @@ The editor's core runs without a window, which is useful for scripts and checks.
 
 ## 16. Known limitations
 
-- **Maps and settings only.** A mod arranges what the game already has: no new walls, sprites, sounds or music yet.
+- **Replacements, not additions.** Your art and sounds replace the game's numbered pages, sprites and sounds; a mod cannot add new kinds of objects or enemies. Art is 64×64; the title, status bar, menus and fonts cannot be replaced.
+- **Sounds and music are not played inside OBCEdit**; test them in OBCR (F5).
 - **Test from the cursor** always faces east; **snapshots** are always in the original 320×200 picture.
 - **The test floor** (F5) uses default floor settings; export the campaign to test darkness, music and sequences.
-- **Network floors** cannot be made into mods yet.
+- **Network arenas** are tested by exporting the mod and starting a network game in OBCR; F5 plays an arena as a single-player floor.

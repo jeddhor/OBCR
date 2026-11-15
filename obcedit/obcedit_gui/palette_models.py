@@ -90,6 +90,14 @@ class CatalogModel(QAbstractListModel):
         self._requested.clear()
         self.endResetModel()
 
+    def invalidate_icons(self) -> None:
+        """Forget every icon (the project's replacement art changed)."""
+        self._icons.clear()
+        self._requested.clear()
+        if self._entries:
+            self.dataChanged.emit(self.index(0, 0), self.index(len(self._entries) - 1, 0),
+                                  [Qt.DecorationRole])
+
     def entry_at(self, row: int) -> CatalogEntry | None:
         return self._entries[row] if 0 <= row < len(self._entries) else None
 

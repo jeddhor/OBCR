@@ -16,6 +16,11 @@ function's output, and OK stays available while only warnings stand.
 
 "From like" in a column means the field is left out of `mod.toml`, so the
 floor keeps what its `like` floor does.
+
+A second tab lists the mod's network arenas (mod format 2,
+docs/MOD_ASSETS_AND_ARENAS.md section 2.2): up to ten of the project's own
+maps, played in order by a network game started while the mod is active.
+Music may name one of the project's music files (Resources > Music).
 """
 
 from __future__ import annotations
@@ -24,12 +29,13 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout,
     QHeaderView, QLabel, QLineEdit, QPlainTextEdit, QPushButton, QSpinBox, QTableWidget,
-    QVBoxLayout,
+    QTabWidget, QVBoxLayout, QWidget,
 )
 
 from obcedit_core.campaign import (
-    DEFAULT_LIKE, MAX_AUTHOR, MAX_ID, MAX_LEVEL_NAME, MAX_MESSAGE,
-    MAX_TITLE, MAX_VERSION, RELEASES, SEQUENCES, STOCK_FLOORS, Campaign, LevelEntry, validate,
+    ARENA_COLOR_BASE, DEFAULT_LIKE, MAX_ARENA_COLORS, MAX_ARENAS, MAX_AUTHOR, MAX_ID,
+    MAX_LEVEL_NAME, MAX_MESSAGE, MAX_TITLE, MAX_VERSION, RELEASES, SEQUENCES, STOCK_FLOORS,
+    ArenaEntry, Campaign, LevelEntry, music_file, validate,
 )
 from obcedit_core.errors import Severity
 
@@ -57,6 +63,7 @@ def _floor_label(slot: int) -> str:
 
 #: Tri-state for booleans: (label, value).
 _BOOLS = (("from like", None), ("yes", True), ("no", False))
+_ARENA_BOOLS = (("no (default)", None), ("yes", True), ("no", False))
 
 
 class CampaignDialog(QDialog):
@@ -64,13 +71,17 @@ class CampaignDialog(QDialog):
 
     COLUMNS = ("Floor", "Name", "Like", "Music", "Dark", "Sewer", "Colours",
                "Sequence", "Message", "Exit")
+    ARENA_COLUMNS = ("Map", "Name", "Music", "Colours", "Dark", "Sewer")
 
-    def __init__(self, campaign: Campaign, documents, parent=None) -> None:
+    def __init__(self, campaign: Campaign, documents, parent=None, *,
+                 music_names=()) -> None:
         super().__init__(parent)
         self.setWindowTitle("Campaign")
         self.setObjectName("campaign-dialog")
         self._documents = list(documents)
         self._base = campaign
+        #: The project's music files, offered in the Music columns.
+        self._music_names = sorted(music_names, key=str.lower)
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -104,6 +115,11 @@ class CampaignDialog(QDialog):
         form.addRow("Description", self.description)
         layout.addLayout(form)
 
+        self.tabs = QTabWidget(self)
+        self.tabs.setObjectName("campaign-tabs")
+        floors_page = QWidget(self.tabs)
+        floors_layout = QVBoxLayout(floors_page)
+        floors_layout.setContentsMargins(0, 0, 0, 0)
         self.table = QTableWidget(0, len(self.COLUMNS), self)
         self.table.setObjectName("campaign-levels")
         self.table.setHorizontalHeaderLabels(self.COLUMNS)
@@ -112,9 +128,9 @@ class CampaignDialog(QDialog):
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(8, QHeaderView.ResizeMode.Stretch)
-        for column, width in enumerate((230, 130, 190, 100, 90, 90, 90, 90, 150, 110)):
+        for column, width in enumerate((230, 130, 190, 130, 90, 90, 90, 90, 150, 110)):
             self.table.setColumnWidth(column, width)
-        layout.addWidget(self.table, 1)
+        floors_layout.addWidget(self.table, 1)
 
         buttons = QHBoxLayout()
         self.add = QPushButton("Add one of your maps")
@@ -133,7 +149,36 @@ class CampaignDialog(QDialog):
         self.start = QLabel()
         self.start.setObjectName("campaign-start")
         buttons.addWidget(self.start)
-        layout.addLayout(buttons)
+        floors_layout.addLayout(buttons)
+        self.tabs.addTab(floors_page, "Floors")
+
+        arenas_page = QWidget(self.tabs)
+        arenas_layout = QVBoxLayout(arenas_page)
+        arenas_layout.setContentsMargins(0, 0, 0, 0)
+        note = QLabel("Network arenas: a network game started while this mod is active "
+                      f"plays these instead of the original ten, in order (at most "
+                      f"{MAX_ARENAS}). Every player needs the same version of the mod. An "
+                      "arena has one player start and no enemies.")
+        note.setWordWrap(True)
+        arenas_layout.addWidget(note)
+        self.arena_table = QTableWidget(0, len(self.ARENA_COLUMNS), self)
+        self.arena_table.setObjectName("campaign-arenas")
+        self.arena_table.setHorizontalHeaderLabels(self.ARENA_COLUMNS)
+        self.arena_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        for column, width in enumerate((260, 140, 160, 120, 110, 110)):
+            self.arena_table.setColumnWidth(column, width)
+        arenas_layout.addWidget(self.arena_table, 1)
+        arena_buttons = QHBoxLayout()
+        self.add_arena = QPushButton("Add an arena")
+        self.add_arena.setObjectName("campaign-add-arena")
+        self.remove_arena = QPushButton("Remove")
+        self.remove_arena.setObjectName("campaign-remove-arena")
+        arena_buttons.addWidget(self.add_arena)
+        arena_buttons.addWidget(self.remove_arena)
+        arena_buttons.addStretch(1)
+        arenas_layout.addLayout(arena_buttons)
+        self.tabs.addTab(arenas_page, "Network arenas")
+        layout.addWidget(self.tabs, 1)
 
         self.problems = QLabel()
         self.problems.setObjectName("campaign-problems")
@@ -153,6 +198,8 @@ class CampaignDialog(QDialog):
         self.remove.clicked.connect(lambda _checked=False: self._remove_level())
         self.up.clicked.connect(lambda _checked=False: self._move(-1))
         self.down.clicked.connect(lambda _checked=False: self._move(1))
+        self.add_arena.clicked.connect(lambda _checked=False: self._add_arena())
+        self.remove_arena.clicked.connect(lambda _checked=False: self._remove_arena())
         for field in (self.mod_id, self.title, self.author, self.version):
             field.textChanged.connect(lambda _text="": self._revalidate())
         self.description.textChanged.connect(self._revalidate)
@@ -164,6 +211,8 @@ class CampaignDialog(QDialog):
             for document in self._documents:
                 self._append_row(LevelEntry(map_uuid=document.uuid,
                                             name=document.name[:MAX_LEVEL_NAME]))
+        for arena in campaign.arenas:
+            self._append_arena(arena)
         self._revalidate()
         self.resize(1360, 560)
 
@@ -203,7 +252,8 @@ class CampaignDialog(QDialog):
         self.table.setCellWidget(row, 2, self._combo(like_items, level.like))
 
         music = [("from like", None), ("random", "random")] + [(f"song {n}", n) for n in range(10)]
-        self.table.setCellWidget(row, 3, self._combo(music, level.music))
+        self.table.setCellWidget(row, 3, self._combo(music + self._file_items(level.music),
+                                                     level.music))
         self.table.setCellWidget(row, 4, self._combo(_BOOLS, level.dark))
         self.table.setCellWidget(row, 5, self._combo(_BOOLS, level.sewer))
 
@@ -227,6 +277,82 @@ class CampaignDialog(QDialog):
         exits = (("from like", None), ("normal", "normal"),
                  ("none: only Victor ends it", "none"))
         self.table.setCellWidget(row, 9, self._combo(exits, level.exit))
+
+    def _file_items(self, current):
+        """The project's music files, plus a missing one a row still names."""
+        items = [(f"file: {name}", name) for name in self._music_names]
+        name = music_file(current)
+        if name and name.lower() not in (n.lower() for n in self._music_names):
+            items.append((f"(missing) {name}", name))
+        return items
+
+    def _append_arena(self, arena: ArenaEntry) -> None:
+        row = self.arena_table.rowCount()
+        self.arena_table.insertRow(row)
+        items = [(f"Your map: {d.name or d.label}", d.uuid) for d in self._documents]
+        if arena.map_uuid and not any(d.uuid == arena.map_uuid for d in self._documents):
+            items.append(("(a map that is no longer in the project)", arena.map_uuid))
+        if not items:
+            items = [("(the project has no maps)", "")]
+        source = self._combo(items, arena.map_uuid)
+        self.arena_table.setCellWidget(row, 0, source)
+        name = QLineEdit(arena.name)
+        name.setMaxLength(MAX_LEVEL_NAME)
+        name.textChanged.connect(lambda _text="": self._revalidate())
+        self.arena_table.setCellWidget(row, 1, name)
+        names = {d.uuid: d.name[:MAX_LEVEL_NAME] for d in self._documents}
+        previous = [arena.map_uuid]
+
+        def follow(_index=0) -> None:
+            # The name follows the map unless the author typed one of their own.
+            if name.text() in ("", names.get(previous[0], "")):
+                name.setText(names.get(source.currentData(), ""))
+            previous[0] = source.currentData()
+
+        source.currentIndexChanged.connect(follow)
+        music = [("random (default)", None)] + [(f"song {n}", n) for n in range(10)]
+        self.arena_table.setCellWidget(row, 2, self._combo(
+            music + self._file_items(arena.music), arena.music))
+        colors = QSpinBox()
+        colors.setRange(-1, MAX_ARENA_COLORS)
+        colors.setSpecialValueText("default")
+        colors.setValue(-1 if arena.colors is None else arena.colors)
+        colors.setToolTip(f"Roof and floor colours (0-{MAX_ARENA_COLORS}); the default is "
+                          f"{ARENA_COLOR_BASE} plus the arena's place in the list")
+        colors.valueChanged.connect(lambda _v=0: self._revalidate())
+        self.arena_table.setCellWidget(row, 3, colors)
+        self.arena_table.setCellWidget(row, 4, self._combo(_ARENA_BOOLS, arena.dark))
+        self.arena_table.setCellWidget(row, 5, self._combo(_ARENA_BOOLS, arena.sewer))
+
+    def _add_arena(self) -> None:
+        if not self._documents:
+            return
+        used = {arena.map_uuid for arena in self._arenas()}
+        spare = [d for d in self._documents if d.uuid not in used] or self._documents
+        self._append_arena(ArenaEntry(map_uuid=spare[0].uuid,
+                                      name=spare[0].name[:MAX_LEVEL_NAME]))
+        self._revalidate()
+
+    def _remove_arena(self) -> None:
+        row = self.arena_table.currentRow()
+        if row < 0 and self.arena_table.rowCount():
+            row = self.arena_table.rowCount() - 1
+        if row >= 0:
+            self.arena_table.removeRow(row)
+            self._revalidate()
+
+    def _arenas(self):
+        for row in range(self.arena_table.rowCount()):
+            cell = lambda column, r=row: self.arena_table.cellWidget(r, column)  # noqa: E731
+            colors = cell(3).value()
+            yield ArenaEntry(
+                map_uuid=cell(0).currentData() or "",
+                name=cell(1).text(),
+                music=cell(2).currentData(),
+                colors=None if colors < 0 else colors,
+                dark=cell(4).currentData(),
+                sewer=cell(5).currentData(),
+            )
 
     def _add_map(self) -> None:
         used = {level.map_uuid for level in self._levels()}
@@ -293,6 +419,7 @@ class CampaignDialog(QDialog):
             author=self.author.text(), version=self.version.text().strip(),
             description=" ".join(self.description.toPlainText().split()),
             release=self.release.currentData(), levels=tuple(self._levels()),
+            arenas=tuple(self._arenas()),
         )
 
     # -- the panel ----------------------------------------------------------
@@ -302,7 +429,9 @@ class CampaignDialog(QDialog):
         count = len(campaign.levels)
         self.start.setText(f"{count} floor{'s' if count != 1 else ''}; the first row is floor 1"
                            if count else "No floors")
-        problems = validate(campaign, self._documents)
+        self.tabs.setTabText(1, f"Network arenas ({len(campaign.arenas)})"
+                             if campaign.arenas else "Network arenas")
+        problems = validate(campaign, self._documents, music_names=self._music_names)
         errors = [p for p in problems if p.severity >= Severity.ERROR]
         warnings = [p for p in problems if p.severity == Severity.WARNING]
         lines = [f"{p.severity.name.lower()}: {p.message}" + (f" ({p.where})" if p.where else "")

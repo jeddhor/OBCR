@@ -27,6 +27,7 @@ from .document import MapDocument, ProjectDocument
 from .errors import Diagnostic, ObcEditError, Severity
 from .names import NativeName
 from .planes import MapPlanes, linear_index
+from .resources import Resource
 
 #: A history longer than this is memory nobody uses. Operation Body Count maps are small,
 #: so the cap that binds first is the edit count, not the step count.
@@ -115,6 +116,45 @@ class SlotEdit:
 
 
 @dataclass(frozen=True)
+class ResourceEdit:
+    """A replacement (art, sound) or music file added, changed or removed.
+
+    Records only: the bytes stay in the project's content-addressed store, so
+    undoing an import or a replace always finds the file it points back to.
+    """
+
+    before: Resource | None
+    after: Resource | None
+
+    def inverted(self) -> "ResourceEdit":
+        return ResourceEdit(self.after, self.before)
+
+    @property
+    def key(self):
+        return (self.after or self.before).key
+
+    @property
+    def changes_anything(self) -> bool:
+        return self.before != self.after
+
+
+@dataclass(frozen=True)
+class CampaignEdit:
+    """The campaign's JSON before and after, for edits that must undo together
+    with something else (renaming a music file the floors play)."""
+
+    before: dict
+    after: dict
+
+    def inverted(self) -> "CampaignEdit":
+        return CampaignEdit(self.after, self.before)
+
+    @property
+    def changes_anything(self) -> bool:
+        return self.before != self.after
+
+
+@dataclass(frozen=True)
 class Command:
     """A named, undoable change: a bag of edits and how to describe it."""
 
@@ -125,14 +165,18 @@ class Command:
     maps: tuple[MapEdit, ...] = ()
     #: Adjacent commands sharing a gesture id coalesce into one undo step.
     gesture: str = ""
+    resources: tuple[ResourceEdit, ...] = ()
+    campaigns: tuple[CampaignEdit, ...] = ()
 
     def __len__(self) -> int:
-        return len(self.cells) + len(self.names) + len(self.slots) + len(self.maps)
+        return (len(self.cells) + len(self.names) + len(self.slots) + len(self.maps)
+                + len(self.resources) + len(self.campaigns))
 
     @property
     def changes_anything(self) -> bool:
         return any(edit.changes_anything
-                   for edit in self.cells + self.names + self.slots + self.maps)
+                   for edit in self.cells + self.names + self.slots + self.maps
+                   + self.resources + self.campaigns)
 
     def inverted(self) -> "Command":
         return Command(
@@ -142,6 +186,8 @@ class Command:
             slots=tuple(edit.inverted() for edit in reversed(self.slots)),
             maps=tuple(edit.inverted() for edit in reversed(self.maps)),
             gesture=self.gesture,
+            resources=tuple(edit.inverted() for edit in reversed(self.resources)),
+            campaigns=tuple(edit.inverted() for edit in reversed(self.campaigns)),
         )
 
     def merged_with(self, later: "Command") -> "Command":
@@ -159,6 +205,8 @@ class Command:
             slots=self.slots + later.slots,
             maps=self.maps + later.maps,
             gesture=self.gesture,
+            resources=self.resources + later.resources,
+            campaigns=self.campaigns + later.campaigns,
         )
 
 
@@ -235,7 +283,24 @@ def apply_command(project: ProjectDocument, command: Command) -> ProjectDocument
                 raise _command_error(f"map {edit.document.uuid} is not in the project")
             del maps[position]
 
-    return project.with_maps(maps)
+    if not command.resources and not command.campaigns:
+        return project.with_maps(maps)
+    campaign = project.campaign
+    for edit in command.campaigns:
+        if campaign != edit.before:
+            raise _command_error("the campaign is not what this edit expects")
+        campaign = edit.after
+    records = {resource.key: resource for resource in project.resources}
+    for edit in command.resources:
+        current = records.get(edit.key)
+        if current != edit.before:
+            raise _command_error(f"{edit.key[0]} {edit.key[1]} is not what this edit expects")
+        if edit.after is None:
+            records.pop(edit.key, None)
+        else:
+            records[edit.key] = edit.after
+    return replace(project, maps=tuple(maps), campaign=dict(campaign)).with_resources(
+        records.values())
 
 
 # ---------------------------------------------------------------------------
@@ -278,6 +343,52 @@ def write_words(document: MapDocument, writes, *, label: str = "Place",
         if before != value:
             edits.append(CellEdit(document.uuid, plane, index, before, value))
     return Command(label, tuple(edits), gesture=gesture)
+
+
+def set_resource(project: ProjectDocument, kind: str, target, resource: Resource | None, *,
+                 label: str = "") -> Command:
+    """Replace (or with None, revert) one wall page, sprite, sound or music file."""
+    before = project.resource(kind, target)
+    wanted = (kind, str(target).lower() if kind == "music" else str(target))
+    if resource is not None and resource.key != wanted:
+        raise _command_error(f"{resource.kind} {resource.target} cannot replace {kind} {target}")
+    what = f"{kind} {target}"
+    label = label or (f"Revert {what}" if resource is None
+                      else f"Replace {what}" if before else f"Import {what}")
+    return Command(label, resources=(ResourceEdit(before, resource),))
+
+
+def rename_music(project: ProjectDocument, old: str, new: str) -> Command:
+    """A music file under another name: one step, so undo restores both."""
+    from dataclasses import replace as _replace
+
+    current = project.resource("music", old)
+    if current is None:
+        raise _command_error(f"there is no music file {old}")
+    if project.resource("music", new) is not None and new.lower() != old.lower():
+        raise _command_error(f"a music file named {new} already exists")
+    renamed = _replace(current, target=new)
+    campaigns = ()
+    if project.campaign:
+        after = _renamed_music(project.campaign, old, new)
+        if after != project.campaign:
+            campaigns = (CampaignEdit(project.campaign, after),)
+    return Command(f"Rename {old}", resources=(ResourceEdit(current, None),
+                                               ResourceEdit(None, renamed)),
+                   campaigns=campaigns)
+
+
+def _renamed_music(campaign: dict, old: str, new: str) -> dict:
+    """The campaign JSON with every floor and arena that played `old` playing `new`."""
+    import copy
+
+    after = copy.deepcopy(campaign)
+    for key in ("levels", "arenas"):
+        for entry in after.get(key, []) or []:
+            if isinstance(entry, dict) and isinstance(entry.get("music"), str) \
+                    and entry["music"].lower() == old.lower():
+                entry["music"] = new
+    return after
 
 
 def remove_map(project: ProjectDocument, uuid: str, *, label: str = "Delete map") -> Command:

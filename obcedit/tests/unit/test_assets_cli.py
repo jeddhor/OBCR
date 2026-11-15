@@ -116,6 +116,28 @@ class CommandLine(unittest.TestCase):
         self.assertEqual(code, EXIT_OK, text)
         self.assertIn("result: ok", text)
 
+    def test_a_project_with_resources_exports_format_2(self):
+        import asset_support as fx
+
+        from obcedit_core.project import load_project, save_project
+        from obcedit_core.resources import WALL, store_for
+
+        path = self.root / "art.obcproject"
+        self.assertEqual(run("project-new", path, "--name", "Art Mod", "--room", "ROOM")[0],
+                         EXIT_OK)
+        project = load_project(path)
+        store = store_for(path, workspace="", project_uuid=project.uuid)
+        record = store.put(fx.art(), WALL, 7, "mine.png")
+        save_project(project.with_resources([record]), path)
+        code, text = run("mod-export", path, "--output", self.root / "art.obcmod")
+        self.assertEqual(code, EXIT_OK, text)
+        code, text = run("mod-audit", self.root / "art.obcmod")
+        self.assertEqual(code, EXIT_OK, text)
+        store.path_of(record).unlink()
+        code, text = run("mod-export", path, "--output", self.root / "art2.obcmod")
+        self.assertEqual(code, EXIT_ERROR)
+        self.assertIn("mine.png", text)
+
     def test_an_imported_map_needs_private(self):
         project = self.root / "imp.obcproject"
         code, text = run("project-import", self.archive, "--project", project, "--map", 5)
