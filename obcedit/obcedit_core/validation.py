@@ -27,7 +27,9 @@ Warnings (advisory):
 * an ambush marker with no standing enemy on it (it stays a wall);
 * a door-look marker on something that is not a door-look wall;
 * plane-1 words the game ignores (19-317 with no meaning);
-* static 71, which blocks only in the CD release.
+* static 71, which blocks only in the CD release;
+* a patroller that walks into a wall with no arrow to turn it (it stops there
+  for good), and a patrol arrow no patrol reaches (patrol.py).
 
 Every diagnostic has a stable `OBC-*` code and a cell, so the GUI can put the
 cursor on the problem.
@@ -37,7 +39,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from . import rules
+from . import patrol, rules
 from .catalog import Catalog
 from .document import MapDocument
 from .errors import Diagnostic, Severity
@@ -97,6 +99,7 @@ LOCAL_CODES = frozenset({
 GLOBAL_CODES = frozenset({
     "OBC-SIZE-001", "OBC-START-001", "OBC-START-002", "OBC-LIMIT-001", "OBC-LIMIT-002",
     "OBC-LIMIT-003", "OBC-LIMIT-004", "OBC-EXIT-001", "OBC-KILL-001", "OBC-UNREACH-001",
+    "OBC-PATROL-001", "OBC-PATROL-002",
 })
 
 
@@ -269,7 +272,64 @@ def validate_map(document: MapDocument, catalog: Catalog | None = None, *,
                 add("OBC-UNREACH-001", Severity.INFORMATION,
                     f"{len(cut)} floor cells cannot be reached from the start", x, y)
 
+    # -- patrols (advisory) --------------------------------------------
+    if only is None or {"OBC-PATROL-001", "OBC-PATROL-002"} & only:
+        for problem in patrol_problems(document, catalog, imported=imported):
+            add(problem.code, problem.severity, problem.message, *problem.cell)
+
     return _sorted(problems)
+
+
+def patrol_problems(document: MapDocument, catalog: Catalog | None = None, *,
+                    imported: bool = False) -> list[Diagnostic]:
+    """Patrols that stop for good, and arrows no patrol ever reads.
+
+    Follows every moving patroller with the engine's rule (patrol.py). A
+    patroller that walks into a wall away from an arrow stands there for the
+    rest of the floor, which is rarely what was meant; an arrow that no patrol
+    reaches does nothing (allies told to disperse also read arrows, but they
+    start wherever the player leads them, so they are not followed here).
+
+    Both are warnings on a new map and notes on one imported from the game,
+    where the original's own floors do both.
+    """
+    severity = Severity.INFORMATION if imported else Severity.WARNING
+    grid = patrol.Grid(document, catalog)
+    problems = []
+    read: set[tuple[int, int]] = set()
+    for x, y, facing in patrol.patrollers(document, catalog):
+        walk = patrol.follow(grid, x, y, facing)
+        read |= walk.arrows
+        if walk.stops_at is None:
+            continue
+        name = "this patroller"
+        if catalog is not None:
+            entry = catalog.for_value(1, document.planes.at(1, x, y))
+            if entry is not None:
+                name = entry.name.split(",")[0]
+        sx, sy = walk.stops_at
+        where = "where it starts" if (sx, sy) == (x, y) else f"at ({sx}, {sy})"
+        heading = patrol.ARROW_ORDER[walk.stop_direction]
+        bx, by = walk.blocked_by
+        message = (f"{name} stops for good {where}: heading {heading}, it walks into "
+                   f"{walk.reason} at ({bx}, {by}) with no arrow to turn it")
+        word = document.planes.at(1, bx, by) if grid.inside(bx, by) else 0
+        blocker = catalog.kind(1, word) if catalog is not None else ""
+        if blocker == "enemy" or (catalog is None and 108 <= word <= 317):
+            # Standing enemies leave their posts once they see the player, so
+            # this one may be gone by the time the patrol gets there.
+            problems.append(Diagnostic("OBC-PATROL-001", Severity.INFORMATION,
+                                       message + ", unless that enemy has moved by then",
+                                       _where(x, y), (x, y)))
+            continue
+        problems.append(Diagnostic("OBC-PATROL-001", severity, message, _where(x, y), (x, y)))
+    for x, y in patrol.arrow_cells(document):
+        if (x, y) not in read:
+            problems.append(Diagnostic(
+                "OBC-PATROL-002", severity,
+                "no patrolling enemy's route reaches this arrow, so it turns nobody",
+                _where(x, y), (x, y)))
+    return problems
 
 
 # -- safe repairs ---------------------------------------------------------
