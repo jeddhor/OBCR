@@ -45,6 +45,7 @@ struct Options {
     bool menuEntries = true;     // Start Menu / application menu
     bool desktopShortcut = false;
     bool pathLink = true;        // ~/.local/bin/obcr (Linux)
+    bool editor = true;          // install OBCEdit when this Setup carries it
 };
 
 // A previous installation recorded by Setup.
@@ -59,6 +60,11 @@ using Progress = std::function<void(int percent, const QString &message)>;
 QString version();
 QString gameExeName();      // obcr.exe or obcr
 QString uninstallerName();  // OBCR-Uninstall(.exe)
+QString editorExeName();    // OBCEdit(.exe)
+// True if this Setup carries OBCEdit (an `obcedit/` folder beside it).
+bool editorAvailable();
+// Bytes OBCEdit takes once installed.
+qint64 editorSize();
 QString defaultInstallDir();
 // Game copies found in the Steam and GOG default locations: CD images
 // (.cue) first, then folders with the game files.

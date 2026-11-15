@@ -15,6 +15,10 @@
 *.sav
 COUNT.EXE
 count.exe
+BCCD.EXE
+bccd.exe
+*.QOA
+*.qoa
 CONFIG.DAT
 config.dat
 BC.LOG
@@ -29,6 +33,7 @@ DEBUG.TXT
 __pycache__/
 *.pyc
 .venv/
+obcedit/obcedit_core/_build_version.py
 
 # Editors and OS
 .vs/

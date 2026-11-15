@@ -3,7 +3,7 @@
 //
 //   OBCR-Setup                         installation wizard
 //   OBCR-Setup --unattended --data DIR|IMAGE [--target DIR] [--desktop-shortcut]
-//              [--no-menu] [--no-path-link]
+//              [--no-menu] [--no-path-link] [--no-editor]
 //   OBCR-Setup --uninstall [--target DIR] [--unattended] [--purge]
 //   OBCR-Uninstall ...                 same as --uninstall (installed copy)
 //
@@ -147,6 +147,7 @@ int main(int argc, char **argv) {
     const QCommandLineOption desktopOpt(QStringLiteral("desktop-shortcut"), QStringLiteral("Add a desktop shortcut."));
     const QCommandLineOption noMenuOpt(QStringLiteral("no-menu"), QStringLiteral("No Start/applications menu entries."));
     const QCommandLineOption noLinkOpt(QStringLiteral("no-path-link"), QStringLiteral("No ~/.local/bin/obcr link (Linux)."));
+    const QCommandLineOption noEditorOpt(QStringLiteral("no-editor"), QStringLiteral("Do not install OBCEdit, the level editor."));
     const QCommandLineOption purgeOpt(QStringLiteral("purge"),
                                       QStringLiteral("With --uninstall: also delete settings and saved games."));
     const QCommandLineOption shotsOpt(QStringLiteral("screenshots"), QStringLiteral("Development: render the pages."),
@@ -155,7 +156,7 @@ int main(int argc, char **argv) {
     cleanupOpt.setFlags(QCommandLineOption::HiddenFromHelp);
     const std::initializer_list<const QCommandLineOption *> all{
         &uninstallOpt, &unattendedOpt, &dataOpt, &targetOpt, &desktopOpt,
-        &noMenuOpt,    &noLinkOpt,     &purgeOpt, &shotsOpt, &cleanupOpt};
+        &noMenuOpt,    &noLinkOpt,     &noEditorOpt, &purgeOpt, &shotsOpt, &cleanupOpt};
     for (const QCommandLineOption *o : all) parser.addOption(*o);
     parser.process(app);
 
@@ -208,6 +209,7 @@ int main(int argc, char **argv) {
         o.menuEntries = !parser.isSet(noMenuOpt);
         o.desktopShortcut = parser.isSet(desktopOpt);
         o.pathLink = !parser.isSet(noLinkOpt);
+        o.editor = !parser.isSet(noEditorOpt);
         const setup::DataCheck check = setup::checkData(o.dataDir);
         if (!check.error.isEmpty() || !check.complete) {
             out() << "error: " << (check.error.isEmpty() ? QStringLiteral("incomplete game files: ") + check.problems().join(QStringLiteral(", "))

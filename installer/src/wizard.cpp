@@ -241,6 +241,12 @@ TargetPage::TargetPage(SetupWizard *w) : QWizardPage(w), wizard_(w) {
     pathLink_ = new QCheckBox(QStringLiteral("Make the obcr command available (~/.local/bin/obcr)"), this);
 #endif
     menu_->setChecked(true);
+    if (setup::editorAvailable()) {
+        editor_ = new QCheckBox(QStringLiteral("Install OBCEdit, the level editor for making mods"), this);
+        editor_->setChecked(true);
+        layout->addWidget(editor_);
+        connect(editor_, &QCheckBox::toggled, this, &TargetPage::update);
+    }
     layout->addWidget(menu_);
     layout->addWidget(desktop_);
     if (pathLink_) {
@@ -269,7 +275,8 @@ void TargetPage::update() {
     if (!setup::isUsableTarget(dir, &why)) {
         status_->setText(QStringLiteral("<span style='color:#b00020'>%1</span>").arg(why.toHtmlEscaped()));
     } else {
-        const qint64 need = setup::installSize(wizard_->check);
+        qint64 need = setup::installSize(wizard_->check);
+        if (editor_ && editor_->isChecked()) need += setup::editorSize();
         QString existing = dir;
         while (!existing.isEmpty() && !QFileInfo::exists(existing)) existing = QFileInfo(existing).path();
         const QStorageInfo storage(existing);
@@ -291,6 +298,7 @@ bool TargetPage::validatePage() {
     wizard_->options.menuEntries = menu_->isChecked();
     wizard_->options.desktopShortcut = desktop_->isChecked();
     wizard_->options.pathLink = pathLink_ && pathLink_->isChecked();
+    wizard_->options.editor = editor_ && editor_->isChecked();
     return true;
 }
 

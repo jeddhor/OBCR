@@ -9,7 +9,11 @@
 param(
     [string]$Qt = "C:\Qt\6.11.1\mingw_64",
     [string]$MinGW = "C:\Qt\Tools\mingw1310_64",
-    [string]$Ninja = "C:\Qt\Tools\Ninja"
+    [string]$Ninja = "C:\Qt\Tools\Ninja",
+    # The Python to freeze OBCEdit with (needs PySide6 and PyInstaller).
+    [string]$Python = "",
+    # Build the installer without OBCEdit.
+    [switch]$NoEditor
 )
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path "$PSScriptRoot\..").Path
@@ -52,6 +56,18 @@ $files = Get-ChildItem $deploy -Recurse -File | ForEach-Object {
 } | Where-Object { $_ -ne "OBCR-Setup.exe" }
 $list = @("# Runtime files of OBCR Setup, copied with the uninstaller.") + $files + @("setup-runtime.txt")
 Set-Content -Path "$deploy\setup-runtime.txt" -Value $list -Encoding utf8
+
+# OBCEdit, the level editor: frozen with PyInstaller and carried beside Setup,
+# which installs it when the user leaves the option on. It is added after the
+# runtime list above, so the uninstaller's copy does not carry it.
+if (-not $NoEditor) {
+    if (-not $Python) {
+        $venv = Join-Path $root ".local\obcedit-venv\Scripts\python.exe"
+        $Python = if (Test-Path $venv) { $venv } else { "python" }
+    }
+    Invoke-Checked "freeze OBCEdit" { & $Python obcedit\scripts\package.py --output target\obcedit }
+    Copy-Item -Recurse "target\obcedit\OBCEdit" "$deploy\obcedit"
+}
 
 Invoke-Checked "pack" { cargo xtask pack-installer target\release\obcr-setup.exe $deploy $out }
 $size = [math]::Round((Get-Item $out).Length / 1MB, 1)
