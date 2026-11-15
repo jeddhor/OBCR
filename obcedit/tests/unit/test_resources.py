@@ -297,6 +297,9 @@ class Audio(unittest.TestCase):
         self.assertEqual(audioimport.check_music(fx.ogg(), "ogg").rate, 44100)
         self.assertEqual(audioimport.check_music(fx.qoa(1, 22050), "qoa").channels, 1)
         self.assertAlmostEqual(audioimport.check_music(fx.imf(7), "imf").seconds, 0.7)
+        # A headerless ("type 0") song too, by OBCR's rule.
+        headerless = fx.imf(7)[2:]
+        self.assertAlmostEqual(audioimport.check_music(headerless, "imf").seconds, 0.7)
 
     def test_music_refusals(self):
         cases = [

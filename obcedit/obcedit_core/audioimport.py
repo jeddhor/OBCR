@@ -152,23 +152,30 @@ def check_qoa(blob: bytes, name: str = "the music") -> AudioInfo:
 
 
 def check_imf(blob: bytes, name: str = "the music") -> AudioInfo:
-    """An IMF song as the game stores one: a 16-bit length, then 4-byte commands.
+    """An IMF song: "type 1" (a 16-bit length, then 4-byte commands, as the
+    game stores its songs) or "type 0" (the commands alone).
 
-    The commands are (register, value, 16-bit delay) at 700 Hz -- the same
-    layout as the original's songs (docs/re/AUDIO.md).
+    The commands are (register, value, 16-bit delay) at 700 Hz (docs/re/
+    AUDIO.md). The rule is OBCR's own (obc_formats::modassets::read_imf): type
+    1 when the length is non-zero, a multiple of 4 and fits the file; else
+    type 0 when the file is whole commands; and a song whose every delay is 0
+    has no timing and is refused.
     """
     _size(blob, name)
-    if len(blob) < 6:
+    if len(blob) < 4:
         raise _error(f"{name} is too short to be an IMF song", name)
     length = struct.unpack_from("<H", blob)[0]
-    if length == 0 or length % 4 or length > len(blob) - 2:
-        raise _error(f"{name} is not an IMF song with a length field: it declares {length} "
-                     f"bytes of commands in a {len(blob)}-byte file", name)
-    seconds = 0.0
-    if length <= 1 << 20:  # a running time is a nicety; not worth seconds of work
-        delay = sum(struct.unpack_from("<H", blob, 2 + i + 2)[0] for i in range(0, length, 4))
-        seconds = delay / 700
-    return AudioInfo("imf", seconds=seconds)
+    if length and length % 4 == 0 and length <= len(blob) - 2:
+        body = blob[2:2 + length]
+    elif len(blob) % 4 == 0:
+        body = blob
+    else:
+        raise _error(f"{name} is not an IMF song: its length field ({length}) does not fit "
+                     f"a {len(blob)}-byte file, and the file is not whole commands", name)
+    delay = sum(struct.unpack_from("<H", body, i + 2)[0] for i in range(0, len(body), 4))
+    if delay == 0:
+        raise _error(f"{name} is an IMF song with no timing (every delay is 0)", name)
+    return AudioInfo("imf", seconds=delay / 700)
 
 
 def check_music(blob: bytes, extension: str, name: str = "the music") -> AudioInfo:

@@ -415,6 +415,36 @@ mod tests {
         );
     }
 
+    /// docs/test-vectors/png.json: the same files OBCEdit's reader is
+    /// tested against, with RGBA computed from the PNG rules alone.
+    #[test]
+    fn decodes_the_shared_png_vectors() {
+        use sha2::{Digest, Sha256};
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/test-vectors");
+        let doc = std::fs::read_to_string(root.join("png.json")).unwrap();
+        // A small reader for the two fields used, to keep serde_json out of
+        // this crate: "file": "..." and "rgba_sha256": "...", in order.
+        let field = |from: &str, key: &str| -> (String, usize) {
+            let at = from.find(&format!("\"{key}\": \"")).unwrap() + key.len() + 5;
+            let end = at + from[at..].find('"').unwrap();
+            (from[at..end].to_owned(), end)
+        };
+        let mut rest = doc.as_str();
+        let mut n = 0;
+        while rest.contains("\"file\"") {
+            let (file, e) = field(rest, "file");
+            rest = &rest[e..];
+            let (want, e) = field(rest, "rgba_sha256");
+            rest = &rest[e..];
+            let img = decode_png(&std::fs::read(root.join(&file)).unwrap()).unwrap();
+            let flat: Vec<u8> = img.rgba.concat();
+            let got: String = Sha256::digest(&flat).iter().map(|b| format!("{b:02x}")).collect();
+            assert_eq!(got, want, "{file}");
+            n += 1;
+        }
+        assert_eq!(n, 14);
+    }
+
     #[test]
     fn refuses_bad_pngs() {
         assert!(decode_png(&png_bytes(32, 64, png::ColorType::Grayscale, &[0; 32 * 64])).is_err());
