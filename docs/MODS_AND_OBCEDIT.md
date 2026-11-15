@@ -5,7 +5,7 @@
 The owner asked for two things that only make sense together:
 
 1. **Mods and custom maps in OBCR**: a player can install a mod and play its floors, as a campaign of their own, without touching the original files.
-2. **OBCEdit**, a level editor that ships with OBCR and makes those mods. It is ported from **EC7Edit**, the owner's Corridor 7 editor in `..\EC7Wolf\editor`: the parts that are about editing Wolfenstein-family maps are kept, the parts that are about Corridor 7 or ECWolf are taken out, and Operation Body Count's own features are added.
+2. **OBCEdit**, a level editor that ships with OBCR and makes those mods. It is ported from **EC7Edit**, the editor from the EC7Wolf port of Corridor 7 (`..\EC7Wolf\editor`): the parts that are about editing Wolfenstein-family maps are kept, the parts that are about Corridor 7 or ECWolf are taken out, and Operation Body Count's own features are added.
 
 This document is the plan for both: what a mod is, what the engine must change, how EC7Edit becomes OBCEdit module by module, how it ships, how it is tested, and the order of work. It is written to be executed by agents under [CLAUDE.md](../CLAUDE.md) and [AGENT_GUIDE.md](AGENT_GUIDE.md). Decisions that outlive the milestone go to [DECISIONS.md](DECISIONS.md) as ADR-023 (the mod format) and ADR-024 (OBCEdit).
 
@@ -204,7 +204,7 @@ obcedit/
   pyproject.toml, README.md
 ```
 
-EC7Edit is GPL-3.0-or-later and the owner's own work, so it can be copied into OBCR (GPL-3.0-or-later) with its copyright lines kept. The version is OBCR's (`1.0.0-beta.N`), for the reason EC7Edit gives: one product, one number.
+EC7Edit is GPL-3.0-or-later and has the same copyright holder as OBCR, so it can be copied into OBCR (GPL-3.0-or-later) with its copyright lines kept. The version is OBCR's (`1.0.0-beta.N`), for the reason EC7Edit gives: one product, one number.
 
 ### 5.2 Module map: keep, adapt, rewrite, drop
 
