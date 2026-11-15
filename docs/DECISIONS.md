@@ -187,3 +187,27 @@ Template:
   - The CD-only movies play at 6 tics a frame. The original forces their frame delay to 0 and plays them as fast as the drive reads them, about 12 frames a second on a double-speed drive.
 - **Alternatives**: using the Steam OGG files (Steam only, and the owner prefers ripping from the image); mounting or copying the whole image (360 MB, and still needs a reader).
 - **Consequences**: Floppy copies keep working unchanged (OBC-A, FM music). One CD difference cannot be read from the code and has a stand-in: a flame's direct-hit damage (Q-036).
+
+## ADR-023 — Mods: campaigns of original-format maps with per-floor profiles
+
+- **Status**: Accepted (2026-11-15), at the owner's request
+- **Context**: The owner asked for mods and custom maps. The original decides each floor's behaviour (darkness, sewer textures, colours, music, sequences, the face apparition, floor 40's dead exit) from the map slot number, in a dozen places. DESIGN rules out scripting and plugins.
+- **Decision**:
+  - A mod is a folder or a `.obcmod` ZIP with a `mod.toml` manifest and its maps in the original's own `MAPHEAD.BC`/`MAPTEMP.BC` format (docs/MODS_AND_OBCEDIT.md §3). The manifest lists the campaign's floors in order: the mod's own maps or original floors by reference (never copied), each with `like = <original floor>` and optional overrides (music, darkness, sewer look, colours, sequence, message, dead exit).
+  - Every `mapon` test in the simulation and UI became a field of `obc_sim::level::LevelProfile`; `LevelProfile::stock(slot)` reproduces the original exactly (every existing test, soak and save identity passes unchanged). The profile is saved (save format 4 adds an extra block; format 3 still loads).
+  - Untrusted input: a bounded ZIP reader (stored/deflate, no encryption, ZIP64 or unsafe names, size limits, CRC), a strict manifest (`deny_unknown_fields`, ranges, printable ASCII), and `check_map` with the original's limits; a mod with errors is listed with the reason and cannot be started.
+  - Each mod has its own save folder (`saves/<id>/`) and high-score table; network games always use the original arenas.
+  - v1 carries maps and per-floor settings only: no new art, sounds or code.
+- **Alternatives**: A new map format (nothing reads it; the original's is simple and OBCEdit writes it byte-identically); hard-coding a "mod slot" range like ECWolf's MAPINFO (a profile is clearer and needs no lookup tables); scripted levels (ruled out by DESIGN).
+- **Consequences**: `--mod`, `--check-mod` and `--start` on the command line; the MODS screen (D). A mod made for one release plays on the other (the only placeable difference, static 71's blocking, is flagged by OBCEdit).
+
+## ADR-024 — OBCEdit: EC7Edit ported, shipped with OBCR
+
+- **Status**: Accepted (2026-11-15), at the owner's request
+- **Context**: The owner asked for a level editor shipped with OBCR, reusing EC7Edit, the owner's Corridor 7 editor (Python 3 + PySide6, about 25,000 lines with tests, GPL-3.0-or-later).
+- **Decision**:
+  - OBCEdit is a fork of EC7Edit in `obcedit/`: the game-agnostic layers kept (raw-word document, undo, project format, path guards, drawing tools, transforms), the Corridor 7 and ECWolf parts replaced (codec for OBC's `MAPHEAD`/`MAPTEMP`, catalog, rules, compound tools, validation, mod export, OBCR runner) or dropped (WAD/MAPINFO, translators, custom resources, cinematics).
+  - The catalog is generated from OBCR's own code (`obc-tool catalog`, spawning every code with the real `SetupGameLevel`) and verified by `cargo xtask test-data`, so the editor never disagrees with the engine about what a value means.
+  - OBCR stays the only authority at run time: OBCEdit identifies game data with `obcr --check-data`, checks mods with `obcr --check-mod`, playtests with `obcr --mod … --play … --start …` and photographs the map with `obcr --shot` (no second renderer).
+  - Shipped as a PyInstaller onedir folder (EC7Edit's measured decision) inside the OBCR installers, as an option on by default; GitHub Actions tests the core and GUI and freezes it for releases.
+- **Consequences**: The installers grow by the frozen Python and Qt (about 70 MB). The core stays standard-library-only, so its tests run anywhere.
