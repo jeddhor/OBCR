@@ -827,16 +827,16 @@
     },
     {
       "kind": "generator",
-      "name": "Generator switch (off)",
-      "on": false,
+      "name": "Generator switch (lights on)",
+      "on": true,
       "page": 94,
       "solid": true,
       "value": 95
     },
     {
       "kind": "generator",
-      "name": "Generator switch (on)",
-      "on": true,
+      "name": "Generator switch (lights off: the floor starts dark)",
+      "on": false,
       "page": 95,
       "solid": true,
       "value": 96
