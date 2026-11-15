@@ -6,8 +6,13 @@
 //! ```text
 //! entry*  : u16 path length, path (UTF-8, '/' separated), u32 mode,
 //!           u64 size, u64 packed size, raw-deflate data
-//! trailer : u64 archive length, b"OBCRSFX2"
+//! trailer : u64 archive length, b"OBCRSFX3"
 //! ```
+//!
+//! An entry whose mode has the `S_IFLNK` type bits (0o120000) is a symbolic
+//! link, and its data is the link's relative target ('/' separated). Links
+//! are made after every file, so a target always exists; on Windows, which
+//! has no links in its payload, one would be a copy of its target.
 //!
 //! At start the archive is unpacked into a fresh temporary folder, Setup runs
 //! from there with our arguments, and the folder is removed when it exits.
@@ -20,7 +25,9 @@ use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const MAGIC: &[u8; 8] = b"OBCRSFX2";
+const MAGIC: &[u8; 8] = b"OBCRSFX3";
+const TYPE_BITS: u32 = 0o170_000;
+const LINK_TYPE: u32 = 0o120_000;
 const SETUP: &str = if cfg!(windows) { "OBCR-Setup.exe" } else { "OBCR-Setup" };
 
 fn main() {
@@ -68,6 +75,7 @@ fn unpack(exe: &Path) -> io::Result<PathBuf> {
     let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos());
     let dir = std::env::temp_dir().join(format!("obcr-setup-{}-{stamp}", std::process::id()));
     fs::create_dir_all(&dir)?;
+    let mut links = Vec::new();
     loop {
         let mut n = [0u8; 2];
         match r.read_exact(&mut n) {
@@ -99,10 +107,53 @@ fn unpack(exe: &Path) -> io::Result<PathBuf> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
+        if mode & TYPE_BITS == LINK_TYPE {
+            let target = String::from_utf8(data).map_err(|_| bad("damaged installer"))?;
+            let inside = resolve(rel, &target).ok_or_else(|| bad("damaged installer"))?;
+            links.push((path, target, dir.join(inside)));
+            continue;
+        }
         fs::write(&path, &data)?;
         set_mode(&path, mode)?;
     }
+    for (path, target, resolved) in links {
+        make_link(&path, &target, &resolved)?;
+    }
     Ok(dir)
+}
+
+/// Where the link `rel` -> `target` points, relative to the archive root, if
+/// it stays inside it.
+fn resolve(rel: &Path, target: &str) -> Option<PathBuf> {
+    let mut out: Vec<&str> = Vec::new();
+    for c in rel.parent()?.components() {
+        match c {
+            Component::Normal(s) => out.push(s.to_str()?),
+            _ => return None,
+        }
+    }
+    for part in target.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                out.pop()?;
+            }
+            p if p.contains('\\') || p.contains(':') => return None,
+            p => out.push(p),
+        }
+    }
+    (!out.is_empty()).then(|| out.iter().collect())
+}
+
+#[cfg(unix)]
+fn make_link(path: &Path, target: &str, _resolved: &Path) -> io::Result<()> {
+    std::os::unix::fs::symlink(target, path)
+}
+
+/// Windows payloads have no links; should one appear, it becomes a copy.
+#[cfg(not(unix))]
+fn make_link(path: &Path, _target: &str, resolved: &Path) -> io::Result<()> {
+    fs::copy(resolved, path).map(|_| ())
 }
 
 #[cfg(unix)]
@@ -137,4 +188,24 @@ fn report(msg: &str) {
 #[cfg(not(windows))]
 fn report(msg: &str) {
     eprintln!("{msg}");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn links_resolve_inside_the_archive_only() {
+        let r = |rel: &str, t: &str| resolve(Path::new(rel), t);
+        assert_eq!(
+            r("obcedit/_internal/libQt6Core.so.6", "PySide6/Qt/lib/libQt6Core.so.6"),
+            Some(PathBuf::from("obcedit/_internal/PySide6/Qt/lib/libQt6Core.so.6"))
+        );
+        assert_eq!(r("a/b/link", "../c"), Some(PathBuf::from("a/c")));
+        assert_eq!(r("a/link", "./x"), Some(PathBuf::from("a/x")));
+        assert_eq!(r("a/link", "../../x"), None, "escapes the archive");
+        assert_eq!(r("link", "../x"), None);
+        assert_eq!(r("a/link", "c:\\x"), None);
+        assert_eq!(r("a/link", ".."), None, "the root itself is not a file");
+    }
 }

@@ -150,6 +150,20 @@ def selftest() -> int:
         return 1
     print(f"catalog={len(catalog.entries)} entries, schema {catalog.schema}")
 
+    # The editor digests every file it reads. The packages prune OpenSSL, so
+    # hashlib must work from Python's own SHA-256: prove it in the package.
+    import hashlib
+
+    try:
+        digest = hashlib.sha256(b"abc").hexdigest()
+    except Exception as error:                       # noqa: BLE001 - reported, not raised
+        print(f"sha256=broken ({error})")
+        return 1
+    if digest != "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad":
+        print(f"sha256=wrong ({digest})")
+        return 1
+    print("sha256=ok")
+
     application = build_application([])
     # A throwaway settings file: a self-test must not leave a window layout
     # (or anything else) in the real OBCEdit settings of the machine it runs on.

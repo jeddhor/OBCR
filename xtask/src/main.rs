@@ -34,14 +34,25 @@ fn main() -> Result<()> {
     }
 }
 
+/// The mode bits that mark a symbolic link in the payload (`S_IFLNK`).
+const LINK_MODE: u32 = 0o120_777;
+
 /// Writes `out` = `launcher` + an archive of every file under `dir`, each
-/// deflate-compressed, + trailer (archive length, `OBCRSFX2`).
+/// deflate-compressed, + trailer (archive length, `OBCRSFX3`).
+///
+/// A symbolic link is packed as a link (mode [`LINK_MODE`], data = its
+/// target), not as a second copy of what it points to: PyInstaller's Linux
+/// freeze of OBCEdit links its biggest libraries into place, and following
+/// them packed each twice. Only relative links to a file inside `dir` are
+/// accepted.
 fn pack_installer(launcher: &Path, dir: &Path, out: &Path) -> Result<()> {
     fn walk(dir: &Path, base: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
         let mut entries: Vec<_> = std::fs::read_dir(dir)?.collect::<std::io::Result<_>>()?;
         entries.sort_by_key(|e| e.file_name());
         for e in entries {
             let p = e.path();
+            // `file_type` does not follow links: a link to a folder is packed
+            // as a link (and refused below), never walked.
             if e.file_type()?.is_dir() {
                 walk(&p, base, files)?;
             } else {
@@ -53,18 +64,26 @@ fn pack_installer(launcher: &Path, dir: &Path, out: &Path) -> Result<()> {
     let mut files = Vec::new();
     walk(dir, dir, &mut files)?;
     let mut archive = Vec::new();
+    let mut links = 0;
     for rel in &files {
         let name =
             rel.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
         let path = dir.join(rel);
-        let data = std::fs::read(&path).with_context(|| path.display().to_string())?;
-        #[cfg(unix)]
-        let mode = {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::metadata(&path)?.permissions().mode()
+        let (data, mode) = if std::fs::symlink_metadata(&path)?.file_type().is_symlink() {
+            let target = link_target(dir, rel)?;
+            links += 1;
+            (target.into_bytes(), LINK_MODE)
+        } else {
+            let data = std::fs::read(&path).with_context(|| path.display().to_string())?;
+            #[cfg(unix)]
+            let mode = {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::metadata(&path)?.permissions().mode() & 0o777
+            };
+            #[cfg(not(unix))]
+            let mode = 0o644u32;
+            (data, mode)
         };
-        #[cfg(not(unix))]
-        let mode = 0o644u32;
         let packed = miniz_oxide::deflate::compress_to_vec(&data, 9);
         archive.extend_from_slice(&u16::try_from(name.len())?.to_le_bytes());
         archive.extend_from_slice(name.as_bytes());
@@ -77,14 +96,44 @@ fn pack_installer(launcher: &Path, dir: &Path, out: &Path) -> Result<()> {
     f.write_all(&std::fs::read(launcher).with_context(|| launcher.display().to_string())?)?;
     f.write_all(&archive)?;
     f.write_all(&(archive.len() as u64).to_le_bytes())?;
-    f.write_all(b"OBCRSFX2")?;
+    f.write_all(b"OBCRSFX3")?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(out, std::fs::Permissions::from_mode(0o755))?;
     }
-    eprintln!("packed {} files ({} bytes) into {}", files.len(), archive.len(), out.display());
+    eprintln!(
+        "packed {} files ({links} links, {} bytes) into {}",
+        files.len(),
+        archive.len(),
+        out.display()
+    );
     Ok(())
+}
+
+/// The target of the link `dir/rel`, '/'-separated, if it is relative and
+/// names a file inside `dir`.
+fn link_target(dir: &Path, rel: &Path) -> Result<String> {
+    use std::path::Component;
+    let path = dir.join(rel);
+    let target = std::fs::read_link(&path).with_context(|| path.display().to_string())?;
+    // Resolve it against the link's folder without leaving `dir`.
+    let mut resolved: Vec<_> = rel.parent().map(|p| p.components().collect()).unwrap_or_default();
+    for c in target.components() {
+        match c {
+            Component::Normal(_) => resolved.push(c),
+            Component::CurDir => {}
+            Component::ParentDir if !resolved.is_empty() => {
+                resolved.pop();
+            }
+            _ => bail!("{}: link to {} leaves the folder", path.display(), target.display()),
+        }
+    }
+    let inside: PathBuf = resolved.iter().collect();
+    if !dir.join(&inside).is_file() {
+        bail!("{}: link to {} does not name a file", path.display(), target.display());
+    }
+    Ok(target.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/"))
 }
 
 fn run(program: &str, args: &[&str]) -> Result<()> {
