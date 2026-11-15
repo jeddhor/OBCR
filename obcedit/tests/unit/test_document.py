@@ -48,7 +48,9 @@ class Identity(unittest.TestCase):
         self.assertEqual(reordered.map_by_uuid(first.uuid).uuid, first.uuid)
 
     def test_a_slot_outside_the_engines_range_is_refused(self):
-        for slot in (0, 101, -1):
+        MapDocument.blank(slot=0)
+        MapDocument.blank(slot=99)
+        for slot in (100, 101, -1):
             with self.assertRaises(DocumentError):
                 MapDocument.blank(slot=slot)
 
@@ -147,12 +149,8 @@ class NewRoom(unittest.TestCase):
                          MapDocument.DEFAULT_FLOOR)
 
     def test_the_floor_is_a_sound_area(self):
-        # Not zero. Corridor 7's floor words are Wolf3D areas, and the engine
-        # decides whether a monster can hear gunfire by asking CheckLink()
-        # whether the shooter's area reaches the listener's. CheckLink answers
-        # false the moment either side is NULL, so on a map floored with zeros
-        # nothing ever hears anything -- aliens ignore gunfire completely and
-        # wake only on sight or contact. No shipped map holds a plane-0 zero.
+        # Not zero: that is area -140 to the engine. 144 is area 4 with floor
+        # texture set 0, the shipped maps' commonest floor.
         document = MapDocument.new_room(width=8, height=8)
         interior = [document.cell(0, x, y)
                     for y in range(1, 7) for x in range(1, 7)]
@@ -160,10 +158,14 @@ class NewRoom(unittest.TestCase):
         self.assertNotIn(0, interior)
 
     def test_the_object_plane_is_the_empty_marker(self):
-        # Zero is a word that means something; 18 is the one that means nothing.
+        # 18 is the background; the border walls carry 89, explosion-proof,
+        # as every original map's do.
         document = MapDocument.new_room(width=6, height=6, with_start=False)
-        self.assertTrue(all(v == MapDocument.EMPTY_OBJECT
-                            for v in document.planes.planes[1]))
+        for index, value in enumerate(document.planes.planes[1]):
+            x, y = index % 6, index // 6
+            border = x in (0, 5) or y in (0, 5)
+            self.assertEqual(value, MapDocument.BORDER_OBJECT if border
+                             else MapDocument.EMPTY_OBJECT)
 
     def test_a_new_room_comes_with_a_player_start(self):
         # Without one the engine prints "No player 1 start!" and exits, which
@@ -175,7 +177,7 @@ class NewRoom(unittest.TestCase):
         self.assertEqual(document.cell(1, 5, 5), MapDocument.PLAYER_START_EAST)
 
     def test_the_start_faces_east(self):
-        # Corridor 7 reflects a start's angle: 19 is north, 20 is east.
+        # Player starts 19-22 face north, east, south, west.
         self.assertEqual(MapDocument.PLAYER_START_EAST, 20)
 
     def test_the_start_stands_on_floor(self):
@@ -209,12 +211,12 @@ class Interop(unittest.TestCase):
     def test_a_source_reference_is_inert(self):
         # Nothing here may touch the filesystem: a shared project's path is a
         # string, and opening the project must not act on it.
-        source = SourceReference(display_path="/does/not/exist/MAPTEMP.CO7", sha256="abc")
+        source = SourceReference(display_path="/does/not/exist/MAPTEMP.BC", sha256="abc")
         document = MapDocument.blank()
         from dataclasses import replace
 
         self.assertEqual(replace(document, source=source).source.display_path,
-                         "/does/not/exist/MAPTEMP.CO7")
+                         "/does/not/exist/MAPTEMP.BC")
         self.assertTrue(source.identified)
 
 

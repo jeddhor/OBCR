@@ -107,7 +107,7 @@ class Rejects(unittest.TestCase):
         mutate(payload)
         return json.dumps(payload)
 
-    def assertRefused(self, text, code="C7E-SCHEMA-002"):
+    def assertRefused(self, text, code="OBC-SCHEMA-002"):
         with self.assertRaises(DocumentError) as caught:
             deserialize(text)
         self.assertEqual(caught.exception.diagnostic.code, code)
@@ -120,13 +120,13 @@ class Rejects(unittest.TestCase):
 
     def test_a_newer_schema(self):
         self.assertRefused(
-            self.load(lambda p: p.update(schema_version=99)), "C7E-SCHEMA-001"
+            self.load(lambda p: p.update(schema_version=99)), "OBC-SCHEMA-001"
         )
 
     def test_an_older_schema_with_no_migration(self):
         self.assertRefused(
             self.load(lambda p: p.update(schema_version=OLDEST_SUPPORTED_SCHEMA - 1)),
-            "C7E-SCHEMA-001",
+            "OBC-SCHEMA-001",
         )
 
     def test_an_unknown_top_level_property(self):
@@ -147,13 +147,13 @@ class Rejects(unittest.TestCase):
     def test_a_word_outside_uint16(self):
         self.assertRefused(
             self.load(lambda p: p["maps"][0]["planes"][0][0].__setitem__(0, 70000)),
-            "C7E-CELL-001",
+            "OBC-CELL-001",
         )
 
     def test_a_word_that_is_not_an_integer(self):
         self.assertRefused(
             self.load(lambda p: p["maps"][0]["planes"][0][0].__setitem__(0, "5")),
-            "C7E-CELL-001",
+            "OBC-CELL-001",
         )
 
     def test_a_boolean_is_not_a_word(self):
@@ -161,7 +161,7 @@ class Rejects(unittest.TestCase):
         # the value would come back as `true` on the next save.
         self.assertRefused(
             self.load(lambda p: p["maps"][0]["planes"][0][0].__setitem__(0, True)),
-            "C7E-CELL-001",
+            "OBC-CELL-001",
         )
 
     def test_a_name_field_of_the_wrong_length(self):
@@ -222,7 +222,7 @@ class Saving(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = Path(self._tmp.name)
-        self.path = self.root / "demo.ec7project"
+        self.path = self.root / "demo.obcproject"
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -244,7 +244,7 @@ class Saving(unittest.TestCase):
 
     def test_no_temporary_files_survive(self):
         save_project(sample_project(), self.path)
-        self.assertEqual([p.name for p in self.root.iterdir()], ["demo.ec7project"])
+        self.assertEqual([p.name for p in self.root.iterdir()], ["demo.obcproject"])
 
     def test_permissions_are_restrictive(self):
         if os.name == "nt":
@@ -290,7 +290,7 @@ class FaultInjection(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = Path(self._tmp.name)
-        self.path = self.root / "demo.ec7project"
+        self.path = self.root / "demo.obcproject"
         save_project(sample_project(maps=1), self.path)
         self.original = self.path.read_text(encoding="utf-8")
 
@@ -315,7 +315,7 @@ class FaultInjection(unittest.TestCase):
                 if failed and stage != "dirsync":
                     self.assertEqual(len(loaded), 1, f"{stage} failed but the file changed")
 
-                debris = [p.name for p in self.root.iterdir() if p.name != "demo.ec7project"]
+                debris = [p.name for p in self.root.iterdir() if p.name != "demo.obcproject"]
                 self.assertEqual(debris, [], f"{stage} left {debris}")
 
     def test_a_failure_before_replace_keeps_the_old_file(self):
@@ -340,7 +340,7 @@ class Recovery(unittest.TestCase):
 
     def test_autosave_writes_a_recoverable_copy(self):
         project = sample_project(maps=2)
-        path = self.store.autosave(project, original_path="/somewhere/demo.ec7project")
+        path = self.store.autosave(project, original_path="/somewhere/demo.obcproject")
         self.assertTrue(path.exists())
         recovered = self.store.load(project.uuid)
         self.assertEqual(len(recovered), 2)
@@ -373,20 +373,20 @@ class Recovery(unittest.TestCase):
 
     def test_a_damaged_recovery_file_does_not_break_the_listing(self):
         self.store.autosave(sample_project())
-        (self.store.root / "broken.ec7recovery").write_text("{", encoding="utf-8")
+        (self.store.root / "broken.obcrecovery").write_text("{", encoding="utf-8")
         self.assertEqual(len(self.store.list_recoveries()), 1)
 
     def test_retention_is_bounded_by_count(self):
         self.store.max_projects = 3
         for _ in range(10):
             self.store.autosave(sample_project())
-        self.assertLessEqual(len(list(self.store.root.glob("*.ec7recovery"))), 3)
+        self.assertLessEqual(len(list(self.store.root.glob("*.obcrecovery"))), 3)
 
 
 class Locking(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
-        self.path = Path(self._tmp.name) / "demo.ec7project"
+        self.path = Path(self._tmp.name) / "demo.obcproject"
 
     def tearDown(self):
         self._tmp.cleanup()

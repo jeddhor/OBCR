@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Jason Tripp
 """E1: source protection, atomic output, and readback.
 
-The retail archive belongs to the user and this project has no right to write
+The original archive belongs to the user and this project has no right to write
 to it, so the interesting cases are all the ways a path can turn out to be the
 source after all -- a different spelling, a symlink, a hard link -- plus the
 guarantee that a write that reports success actually landed.
@@ -37,8 +37,10 @@ class Fixture(unittest.TestCase):
         self.root = Path(self._tmp.name)
         self.data = self.root / "data"
         self.data.mkdir()
-        self.source = self.data / "MAPTEMP.CO7"
+        self.source = self.data / "MAPTEMP.BC"
         self.source.write_bytes(b"retail bytes, not ours")
+        # What marks a folder as game data: the page file (or an executable).
+        (self.data / "GFXTILES.BC").write_bytes(b"also not ours")
         self.work = self.root / "work"
         self.work.mkdir()
         self.guard = OutputGuard.for_source(self.source)
@@ -54,34 +56,34 @@ class Fixture(unittest.TestCase):
 
 class RefusesToWriteTheSource(Fixture):
     def test_the_source_itself(self):
-        self.assertRefused(self.source, "C7E-SOURCE-002")
+        self.assertRefused(self.source, "OBC-SOURCE-002")
 
     def test_a_different_spelling_of_it(self):
-        self.assertRefused(self.data / "." / "MAPTEMP.CO7", "C7E-SOURCE-002")
-        self.assertRefused(self.data / "sub" / ".." / "MAPTEMP.CO7", "C7E-SOURCE-002")
+        self.assertRefused(self.data / "." / "MAPTEMP.BC", "OBC-SOURCE-002")
+        self.assertRefused(self.data / "sub" / ".." / "MAPTEMP.BC", "OBC-SOURCE-002")
 
     def test_a_symlink_to_it(self):
-        link = self.work / "alias.co7"
+        link = self.work / "alias.bc"
         link.symlink_to(self.source)
-        self.assertRefused(link, "C7E-SOURCE-002")
+        self.assertRefused(link, "OBC-SOURCE-002")
 
     def test_a_hard_link_to_it(self):
         # No amount of string normalization finds this one; it needs the inode.
-        link = self.work / "hard.co7"
+        link = self.work / "hard.bc"
         os.link(self.source, link)
-        self.assertRefused(link, "C7E-SOURCE-002")
+        self.assertRefused(link, "OBC-SOURCE-002")
 
     def test_anything_in_a_game_data_directory(self):
-        # The fixture's source is MAPTEMP.CO7, so its directory is game data.
-        self.assertRefused(self.data / "new.wad", "C7E-EXPORT-001")
+        # The fixture's source is MAPTEMP.BC, so its directory is game data.
+        self.assertRefused(self.data / "new.wad", "OBC-EXPORT-001")
 
     def test_a_subdirectory_of_a_protected_root(self):
-        self.assertRefused(self.data / "deep" / "new.wad", "C7E-EXPORT-001")
+        self.assertRefused(self.data / "deep" / "new.wad", "OBC-EXPORT-001")
 
     def test_a_symlinked_directory_into_the_protected_root(self):
         link = self.work / "shortcut"
         link.symlink_to(self.data)
-        self.assertRefused(link / "new.wad", "C7E-EXPORT-001")
+        self.assertRefused(link / "new.wad", "OBC-EXPORT-001")
 
     def test_a_directory_that_is_not_game_data_is_writable(self):
         # Protecting every source's parent was the first version of this rule,
@@ -92,8 +94,8 @@ class RefusesToWriteTheSource(Fixture):
         source = scratch / "notes.c7map"
         source.write_bytes(b"synthetic")
         guard = OutputGuard.for_source(source)
-        self.assertEqual(guard.check(scratch / "project.ec7project"),
-                         canonical(scratch / "project.ec7project"))
+        self.assertEqual(guard.check(scratch / "project.obcproject"),
+                         canonical(scratch / "project.obcproject"))
         # The source itself is still protected, however it is spelled.
         with self.assertRaises(ExportError):
             guard.check(scratch / "." / "notes.c7map")
@@ -104,22 +106,31 @@ class RefusesToWriteTheSource(Fixture):
         plain = self.work / "plain"
         plain.mkdir()
         self.assertFalse(looks_like_game_data(plain))
-        (plain / "VGAGRAPH.CO7").write_bytes(b"x")
+        (plain / "GFXTILES.BC").write_bytes(b"x")
         self.assertTrue(looks_like_game_data(plain))
+
+    def test_a_mod_folder_is_not_game_data(self):
+        from obcedit_core.paths import looks_like_game_data
+
+        mod = self.work / "a-mod"
+        mod.mkdir()
+        for name in ("mod.toml", "MAPHEAD.BC", "MAPTEMP.BC"):
+            (mod / name).write_bytes(b"x")
+        self.assertFalse(looks_like_game_data(mod))
 
     def test_the_executable_alone_is_enough(self):
         from obcedit_core.paths import looks_like_game_data
 
         directory = self.work / "exe-only"
         directory.mkdir()
-        (directory / "CORR7CD.EXE").write_bytes(b"x")
+        (directory / "COUNT.EXE").write_bytes(b"x")
         self.assertTrue(looks_like_game_data(directory))
 
     def test_an_extra_protected_root(self):
         guard = OutputGuard.for_source(self.source, extra_roots=[self.work])
         with self.assertRaises(ExportError) as caught:
             guard.check(self.work / "out.wad")
-        self.assertEqual(caught.exception.diagnostic.code, "C7E-EXPORT-001")
+        self.assertEqual(caught.exception.diagnostic.code, "OBC-EXPORT-001")
 
     def test_a_safe_path_is_allowed_and_canonicalised(self):
         self.assertEqual(self.guard.check(self.work / "out.wad"), canonical(self.work / "out.wad"))
@@ -152,7 +163,7 @@ class AtomicWrite(Fixture):
     def test_a_failed_write_leaves_no_debris(self):
         with self.assertRaises(ExportError):
             atomic_write(self.data / "nope.bin", b"x", guard=self.guard)
-        self.assertEqual([p.name for p in self.data.iterdir()], ["MAPTEMP.CO7"])
+        self.assertEqual(sorted(p.name for p in self.data.iterdir()), ["GFXTILES.BC", "MAPTEMP.BC"])
 
 
 class SourceIdentityTests(Fixture):
@@ -173,17 +184,17 @@ class SourceIdentityTests(Fixture):
         self.source.write_bytes(b"tampered")
         with self.assertRaises(ExportError) as caught:
             identity.verify_unchanged()
-        self.assertEqual(caught.exception.diagnostic.code, "C7E-SOURCE-001")
+        self.assertEqual(caught.exception.diagnostic.code, "OBC-SOURCE-001")
 
     def test_a_deleted_source_stops_the_line(self):
         identity = SourceIdentity.probe(self.source)
         self.source.unlink()
         with self.assertRaises(ExportError) as caught:
             identity.verify_unchanged()
-        self.assertEqual(caught.exception.diagnostic.code, "C7E-SOURCE-001")
+        self.assertEqual(caught.exception.diagnostic.code, "OBC-SOURCE-001")
 
     def test_notices_a_symlinked_source(self):
-        link = self.work / "alias.co7"
+        link = self.work / "alias.bc"
         link.symlink_to(self.source)
         identity = SourceIdentity.probe(link)
         self.assertTrue(identity.is_symlink)
@@ -192,12 +203,12 @@ class SourceIdentityTests(Fixture):
 
 class SameFile(Fixture):
     def test_hard_links_are_the_same_file(self):
-        link = self.work / "hard.co7"
+        link = self.work / "hard.bc"
         os.link(self.source, link)
         self.assertTrue(same_file(self.source, link))
 
     def test_copies_are_not(self):
-        copy = self.work / "copy.co7"
+        copy = self.work / "copy.bc"
         copy.write_bytes(self.source.read_bytes())
         self.assertFalse(same_file(self.source, copy))
 

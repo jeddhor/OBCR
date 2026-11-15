@@ -24,12 +24,13 @@ from dataclasses import dataclass
 
 from .errors import native_error
 
-#: Both dimensions are u16 in the file, but the engine refuses anything larger.
+#: Both dimensions are u16 in the file, but a plane's expanded size is a u16 of
+#: bytes, so 181x181 is the largest that fits. The codec accepts any of these;
+#: the game itself plays only 64x64, which the validator checks.
 MAX_DIMENSION = 181
 MIN_DIMENSION = 1
 
-#: Exactly three, always. The four-plane case in the engine is Rise of the
-#: Triad's, reached by a different loader path that Corridor 7 never takes.
+#: Exactly three, always (OBC's third plane is all zero, and kept as read).
 PLANE_COUNT = 3
 
 
@@ -44,7 +45,7 @@ def coordinates(index: int, width: int) -> tuple[int, int]:
 
 
 def validate_dimensions(width: int, height: int, *, where: str = "") -> None:
-    """Reject what `FGamemaps::Open` would reject, with the same thresholds."""
+    """Reject sizes the format cannot hold (a 64x64 check is the validator's)."""
     for name, value in (("width", width), ("height", height)):
         if not MIN_DIMENSION <= value <= MAX_DIMENSION:
             raise native_error(

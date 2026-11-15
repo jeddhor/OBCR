@@ -2,7 +2,7 @@
 # Copyright (C) 2026 Jason Tripp
 """The 16-byte native map name, kept raw.
 
-Every other Corridor 7 tool treats this field as a C string and throws away
+Every other Wolf3D-family tool treats this field as a C string and throws away
 whatever follows the terminator. Four records in the retail archive have
 nonzero bytes back there. They may well be nothing -- TED5 reusing a buffer --
 but a lossless editor does not get to decide that on the author's behalf, so

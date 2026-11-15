@@ -457,10 +457,16 @@ def save_project(
         dir=destination.parent, prefix=f".{destination.name}.", suffix=".part"
     )
     temporary = Path(temporary_name)
+    # Until fdopen takes it over, the raw handle is ours to close: Windows
+    # refuses to delete a file that is still open, which left the temporary
+    # behind whenever a save failed before writing.
+    owned = True
     try:
         os.chmod(temporary, 0o600)
         faults.check("write")
-        with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as stream:
+        stream_file = os.fdopen(handle, "w", encoding="utf-8", newline="\n")
+        owned = False
+        with stream_file as stream:
             stream.write(text)
             stream.flush()
             faults.check("flush")
@@ -497,6 +503,8 @@ def save_project(
         faults.check("replace")
         os.replace(temporary, destination)
     except BaseException:
+        if owned:
+            os.close(handle)
         temporary.unlink(missing_ok=True)
         raise
 
@@ -656,6 +664,41 @@ class RecoveryStore:
 # ---------------------------------------------------------------------------
 
 
+def _pid_alive(pid: int) -> bool:
+    """Whether process `pid` exists.
+
+    Not `os.kill(pid, 0)` on Windows: there it does not probe, it calls
+    TerminateProcess -- it would kill the editor holding the lock.
+    """
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        query_limited = 0x1000  # PROCESS_QUERY_LIMITED_INFORMATION
+        handle = kernel.OpenProcess(query_limited, False, pid)
+        if not handle:
+            # Access denied means it exists and belongs to someone else.
+            return ctypes.get_last_error() == 5
+        try:
+            code = wintypes.DWORD()
+            if not kernel.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return True
+            return code.value == 259  # STILL_ACTIVE
+        finally:
+            kernel.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # it exists and belongs to someone else
+    return True
+
+
 class ProjectLock:
     """A cooperative lock so a second instance opens read-only.
 
@@ -693,13 +736,7 @@ class ProjectLock:
         # Not "is this pid ours": within one process a second lock on the same
         # project is exactly the case this exists to refuse, and treating our
         # own pid as stale would let an editor take a lock it already holds.
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return True
-        except PermissionError:
-            return False  # it exists and belongs to someone else
-        return False
+        return not _pid_alive(pid)
 
     def release(self) -> None:
         if self.held:

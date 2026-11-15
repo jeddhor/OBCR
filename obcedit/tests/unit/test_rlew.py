@@ -104,7 +104,7 @@ class DecoderRejects(unittest.TestCase):
     def assertRefused(self, data, words, fragment=""):
         with self.assertRaises(NativeFormatError) as caught:
             decode_plane(data, words)
-        self.assertEqual(caught.exception.diagnostic.code, "C7E-NATIVE-002")
+        self.assertEqual(caught.exception.diagnostic.code, "OBC-NATIVE-002")
         if fragment:
             self.assertIn(fragment, str(caught.exception))
 
@@ -145,7 +145,7 @@ class NoncanonicalButLegal(unittest.TestCase):
         data = framed(1, RLEW_TAG, 0, 9, 4)
         log = DiagnosticLog()
         self.assertEqual(decode_plane(data, 1, log=log), (4,))
-        self.assertEqual(log.codes(), ["C7E-NATIVE-006"])
+        self.assertEqual(log.codes(), ["OBC-NATIVE-006"])
 
     def test_the_writer_never_emits_a_zero_count_run(self):
         for words in ([0] * 64, [1, 2, 3], [RLEW_TAG] * 5, list(range(100))):
@@ -171,12 +171,12 @@ class EncoderRejects(unittest.TestCase):
         for bad in (-1, 0x10000):
             with self.assertRaises(NativeFormatError) as caught:
                 encode_plane((1, bad, 2))
-            self.assertEqual(caught.exception.diagnostic.code, "C7E-CELL-001")
+            self.assertEqual(caught.exception.diagnostic.code, "OBC-CELL-001")
 
     def test_plane_too_large_for_the_size_field(self):
         with self.assertRaises(NativeFormatError) as caught:
             encode_plane((0,) * (MAX_EXPANDED_BYTES // 2 + 1))
-        self.assertEqual(caught.exception.diagnostic.code, "C7E-NATIVE-003")
+        self.assertEqual(caught.exception.diagnostic.code, "OBC-NATIVE-003")
 
     def test_incompressible_plane_overflows_the_length_field(self):
         # Alternating tag literals cost six bytes each, so a plane well inside
@@ -187,7 +187,7 @@ class EncoderRejects(unittest.TestCase):
         words = tuple(RLEW_TAG if index % 2 else index for index in range(20000))
         with self.assertRaises(NativeFormatError) as caught:
             encode_plane(words)
-        self.assertEqual(caught.exception.diagnostic.code, "C7E-NATIVE-003")
+        self.assertEqual(caught.exception.diagnostic.code, "OBC-NATIVE-003")
 
 
 class Property(unittest.TestCase):

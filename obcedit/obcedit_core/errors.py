@@ -72,7 +72,7 @@ class NativeFormatError(ObcEditError):
 
 
 class WadFormatError(ObcEditError):
-    """A `OBC-WAD-*` failure: the preview WAD or its PLANES lump."""
+    """A `OBC-WAD-*` failure (kept for EC7Edit compatibility; unused)."""
 
 
 class ExportError(ObcEditError):

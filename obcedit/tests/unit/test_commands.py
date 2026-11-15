@@ -35,7 +35,7 @@ from obcedit_core.commands import (
     write_words,
 )
 from obcedit_core.document import MapDocument, ProjectDocument
-from obcedit_core.errors import Ec7EditError
+from obcedit_core.errors import ObcEditError
 from obcedit_core.planes import linear_index
 
 
@@ -76,9 +76,9 @@ class Applying(unittest.TestCase):
 
     def test_a_word_outside_uint16_is_refused(self):
         command = Command("x", (CellEdit(self.uuid, 0, 0, 0, 70000),))
-        with self.assertRaises(Ec7EditError) as caught:
+        with self.assertRaises(ObcEditError) as caught:
             apply_command(self.project, command)
-        self.assertEqual(caught.exception.diagnostic.code, "C7E-CELL-001")
+        self.assertEqual(caught.exception.diagnostic.code, "OBC-CELL-001")
 
     def test_an_index_outside_the_map_is_refused(self):
         command = Command("x", (CellEdit(self.uuid, 0, 9999, 0, 1),))
