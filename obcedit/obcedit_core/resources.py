@@ -306,6 +306,27 @@ class ResourceStore:
             copied += 1
         return copied
 
+    def adopt_all(self, other: "ResourceStore") -> int:
+        """Copy every file `other` holds (Save As, Save a Copy, first save).
+
+        Every file, not just the current records': the undo history may point
+        back at a replaced file, and it must still be there after the save.
+        """
+        if other.root == self.root or not other.root.is_dir():
+            return 0
+        copied = 0
+        for source in other.root.iterdir():
+            name = source.name
+            if not source.is_file() or not _DIGEST.match(name.split(".", 1)[0]):
+                continue
+            target = self.root / name
+            if target.is_file():
+                continue
+            self.root.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
+            copied += 1
+        return copied
+
     def prune(self, keep) -> int:
         """Delete blob files no record in `keep` names. Only files this store owns."""
         if not self.root.is_dir():

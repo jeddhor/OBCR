@@ -16,6 +16,11 @@ while the editor is running and then it is gone.
 An entry whose page will not decode still gets a tile — a labeled placeholder
 rather than a gap. A palette that silently omits broken items is a palette that
 hides the fact something is wrong with the data.
+
+A project's replacement art (mod format 2) is drawn in place of the page or
+sprite it replaces, converted to the game palette by the same rule OBCR uses
+(`ArtOverrides`), so the palette, the canvas colours and the Resources panel
+show what the game will draw.
 """
 
 from __future__ import annotations
@@ -35,8 +40,10 @@ from obcedit_core.assets import (
     sprite_rgba,
     wall_rgb,
 )
+from obcedit_core import artimport
 from obcedit_core.catalog import Catalog, CatalogEntry
 from obcedit_core.discovery import find_file, game_executable
+from obcedit_core.resources import SPRITE, WALL
 
 
 @dataclass
@@ -72,6 +79,52 @@ class AssetSource:
         return sprite_rgba(self.header.chunk(self.gfx, index), self.palette)
 
 
+class ArtOverrides:
+    """The project's replacement walls and sprites, as thumbnail pixels.
+
+    Converted lazily (off the GUI thread, from `pixels_for`) and kept: an
+    image is 4,096 pixels, so a few hundred replacements stay small. `tag`
+    changes whenever the set of replacements does, which is what keys the
+    pixmap cache.
+    """
+
+    def __init__(self, resources=(), store=None, palette=None) -> None:
+        self.resources = {(r.kind, r.target): r for r in resources
+                          if r.kind in (WALL, SPRITE)}
+        self.store = store
+        self.palette = palette
+        self._quantizer = artimport.Quantizer(palette) if palette else None
+        self._pixels: dict[tuple, bytes] = {}
+        self.tag = ",".join(sorted(f"{k}{t}:{r.sha256[:12]}"
+                                   for (k, t), r in self.resources.items())) or "none"
+
+    def __contains__(self, key) -> bool:
+        return key in self.resources
+
+    def pixels(self, kind: str, target: int) -> bytes | None:
+        """Preview pixels for a replaced page or sprite, or None if not replaced
+        (or its file cannot be read -- the original is shown, and the problem
+        is reported where resources are listed)."""
+        resource = self.resources.get((kind, target))
+        if resource is None or self.store is None:
+            return None
+        found = self._pixels.get((kind, target))
+        if found is not None:
+            return found
+        try:
+            image = artimport.check_art(self.store.read(resource), resource.source_name)
+        except Exception:  # noqa: BLE001 - a bad file falls back to the original art
+            return None
+        sprite = kind == SPRITE
+        if self._quantizer is not None:
+            found = artimport.preview(image, self.palette, sprite=sprite,
+                                      quantizer=self._quantizer)
+        else:
+            found = artimport.raw_preview(image, sprite=sprite)
+        self._pixels[(kind, target)] = found
+        return found
+
+
 class ThumbnailFactory:
     """Catalog entry to `QPixmap`, cached by key, size and data fingerprint.
 
@@ -87,14 +140,33 @@ class ThumbnailFactory:
         self.catalog = catalog
         self._pixels = ImageCache(budget_bytes)
         self._pixmaps: dict[str, QPixmap] = {}
+        self.overrides = ArtOverrides()
 
     @property
     def available(self) -> bool:
         return self.source is not None
 
+    def set_overrides(self, resources, store) -> bool:
+        """Use these replacement records. Returns whether anything changed."""
+        palette = getattr(self.source, "palette", None)
+        fresh = ArtOverrides(resources, store, palette)
+        if fresh.tag == self.overrides.tag and (store is None or self.overrides.store is None
+                                               or fresh.store.root == self.overrides.store.root):
+            return False
+        self.overrides = fresh
+        self._pixmaps.clear()
+        return True
+
+    def replaced(self, entry: CatalogEntry) -> bool:
+        page = self.page_for(entry)
+        if page is not None:
+            return (WALL, page) in self.overrides
+        return entry.sprite is not None and (SPRITE, entry.sprite) in self.overrides
+
     def key_for(self, entry: CatalogEntry, size: int) -> str:
         fingerprint = self.source.fingerprint if self.source else "none"
-        return f"{fingerprint}:{entry.key}:{size}"
+        replaced = self.overrides.tag if self.replaced(entry) else ""
+        return f"{fingerprint}:{entry.key}:{size}:{replaced}"
 
     def pixels_for(self, entry: CatalogEntry) -> tuple[bytes, int, bool]:
         """Decoded pixels, their edge length, and whether they have alpha.
@@ -108,9 +180,15 @@ class ThumbnailFactory:
 
         page = self.page_for(entry)
         if page is not None:
+            replaced = self.overrides.pixels(WALL, page)
+            if replaced is not None:
+                return replaced, 64, False
             return self._pixels.fetch(f"wall:{page}", lambda: self.source.wall(page)), 64, False
         if entry.sprite is not None:
             page = entry.sprite
+            replaced = self.overrides.pixels(SPRITE, page)
+            if replaced is not None:
+                return replaced, 64, True
             return self._pixels.fetch(f"sprite:{page}", lambda: self.source.sprite(page)), 64, True
         raise AssetError(f"{entry.key} has no artwork to draw")
 
@@ -178,6 +256,8 @@ class ThumbnailFactory:
     def clear(self) -> None:
         self._pixels.clear()
         self._pixmaps.clear()
+        self.overrides = ArtOverrides(self.overrides.resources.values(), self.overrides.store,
+                                      getattr(self.source, "palette", None))
 
     @property
     def memory_bytes(self) -> int:

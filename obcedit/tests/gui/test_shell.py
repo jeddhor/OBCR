@@ -107,16 +107,18 @@ class WindowStructure(Base):
 
     def test_the_menus_speak_obcr(self):
         # Nothing of Corridor 7 / ECWolf is left: no WADs, no MAPINFO, no
-        # resource packs, no transporters.
+        # resource packs, no transporters. (OBCEdit's own Resources panel --
+        # mod format 2's art, sounds and music -- is not a resource pack.)
         texts = []
         for menu_action in self.window.menuBar().actions():
             texts += [a.text() for a in menu_action.menu().actions()]
         joined = " ".join(texts).lower()
-        for gone in ("wad", "mapinfo", "resource", "pack", "transporter", "ec7wolf",
+        for gone in ("wad", "mapinfo", "resource pack", "pack", "transporter", "ec7wolf",
                      "sound area"):
             self.assertNotIn(gone, joined)
         for wanted in ("Campai&gn…", "&Export mod…", "&Install in OBCR",
-                       "&Test in OBCR", "Test from the &cursor"):
+                       "&Test in OBCR", "Test from the &cursor",
+                       "&Resources (art, sounds, music)"):
             self.assertIn(wanted, texts)
 
     def test_f5_tests_and_shift_f5_tests_from_the_cursor(self):
