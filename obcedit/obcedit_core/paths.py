@@ -125,6 +125,14 @@ class OutputGuard:
     protected_roots: tuple[Path, ...] = ()
     protected_files: tuple[Path, ...] = ()
 
+    def __post_init__(self) -> None:
+        # check() compares canonical paths, so the protected ones must be
+        # canonical too, however a caller spelled them: a root given through
+        # a junction, a subst drive or an 8.3 short name (C:\Users\RUNNER~1)
+        # would otherwise never match and protect nothing.
+        self.protected_roots = tuple(canonical(p) for p in self.protected_roots)
+        self.protected_files = tuple(canonical(p) for p in self.protected_files)
+
     @classmethod
     def for_source(cls, source: Path | str, *, extra_roots=()) -> "OutputGuard":
         """Protect the source, and its directory when that is game data.

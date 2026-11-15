@@ -149,6 +149,17 @@ class Export(unittest.TestCase):
         with self.assertRaises(ExportError):
             write_mod(build_mod(proj, campaign), game / "mine.obcmod", guard=guard)
 
+    def test_the_guard_matches_a_root_however_it_is_spelled(self):
+        # A root given in another spelling of the same folder (here "..";
+        # on Windows also an 8.3 short name or a junction) is still protected.
+        game = self.root / "game"
+        (game / "sub").mkdir(parents=True)
+        (game / "GFXTILES.BC").write_bytes(b"x")
+        proj, campaign = two_maps()
+        guard = OutputGuard(protected_roots=(game / "sub" / "..",))
+        with self.assertRaises(ExportError):
+            write_mod(build_mod(proj, campaign), game / "mine.obcmod", guard=guard)
+
     def test_a_stale_readme_is_removed_from_a_folder(self):
         proj, campaign = two_maps()
         folder = write_mod(build_mod(proj, replace(campaign, readme="old")), self.root / "m")
