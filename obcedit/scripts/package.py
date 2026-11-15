@@ -91,6 +91,12 @@ PRUNE_LINUX = [
     "**/plugins/platforms/libqlinuxfb.so",
     "**/plugins/platforms/libqvnc.so",
     "**/plugins/platforms/libqvkkhrdisplay.so",
+    # OpenSSL, as on Windows (PRUNE): the editor makes no network
+    # connections, and hashlib falls back to its built-in SHA-256.
+    "**/libssl.so*",
+    "**/libcrypto.so*",
+    "**/lib-dynload/_ssl.*",
+    "**/lib-dynload/_hashlib.*",
 ]
 
 # Libraries prune_orphans keeps even when nothing links them any more: the X
