@@ -44,6 +44,7 @@ from .document import (
 from .errors import Diagnostic, Severity, export_error
 from .names import NAME_FIELD_BYTES, NativeName
 from .planes import MapPlanes
+from .resources import Resource, ResourceError, sort_key, validate_set
 
 PROJECT_SUFFIX = ".obcproject"
 RECOVERY_SUFFIX = ".obcrecovery"
@@ -54,7 +55,8 @@ FORMAT_NAME = "obcedit-project"
 #: migration, which is a decision, not a cleanup.
 OLDEST_SUPPORTED_SCHEMA = 1
 
-_PROJECT_KEYS = {"format", "schema_version", "project", "maps", "export_defaults", "campaign"}
+_PROJECT_KEYS = {"format", "schema_version", "project", "maps", "export_defaults", "campaign",
+                 "resources"}
 _META_KEYS = {"uuid", "name", "author", "notes", "created_at", "catalog_version"}
 _MAP_KEYS = {
     "uuid", "slot", "native_name", "native_name_raw_hex", "width", "height",
@@ -108,6 +110,8 @@ def serialize(project: ProjectDocument) -> str:
         },
         "export_defaults": project.export_defaults,
         "campaign": project.campaign,
+        "resources": [resource.to_json()
+                      for resource in sorted(project.resources, key=sort_key)],
         "maps": [
             {
                 "uuid": document.uuid,
@@ -281,6 +285,18 @@ def deserialize(text: str) -> ProjectDocument:
     if not isinstance(raw_campaign, dict):
         raise _schema_error("campaign must be an object")
 
+    raw_resources = payload.get("resources") or []
+    if not isinstance(raw_resources, list):
+        raise _schema_error("resources must be a list")
+    try:
+        resources = tuple(Resource.from_json(raw, f"resource {index}")
+                          for index, raw in enumerate(raw_resources))
+    except ResourceError as error:
+        raise DocumentError(error.diagnostic) from error
+    duplicates = validate_set(resources)
+    if duplicates:
+        raise DocumentError(duplicates[0])
+
     revision = len(maps)
     return ProjectDocument(
         uuid=meta["uuid"],
@@ -295,6 +311,7 @@ def deserialize(text: str) -> ProjectDocument:
         catalog_version=meta.get("catalog_version", 0),
         export_defaults=export_defaults,
         campaign=raw_campaign,
+        resources=tuple(sorted(resources, key=sort_key)),
     )
 
 
@@ -302,8 +319,15 @@ def deserialize(text: str) -> ProjectDocument:
 # Migration
 # ---------------------------------------------------------------------------
 
+def _add_resources(payload: dict) -> dict:
+    """1 -> 2: projects gained `resources` (replacement art, sounds, music)."""
+    payload = dict(payload)
+    payload.setdefault("resources", [])
+    return payload
+
+
 #: `version -> pure function from payload to the next version's payload`.
-MIGRATIONS: dict[int, callable] = {}
+MIGRATIONS: dict[int, callable] = {1: _add_resources}
 
 
 def migrate(payload: dict) -> dict:

@@ -34,9 +34,11 @@ from .archive import MapRecord
 from .errors import ObcEditError, Severity
 from .names import NativeName
 from .planes import MapPlanes
+from .resources import Resource, sort_key
 
 #: Bumped only for changes the on-disk schema notices. See `project.py`.
-SCHEMA_VERSION = 1
+#: 2: `resources`, the project's replacement art, sounds and music (M18).
+SCHEMA_VERSION = 2
 
 
 def new_uuid() -> str:
@@ -241,6 +243,9 @@ class ProjectDocument:
     #: unparsed here: `campaign.Campaign.from_json` owns the schema, and a
     #: project that never exports a mod carries an empty dict.
     campaign: dict = field(default_factory=dict)
+    #: Replacement art, sounds and music (resources.py): records only; the
+    #: bytes are in the project's ResourceStore. Kept sorted.
+    resources: tuple[Resource, ...] = ()
 
     @property
     def dirty(self) -> bool:
@@ -295,6 +300,15 @@ class ProjectDocument:
         rebuilding the pack and finding the old one.
         """
         return replace(self, campaign=dict(campaign), revision=self.revision + 1)
+
+    def resource(self, kind: str, target) -> Resource | None:
+        key = (kind, str(target).lower() if kind == "music" else str(target))
+        return next((r for r in self.resources if r.key == key), None)
+
+    def with_resources(self, resources) -> "ProjectDocument":
+        """A new project with these records (sorted), counted as an edit."""
+        return replace(self, resources=tuple(sorted(resources, key=sort_key)),
+                       revision=self.revision + 1)
 
     def marked_saved(self, revision: int) -> "ProjectDocument":
         """Record that `revision` reached disk.

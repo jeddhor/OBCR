@@ -349,3 +349,51 @@ def check_mod(executable: Path | str, mod: Path | str, *, data_dir: Path | str |
     except (OSError, subprocess.SubprocessError) as error:
         return ModCheck(1, result="unreadable", output=str(error))
     return parse_check_mod(done.stdout + done.stderr, done.returncode)
+
+
+# ---------------------------------------------------------------------------
+# Converting music
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class Conversion:
+    """What `obcr --convert-audio` did."""
+
+    ok: bool
+    message: str = ""
+
+
+#: Said when the engine is not there or predates the flag (OBCR before M18).
+CONVERT_UNAVAILABLE = (
+    "Converting a WAV to music needs OBCR's --convert-audio, which this OBCR does not have "
+    "(it arrived with mod format 2). Update OBCR, or convert the WAV to Ogg Vorbis yourself "
+    "and import that."
+)
+
+
+def convert_audio(executable: Path | str | None, source: Path | str, destination: Path | str,
+                  *, timeout: float = 300.0) -> Conversion:
+    """Turn a WAV into QOA music with OBCR's own encoder.
+
+    The editor has no QOA encoder of its own on purpose: one encoder, in the
+    engine that plays the result (docs/MOD_ASSETS_AND_ARENAS.md 3.4).
+    """
+    if not executable:
+        return Conversion(False, CONVERT_UNAVAILABLE)
+    command = [str(Path(executable).expanduser()), "--convert-audio", str(source),
+               str(destination)]
+    try:
+        done = subprocess.run(command, capture_output=True, text=True, timeout=timeout,
+                              stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError) as error:
+        return Conversion(False, f"{CONVERT_UNAVAILABLE}\n\n({error})")
+    output = (done.stderr or done.stdout).strip()
+    if done.returncode != 0:
+        if re.search(r"unexpected argument|unknown (option|argument)|unrecognized", output,
+                     re.IGNORECASE):
+            return Conversion(False, CONVERT_UNAVAILABLE)
+        return Conversion(False, output or f"obcr --convert-audio exited {done.returncode}")
+    if not Path(destination).is_file():
+        return Conversion(False, "obcr --convert-audio reported success but wrote nothing")
+    return Conversion(True, output)
