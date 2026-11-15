@@ -2,207 +2,134 @@
 # Copyright (C) 2026 Jason Tripp
 """Can the player get there, and can they finish the floor?
 
-This is the advisory half of the validator. Everything else it reports is a
-fact about one cell; this is a claim about the map as a whole, and the plan is
-explicit that it must stay advisory: it is not a proof that a floor is
-completable, and it is not a design opinion. It answers one question -- what
-can be reached from the player start, given the doors and the keys and the
-transporters -- and reports only the things that cannot be anything but a
-mistake, such as an exit nobody can walk to.
+Advisory, and it under-reports rather than inventing errors: this is not a
+proof that a floor is completable. The model, from docs/re/LEVEL_CODES.md:
 
-**The model, stated so its limits are visible.**
+* the flood starts at the player start (plane-1 19-22) and moves through four
+  neighbours;
+* passable: floor (140-161), doors (130-137; Operation Body Count has no
+  locks), ambush markers (138, cleared to floor under their actor), walls
+  carrying an openable marker (plane-1 103 or 106, door-look walls the player
+  opens with Use) and always-open passages (plane-1 107);
+* a push wall (plane-1 98 on a wall) becomes passable once the flood reaches
+  the cell it is pushed from, if the two cells ahead of it are floor -- it
+  slides exactly two cells (rules.pushwall_directions);
+* an exit (plane-0 113/114/115) is reachable when it touches a reached cell;
+* the exit opens once half the floor's enemies are dead, so the floor can be
+  finished when an exit is reachable and at least half of the enemies stand
+  on reached cells. Victor's death (plane-1 214) also ends the game.
 
-* Movement is four-connected over floor. Corridor 7's clipping lets a body slip
-  diagonally between two corners, so a route this says is missing may exist in
-  play. That direction is safe: it means this under-reports.
-* A door is passable when its lock is held. An unlocked door is always
-  passable, which is true -- every door in the game opens on use.
-* Access comes from using a wall terminal beside reachable floor. Catalog-
-  declared key pickups can also be modeled for custom maps; retail map words
-  24/25 are ceiling lamps and never supply access.
-* A transporter pair is a two-way edge between its endpoints. Reaching either
-  end reaches the other.
-* Progress is a fixpoint: flood, collect whatever keys the flood reached, flood
-  again with those keys, until nothing new is reached. That is what makes a key
-  locked behind the door it opens detectable -- the fixpoint stops with the key
-  still outside the reached set.
-
-What it deliberately does not model: pushwalls (a secret is meant to be a
-shortcut, and treating one as a required route would invent errors), monsters,
-damage, ammunition, and the vertical dimension, of which Corridor 7 has none.
+Enemies are counted at the hardest game type (all three tiers), as the
+original's quota counts what spawned.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from . import rules
 from .catalog import Catalog
 from .document import MapDocument
 from .planes import coordinates, linear_index
 
-#: Plane-1 words that are a player start, in the order the catalog lists
-#: them. Corridor 7 reflects a start's angle, so this band reads north, east,
-#: south, west -- see MapDocument.PLAYER_START_EAST.
 PLAYER_STARTS = (19, 20, 21, 22)
+VICTOR = 214
 
 
 def _is_floor(value: int) -> bool:
-    """Walkable plane-0 word: open floor, or floor carrying a sound area."""
-    return value == 0 or 256 <= value <= 300
+    return rules.is_floor(value)
 
 
 @dataclass
 class Reach:
     """What one floor's start can get to."""
 
-    #: Indices into the plane, four-connected from the start.
     reached: set[int] = field(default_factory=set)
-    #: Colors held once every reachable key and terminal has been used.
-    keys: set[str] = field(default_factory=set)
-    #: Locked door cells the flood stopped at, by color.
-    blocked: dict[str, list[int]] = field(default_factory=dict)
-    #: True when the map has a start to flood from at all.
     started: bool = False
+    #: Exit cells (plane-0 indices) touching the reached region.
+    exits: list[int] = field(default_factory=list)
+    #: Plane-1 indices of enemies, and those on reached cells.
+    enemies: list[int] = field(default_factory=list)
+    enemies_reached: list[int] = field(default_factory=list)
+    #: Victor stands somewhere reachable.
+    victor_reached: bool = False
+    #: Push wall cells the flood went through.
+    pushed: list[int] = field(default_factory=list)
+
+    @property
+    def quota(self) -> int:
+        """The kills an exit needs: killtotal >> 1."""
+        return len(self.enemies) >> 1
+
+    @property
+    def completable(self) -> bool:
+        exit_ok = bool(self.exits) and len(self.enemies_reached) >= self.quota
+        return exit_ok or self.victor_reached
 
 
-def _door_color(entry) -> str | None:
-    """The lock color of a plane-0 door word, or None if it is not locked."""
-    if entry is None or entry.subcategory != "door" or "locked" not in entry.aliases:
-        return None
-    return "RED" if "red" in entry.aliases else "BLUE"
-
-
-def _key_color(entry) -> str | None:
-    """The color a plane-1 pickup or a plane-0 terminal grants."""
-    if entry is None or "keycard" not in entry.aliases:
-        return None
-    if entry.plane == 1:
-        return "RED" if "red key" in entry.aliases else "BLUE"
-    if entry.subcategory != "terminal":
-        return None
-    return "RED" if "red" in entry.aliases else "BLUE"
-
-
-def _transporter_links(document: MapDocument, catalog: Catalog | None) -> dict[int, list[int]]:
-    """Endpoint index -> the other endpoints on its channel.
-
-    A channel with anything other than two endpoints is left unlinked here.
-    That case has its own diagnostic (`C7E-WARP-001`) and guessing which two of
-    three the author meant would turn one clear error into a wrong route.
-    """
-    if catalog is None:
-        return {}
-    width = document.width
-    channels: dict[int, list[int]] = {}
-    for index, value in enumerate(document.planes.planes[0]):
-        entry = catalog.for_value(0, value)
-        if entry is not None and entry.category == "zones" and "transporter" in entry.aliases:
-            channels.setdefault(value, []).append(index)
-    links: dict[int, list[int]] = {}
-    for endpoints in channels.values():
-        if len(endpoints) != 2:
-            continue
-        first, second = endpoints
-        links[first] = [second]
-        links[second] = [first]
-    return links
+def _is_enemy(catalog: Catalog | None, value: int) -> bool:
+    if catalog is not None:
+        return catalog.kind(1, value) == "enemy"
+    return 108 <= value <= 317 and not (224 <= value <= 227 or 242 <= value <= 245
+                                        or 260 <= value <= 263)
 
 
 def analyze(document: MapDocument, catalog: Catalog | None = None) -> Reach:
-    """Flood from the player start, opening doors as keys are found."""
     width, height = document.width, document.height
     plane0 = document.planes.planes[0]
     plane1 = document.planes.planes[1]
     reach = Reach()
+    reach.enemies = [i for i, v in enumerate(plane1) if v >= 19 and _is_enemy(catalog, v)]
 
-    starts = [index for index, value in enumerate(plane1) if value in PLAYER_STARTS]
+    starts = [i for i, v in enumerate(plane1) if v in PLAYER_STARTS]
     if not starts:
         return reach
     reach.started = True
 
-    links = _transporter_links(document, catalog)
-
-    # Precompute each cell's role once: floods run repeatedly.
-    door_color: dict[int, str] = {}
-    open_doors: set[int] = set()
-    key_at: dict[int, str] = {}
-    for index, value in enumerate(plane0):
-        entry = catalog.for_value(0, value) if catalog else None
-        color = _door_color(entry)
-        if color:
-            door_color[index] = color
-        elif entry is not None and entry.subcategory == "door":
-            # An unlocked door is a wall word, but it is not an obstacle: every
-            # door in Corridor 7 opens on use.
-            open_doors.add(index)
-        granted = _key_color(entry)
-        if granted:
-            # A terminal is in a wall; using it needs floor beside it, so the
-            # key is collected from any neighbor rather than from the cell.
-            key_at[index] = granted
-    for index, value in enumerate(plane1):
-        entry = catalog.for_value(1, value) if catalog else None
-        if entry is not None and entry.subcategory in ("moving wall", "mutable wall"):
-            # A pushwall is a wall the player can move, so the room behind it
-            # is reachable -- treating a secret as a dead end would report a
-            # warning on most of the shipped floors, which is how this was
-            # found. It is still not a *required* route: nothing here decides
-            # whether a secret is optional.
-            open_doors.add(index)
-        granted = _key_color(entry)
-        if granted:
-            key_at[index] = granted
-
     def passable(index: int) -> bool:
-        if _is_floor(plane0[index]) or index in open_doors:
+        w0, w1 = plane0[index], plane1[index]
+        if _is_floor(w0) or rules.is_door(w0) or w0 == rules.AMBUSH:
             return True
-        color = door_color.get(index)
-        return color is not None and color in reach.keys
+        if w1 in rules.OPENABLE_MARKERS or w1 == rules.OPEN_PASSAGE:
+            return True
+        return False
 
-    while True:
-        reached = set()
-        blocked: dict[str, list[int]] = {}
-        stack = [index for index in starts if passable(index) or _is_floor(plane0[index])]
-        reached.update(stack)
-        while stack:
-            index = stack.pop()
-            x, y = index % width, index // width
-            neighbors = [ny * width + nx
-                          for nx, ny in ((x, y - 1), (x + 1, y), (x, y + 1), (x - 1, y))
-                          if 0 <= nx < width and 0 <= ny < height]
-            neighbors.extend(links.get(index, ()))
-            for neighbor in neighbors:
-                if neighbor in reached:
-                    continue
-                if passable(neighbor):
-                    reached.add(neighbor)
-                    stack.append(neighbor)
-                elif neighbor in door_color:
-                    blocked.setdefault(door_color[neighbor], []).append(neighbor)
-
-        # Anything standing on a reached cell is picked up; a terminal is used
-        # from the floor beside it.
-        found = set()
-        for index, color in key_at.items():
-            if index in reached:
-                found.add(color)
+    pending = [starts[0]]
+    reach.reached.add(starts[0])
+    pushwalls = {i for i, v in enumerate(plane1) if v == rules.PUSHWALL and rules.is_wall(plane0[i])}
+    while pending:
+        index = pending.pop()
+        x, y = coordinates(index, width)
+        for direction, (dx, dy) in enumerate(((0, -1), (1, 0), (0, 1), (-1, 0))):
+            nx, ny = x + dx, y + dy
+            if not (0 <= nx < width and 0 <= ny < height):
                 continue
-            x, y = index % width, index // width
-            for nx, ny in ((x, y - 1), (x + 1, y), (x, y + 1), (x - 1, y)):
-                if 0 <= nx < width and 0 <= ny < height and (ny * width + nx) in reached:
-                    found.add(color)
-                    break
+            neighbour = linear_index(nx, ny, width)
+            if neighbour in reach.reached:
+                continue
+            if passable(neighbour):
+                reach.reached.add(neighbour)
+                pending.append(neighbour)
+            elif neighbour in pushwalls and direction in rules.pushwall_directions(document, nx, ny):
+                reach.reached.add(neighbour)
+                reach.pushed.append(neighbour)
+                pending.append(neighbour)
 
-        if found <= reach.keys:
-            reach.reached = reached
-            reach.blocked = blocked
-            return reach
-        reach.keys |= found
+    for index, value in enumerate(plane0):
+        if value in rules.EXITS:
+            x, y = coordinates(index, width)
+            for nx, ny in rules.neighbours(x, y):
+                if 0 <= nx < width and 0 <= ny < height and linear_index(nx, ny, width) in reach.reached:
+                    reach.exits.append(index)
+                    break
+    reach.enemies_reached = [i for i in reach.enemies if i in reach.reached]
+    reach.victor_reached = any(plane1[i] == VICTOR for i in reach.enemies_reached)
+    return reach
 
 
 def unreachable_floor(document: MapDocument, reach: Reach) -> list[int]:
-    """Floor cells the player can never stand on, as plane indices."""
+    """Floor cells the start cannot get to (empty when there is no start)."""
     if not reach.started:
         return []
-    return [index for index, value in enumerate(document.planes.planes[0])
-            if _is_floor(value) and index not in reach.reached]
+    plane0 = document.planes.planes[0]
+    return [i for i, v in enumerate(plane0) if _is_floor(v) and i not in reach.reached]

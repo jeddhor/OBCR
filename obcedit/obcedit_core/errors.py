@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Jason Tripp
-"""Diagnostics: the stable `C7E-*` codes from the design guide, appendix C.
+"""Diagnostics: the stable `OBC-*` codes from the design guide, appendix C.
 
 A diagnostic is data, never a formatted string that the caller has to parse
 back. The code is the contract -- tests assert on codes, the GUI groups by
@@ -59,7 +59,7 @@ class Diagnostic:
         return f"{self.code} {self.severity.name.lower()}: {self.message}{location}"
 
 
-class Ec7EditError(Exception):
+class ObcEditError(Exception):
     """Base class carrying a diagnostic rather than only a message."""
 
     def __init__(self, diagnostic: Diagnostic) -> None:
@@ -67,16 +67,16 @@ class Ec7EditError(Exception):
         self.diagnostic = diagnostic
 
 
-class NativeFormatError(Ec7EditError):
-    """A `C7E-NATIVE-*` failure: the TED5 archive or an RLEW stream."""
+class NativeFormatError(ObcEditError):
+    """A `OBC-NATIVE-*` failure: the TED5 archive or an RLEW stream."""
 
 
-class WadFormatError(Ec7EditError):
-    """A `C7E-WAD-*` failure: the preview WAD or its PLANES lump."""
+class WadFormatError(ObcEditError):
+    """A `OBC-WAD-*` failure: the preview WAD or its PLANES lump."""
 
 
-class ExportError(Ec7EditError):
-    """A `C7E-EXPORT-*` or `C7E-SOURCE-*` failure: paths, writes, readback."""
+class ExportError(ObcEditError):
+    """A `OBC-EXPORT-*` or `OBC-SOURCE-*` failure: paths, writes, readback."""
 
 
 def native_error(code: str, message: str, where: str = "") -> NativeFormatError:

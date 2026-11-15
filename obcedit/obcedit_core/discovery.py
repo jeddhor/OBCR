@@ -1,49 +1,45 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Jason Tripp
-"""Finding and validating the user's engine, game data and workspace.
+"""Finding and validating the user's engine (OBCR), game data and workspace.
 
-The output of first-run setup is not "valid" or "invalid" — it is a checklist,
-because "could not find your game" is the least useful thing a program can say
-to somebody holding a CD. Every check here names what it looked for, what it
-found, and what to do about it.
+The output of first-run setup is not "valid" or "invalid" -- it is a checklist,
+because "could not find your game" is the least useful thing a program can say.
+Every check names what it looked for, what it found, and what to do about it.
 
-Two rules the plan is firm about, and both are about not being clever:
+Two rules, both about not being clever:
 
 **Do not go looking.** Nothing here scans a home directory. Candidates come
-from the package's own layout, from paths the user picked, and from nowhere
-else. An editor that trawls the filesystem for a game is an editor that finds
-somebody's backup and edits that.
+from the installed layout (OBCEdit lives in `<install>/obcedit/`, beside
+`<install>/obcr[.exe]` and `<install>/data/`), the PATH, the checkout's own
+`target/` builds, `OBC_DATA_DIR`, and paths the user picked.
 
-**Do not run it to identify it.** The engine's version comes from asking it,
-which means executing a binary the user selected — so that happens only after
-they confirm the probe. Until then, identification is a bounded read of the
-file's own bytes.
-
-Everything in this module is Qt-free; the wizard is a view over it.
+**Do not run it to identify it, until asked.** The engine is the authority on
+which release a data folder holds (`obcr --check-data`), and asking means
+running it, so that waits for a `probe=True`. Until then, identification is a
+bounded read of the files' own bytes.
 """
 
 from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .archive import parse_archive
-from .assets import PALETTE_OFFSET, PALETTE_SIZE, AssetError, load_palette, parse_gfx_header
+from .archive import MAPHEAD_NAME, MAPTEMP_NAME, archive_paths, parse_archive
+from .assets import PALETTE_OFFSETS, PALETTE_SIZE, AssetError, load_palette, parse_gfx_header
 from .bundle import workspace_root
 from .paths import canonical, digest_file, looks_like_game_data
 
-#: The minimum a Corridor 7 installation must have for the editor to work.
-#: The executable is on the list because the palette lives in it and nowhere
-#: else -- the game's own data files do not contain one.
-REQUIRED_DATA = ("MAPTEMP.CO7", "GFXTILES.CO7", "CORR7CD.EXE")
+#: What the editor needs: the maps, the page file, and an executable (the
+#: palette lives there). Either release's executable will do.
+REQUIRED_DATA = (MAPHEAD_NAME, MAPTEMP_NAME, "GFXTILES.BC")
+EXECUTABLES = ("COUNT.EXE", "BCCD.EXE")
 
-#: Nice to have. Their absence is reported and is never a blocker: an editor
-#: that refuses to open because the music is missing is an editor with its
-#: priorities wrong.
-OPTIONAL_DATA = ("VGAGRAPH.CO7", "VGADICT.CO7", "VGAHEAD.CO7", "AUDIOT.CO7", "AUDIOHED.CO7")
+#: Nice to have; never a blocker.
+OPTIONAL_DATA = ("VGAGRAPH.BC", "VGADICT.BC", "VGAHEAD.BC")
 
 OK = "ok"
 WARN = "warning"
@@ -96,10 +92,7 @@ class Report:
 class Profile:
     """A trusted local association of engine, data and workspace.
 
-    Lives in the user's own settings, never in a project file. A project refers
-    to a profile *id* and an expected data fingerprint; it cannot carry the
-    paths themselves, because then opening somebody else's project would point
-    this editor at their filesystem.
+    Lives in the user's own settings, never in a project file.
     """
 
     profile_id: str = ""
@@ -108,6 +101,8 @@ class Profile:
     workspace_dir: str = ""
     data_fingerprint: str = ""
     engine_version: str = ""
+    #: The release id `obcr --check-data` reported (OBC-A, OBC-CD), if probed.
+    release: str = ""
 
     def to_json(self) -> dict:
         return {
@@ -117,27 +112,50 @@ class Profile:
             "workspace_dir": self.workspace_dir,
             "data_fingerprint": self.data_fingerprint,
             "engine_version": self.engine_version,
+            "release": self.release,
         }
 
     @classmethod
     def from_json(cls, payload: dict) -> "Profile":
-        return cls(**{key: payload.get(key, "") for key in cls().to_json()})
+        return cls(**{key: str(payload.get(key, "")) for key in cls().to_json()})
+
+
+def find_file(directory: Path | str, name: str) -> Path | None:
+    """`name` in `directory`, in any letter case (data copied from DOS is upper)."""
+    directory = Path(directory)
+    direct = directory / name
+    if direct.is_file():
+        return direct
+    lowered = name.lower()
+    if directory.is_dir():
+        for entry in directory.iterdir():
+            if entry.name.lower() == lowered and entry.is_file():
+                return entry
+    return None
+
+
+def game_executable(directory: Path | str) -> Path | None:
+    """COUNT.EXE or BCCD.EXE in `directory`, whichever is there."""
+    for name in EXECUTABLES:
+        found = find_file(directory, name)
+        if found is not None:
+            return found
+    return None
 
 
 def data_fingerprint(directory: Path | str) -> str:
-    """A digest over the required files, identifying a data set by content.
-
-    Content, not path: the same CD copied to two machines gives one
-    fingerprint, and a project made against it opens on both.
-    """
+    """A digest over the required files, identifying a data set by content."""
     import hashlib
 
     directory = Path(directory)
     digest = hashlib.sha256()
+    executable = game_executable(directory)
     for name in REQUIRED_DATA:
-        path = directory / name
+        path = find_file(directory, name)
         digest.update(name.encode("ascii"))
-        digest.update(digest_file(path).encode("ascii") if path.is_file() else b"-")
+        digest.update(digest_file(path).encode("ascii") if path else b"-")
+    digest.update(b"EXE")
+    digest.update(digest_file(executable).encode("ascii") if executable else b"-")
     return digest.hexdigest()
 
 
@@ -148,64 +166,64 @@ def check_data_directory(directory: Path | str) -> Report:
 
     if not directory.is_dir():
         report.add("Data directory", FAIL, f"{directory} is not a directory",
-                   "Choose the folder holding MAPTEMP.CO7 and CORR7CD.EXE.")
+                   "Choose the folder holding GFXTILES.BC and COUNT.EXE or BCCD.EXE "
+                   "(an OBCR installation's data folder works).")
         return report
     report.add("Data directory", OK, str(canonical(directory)))
 
-    missing = [name for name in REQUIRED_DATA if not (directory / name).is_file()]
+    missing = [name for name in REQUIRED_DATA if find_file(directory, name) is None]
+    executable = game_executable(directory)
+    if executable is None:
+        missing.append("COUNT.EXE or BCCD.EXE")
     if missing:
         report.add(
             "Required game files", FAIL, f"missing: {', '.join(missing)}",
-            "Copy these from your own legally owned Corridor 7. The editor never "
-            "ships them.",
+            "Use the folder OBCR Setup installed the game files into, or your own copy "
+            "of Operation Body Count. The editor never ships them.",
         )
     else:
-        report.add("Required game files", OK, f"all {len(REQUIRED_DATA)} present")
+        report.add("Required game files", OK, f"all present ({executable.name})")
 
-    absent_optional = [name for name in OPTIONAL_DATA if not (directory / name).is_file()]
-    if absent_optional:
-        report.add("Optional content", WARN, f"not present: {', '.join(absent_optional)}",
-                   "Pictures and audio will be unavailable; editing maps is unaffected.")
+    absent = [name for name in OPTIONAL_DATA if find_file(directory, name) is None]
+    if absent:
+        report.add("Optional content", WARN, f"not present: {', '.join(absent)}",
+                   "Pictures will be unavailable; editing maps is unaffected.")
     else:
         report.add("Optional content", OK, "all present")
 
-    executable = directory / "CORR7CD.EXE"
-    if executable.is_file():
+    if executable is not None:
+        name = executable.name.upper()
+        offset = PALETTE_OFFSETS.get(name, 0)
         size = executable.stat().st_size
-        if size < PALETTE_OFFSET + PALETTE_SIZE:
-            report.add(
-                "Palette", FAIL,
-                f"CORR7CD.EXE is {size} bytes; the palette lives at 0x{PALETTE_OFFSET:X}",
-                "This is not the CD executable the palette comes from.",
-            )
+        if size < offset + PALETTE_SIZE:
+            report.add("Palette", FAIL, f"{name} is {size} bytes; too short for its palette",
+                       "This is not the executable of a supported release.")
         else:
-            # A bounded read, not the whole file: enough to identify, no more.
             with open(executable, "rb") as handle:
-                handle.seek(PALETTE_OFFSET)
+                handle.seek(offset)
                 window = handle.read(PALETTE_SIZE)
             try:
-                load_palette(b"\x00" * PALETTE_OFFSET + window)
-                report.add("Palette", OK, "a 6-bit VGA palette is at the expected offset")
+                load_palette(b"\x00" * offset + window, name)
+                report.add("Palette", OK, f"a 6-bit VGA palette is in {name}")
             except AssetError as error:
                 report.add("Palette", FAIL, str(error),
                            "The executable is the wrong build or the wrong game.")
 
-    archive = directory / "MAPTEMP.CO7"
-    if archive.is_file():
-        try:
-            parsed = parse_archive(archive.read_bytes())
-            report.add("Map archive", OK,
-                       f"{len(parsed)} maps, {parsed[0].width}x{parsed[0].height}")
-        except Exception as error:  # any codec failure, reported not raised
+    try:
+        head, temp = archive_paths(directory)
+        parsed = parse_archive(head.read_bytes(), temp.read_bytes())
+        report.add("Map archive", OK, f"{len(parsed)} maps")
+    except Exception as error:  # any codec failure, reported not raised
+        if find_file(directory, MAPTEMP_NAME):
             report.add("Map archive", FAIL, str(error),
-                       "MAPTEMP.CO7 did not parse; the copy may be damaged.")
+                       "MAPHEAD.BC/MAPTEMP.BC did not parse; the copy may be damaged.")
 
-    graphics = directory / "GFXTILES.CO7"
-    if graphics.is_file():
+    graphics = find_file(directory, "GFXTILES.BC")
+    if graphics is not None:
         try:
             with open(graphics, "rb") as handle:
-                head = handle.read(6)
-                chunk_count = int.from_bytes(head[0:2], "little")
+                head6 = handle.read(6)
+                chunk_count = int.from_bytes(head6[0:2], "little")
                 handle.seek(0)
                 header = parse_gfx_header(handle.read(6 + chunk_count * 6))
             report.add("Wall and sprite artwork", OK,
@@ -213,16 +231,19 @@ def check_data_directory(directory: Path | str) -> Report:
                        f"{header.sound_start - header.sprite_start} sprites")
         except Exception as error:
             report.add("Wall and sprite artwork", FAIL, str(error),
-                       "GFXTILES.CO7 did not parse.")
-
+                       "GFXTILES.BC did not parse.")
     return report
 
 
-#: The engine prints its identity as part of the usage page. `--version` is
-#: not a flag it has: passing it falls through to a normal start, which on a
-#: headless machine means a probe that never returns.
-IDENTITY_FLAG = "--help"
-_IDENTITY = re.compile(r"^(EC7Wolf|ECWolf)\s+(\S+)", re.MULTILINE)
+#: `obcr --version` prints `obcr <version>`.
+IDENTITY_FLAG = "--version"
+_IDENTITY = re.compile(r"^(obcr)\s+(\S+)", re.MULTILINE | re.IGNORECASE)
+
+
+def _run(command: list[str], timeout: float, cwd=None) -> tuple[int, str]:
+    result = subprocess.run(command, capture_output=True, text=True, timeout=timeout,
+                            cwd=str(cwd) if cwd else None, stdin=subprocess.DEVNULL)
+    return result.returncode, (result.stdout or "") + (result.stderr or "")
 
 
 def check_engine(
@@ -232,17 +253,17 @@ def check_engine(
     timeout: float = 20.0,
     cwd: Path | str | None = None,
 ) -> Report:
-    """Check an engine binary. Only runs it when `probe` is explicitly asked for."""
+    """Check an OBCR binary. Only runs it when `probe` is explicitly asked for."""
     report = Report()
     path = Path(path).expanduser()
 
     if not path.exists():
         report.add("Engine", FAIL, f"{path} does not exist",
-                   "Choose the ec7wolf executable from your build or release.")
+                   "Choose the obcr executable of your OBCR installation or build.")
         return report
     if not path.is_file():
         report.add("Engine", FAIL, f"{path} is not a regular file",
-                   "Choose the executable itself, not a directory or a device.")
+                   "Choose the executable itself, not a directory.")
         return report
     report.add("Engine", OK, str(canonical(path)))
 
@@ -253,22 +274,12 @@ def check_engine(
     report.add("Executable bit", OK, "set")
 
     if not probe:
-        # Running a binary somebody selected is a real action, so it waits for
-        # a real decision. Until then the checklist says what it does not know.
         report.add("Engine identity", WARN, "not checked",
-                   "Run the identity probe to confirm this is EC7Wolf.")
+                   "Run the identity probe to confirm this is OBCR.")
         return report
 
     try:
-        # Absolute: the probe runs in the data directory, so a relative path
-        # would be resolved against the wrong place.
-        result = subprocess.run(
-            [str(canonical(path)), IDENTITY_FLAG],
-            capture_output=True, text=True, timeout=timeout,
-            cwd=str(cwd) if cwd else None,
-            stdin=subprocess.DEVNULL,
-        )
-        text = (result.stdout or "") + (result.stderr or "")
+        _, text = _run([str(canonical(path)), IDENTITY_FLAG], timeout, cwd)
     except subprocess.TimeoutExpired:
         report.add("Engine identity", FAIL, f"the probe did not return within {timeout:g}s",
                    "The binary may be waiting for input or for a display.")
@@ -279,40 +290,75 @@ def check_engine(
         return report
 
     found = _IDENTITY.search(text)
-    if found and found.group(1) == "EC7Wolf":
+    if found:
         report.add("Engine identity", OK, found.group(0).strip())
-    elif found:
-        report.add(
-            "Engine identity", FAIL, found.group(0).strip(),
-            "This is upstream ECWolf, not EC7Wolf. Corridor 7 support is in the fork.",
-        )
     else:
         first = text.strip().splitlines()[0] if text.strip() else "no output"
-        report.add("Engine identity", FAIL, first,
-                   "This does not identify itself as EC7Wolf.")
+        report.add("Engine identity", FAIL, first, "This does not identify itself as OBCR.")
     return report
 
 
 def engine_version(report: Report) -> str:
-    """Pull the version string out of a probed engine report, if there is one."""
+    """The version string out of a probed engine report, if there is one."""
     for check in report:
         if check.name == "Engine identity" and check.status == OK:
             return check.detail
     return ""
 
 
+@dataclass
+class DataIdentity:
+    """What `obcr --check-data` said about a folder or CD image."""
+
+    release: str = ""
+    description: str = ""
+    complete: bool = False
+    source: str = ""
+    files: list[tuple[str, str, str]] = field(default_factory=list)  # role, status, name
+    error: str = ""
+
+
+def parse_check_data(text: str) -> DataIdentity:
+    """Parse `obcr --check-data` output (tab-separated records)."""
+    found = DataIdentity()
+    for line in text.splitlines():
+        fields = line.rstrip("\r").split("\t")
+        tag = fields[0]
+        if tag == "release" and len(fields) > 2:
+            found.release, found.description = fields[1], fields[2]
+        elif tag == "source" and len(fields) > 1:
+            found.source = fields[1]
+        elif tag == "file" and len(fields) > 3:
+            found.files.append((fields[1], fields[2], fields[3]))
+        elif tag == "complete" and len(fields) > 1:
+            found.complete = fields[1] == "yes"
+        elif tag == "error" and len(fields) > 1:
+            found.error = fields[1]
+    return found
+
+
+def identify_data(engine: Path | str, directory: Path | str, *, timeout: float = 60.0) -> DataIdentity:
+    """Ask the engine which release `directory` holds. Runs `obcr`."""
+    try:
+        _, text = _run([str(engine), "--check-data", str(directory)], timeout)
+    except (OSError, subprocess.SubprocessError) as error:
+        return DataIdentity(error=f"could not run {engine}: {error}")
+    identity = parse_check_data(text)
+    if not identity.release and not identity.error:
+        identity.error = "the engine gave no answer"
+    return identity
+
+
 def check_workspace(directory: Path | str, *, data_dir: Path | str = "") -> Report:
     """Check the workspace: writable, and not inside the game data."""
     report = Report()
     directory = Path(directory).expanduser()
-
     try:
         directory.mkdir(parents=True, exist_ok=True)
     except OSError as error:
         report.add("Workspace", FAIL, f"cannot create {directory}: {error}",
                    "Choose a folder you can write to.")
         return report
-
     if not os.access(directory, os.W_OK):
         report.add("Workspace", FAIL, f"{directory} is not writable",
                    "Choose a folder you can write to.")
@@ -321,11 +367,9 @@ def check_workspace(directory: Path | str, *, data_dir: Path | str = "") -> Repo
 
     resolved = canonical(directory)
     if looks_like_game_data(resolved):
-        report.add(
-            "Separation", FAIL, f"{resolved} holds game data",
-            "Keep projects out of the game directory so an export can never "
-            "land on the originals.",
-        )
+        report.add("Separation", FAIL, f"{resolved} holds game data",
+                   "Keep projects out of the game directory so an export can never "
+                   "land on the originals.")
     elif data_dir:
         data_resolved = canonical(data_dir)
         if resolved == data_resolved or resolved.is_relative_to(data_resolved):
@@ -342,57 +386,55 @@ def check_profile(profile: Profile, *, probe: bool = False) -> Report:
     """The whole first-run checklist, in the order the page shows it."""
     report = Report()
     if profile.engine_path:
-        # The engine reads its data from the working directory, so a probe runs
-        # there when we know it -- otherwise it reports a missing IWAD rather
-        # than its version.
-        report.checks.extend(
-            check_engine(profile.engine_path, probe=probe, cwd=profile.data_dir or None)
-        )
+        report.checks.extend(check_engine(profile.engine_path, probe=probe))
     if profile.data_dir:
         report.checks.extend(check_data_directory(profile.data_dir))
+        if probe and profile.engine_path and Path(profile.engine_path).is_file():
+            identity = identify_data(profile.engine_path, profile.data_dir)
+            if identity.error:
+                report.add("Release", WARN, identity.error,
+                           "The engine could not identify the data; editing still works.")
+            elif identity.complete:
+                report.add("Release", OK, f"{identity.release}: {identity.description}")
+            else:
+                report.add("Release", WARN, f"{identity.release}: incomplete or modified",
+                           "Playtesting needs a complete copy of a supported release.")
     if profile.workspace_dir:
-        report.checks.extend(
-            check_workspace(profile.workspace_dir, data_dir=profile.data_dir)
-        )
+        report.checks.extend(check_workspace(profile.workspace_dir, data_dir=profile.data_dir))
     if not report.checks:
         report.add("Profile", FAIL, "nothing has been chosen yet",
-                   "Pick an engine, a game-data directory and a workspace.")
+                   "Pick OBCR, a game-data directory and a workspace.")
     return report
 
 
-def candidate_engines(start: Path | str | None = None) -> list[Path]:
-    """Places an EC7Wolf build plausibly is, relative to this checkout.
+ENGINE_NAMES = ("obcr.exe", "obcr") if os.name == "nt" else ("obcr", "obcr.exe")
 
-    Deliberately a short list of specific places rather than a search. The
-    editor suggesting three paths that might be right is helpful; the editor
-    walking somebody's home directory is not.
-    """
+
+def candidate_engines(start: Path | str | None = None) -> list[Path]:
+    """Places an OBCR binary plausibly is. A short list, never a search."""
     root = Path(start) if start else workspace_root()
-    names = ("ec7wolf", "ec7wolf.exe")
-    places = [
-        root / "builds" / "release",
-        root / "builds" / "release-build",
-        root / "build",
-        Path.cwd(),
-    ]
-    found = []
+    places = [root, root / "target" / "release", root / "target" / "debug"]
+    found: list[Path] = []
     for place in places:
-        for name in names:
+        for name in ENGINE_NAMES:
             candidate = place / name
             if candidate.is_file() and candidate not in found:
                 found.append(candidate)
+    on_path = shutil.which("obcr")
+    if on_path and Path(on_path) not in found:
+        found.append(Path(on_path))
     return found
 
 
 def candidate_data_dirs(start: Path | str | None = None) -> list[Path]:
     """Likewise for the game data: named places, never a scan."""
     root = Path(start) if start else workspace_root()
-    places = [
-        root / "corr7" / "CORR7CD",
-        root / "builds" / "release",
-        Path.cwd(),
-    ]
-    return [place for place in places if place.is_dir() and looks_like_game_data(place)]
+    places = [root / "data", root / ".local" / "data" / "obc-full",
+              root / ".local" / "data" / "obc-cd"]
+    env = os.environ.get("OBC_DATA_DIR")
+    if env:
+        places.insert(0, Path(env))
+    return [p for p in places if p.is_dir() and looks_like_game_data(p)]
 
 
 def default_workspace() -> Path:

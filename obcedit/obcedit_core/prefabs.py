@@ -2,50 +2,39 @@
 # Copyright (C) 2026 Jason Tripp
 """Compound structures: the things that are more than one word.
 
-Corridor 7 builds most of its interesting features out of *pairs* of words on
-different planes. A moving wall is an ordinary wall on plane 0 with marker 101
-on plane 1. A health chamber is a wall, a door, a use panel and a chamber cell
-in a fixed arrangement. Placing one by hand means knowing which words go where
-and getting the arithmetic right, which is exactly what an editor exists to
-avoid.
+Operation Body Count builds many features from *pairs* of words on different
+planes: a door-look wall is a wall frame on plane 0 with 103 (or 106) on
+plane 1, a glass pane is wall 57 with window marker 104, a fan is wall 73 with
+a speed 86-88, an ambush is floor marker 138 under a standing enemy. Painting
+the raw words one at a time is how a map ends up with a marker on open floor
+and no wall to push. A prefab writes every word at once, as one undo step,
+and checks first that the cells can take it.
 
-Every prefab here declares the six things the design guide requires, and a test
-refuses one that is missing any of them:
+The words come from `docs/re/LEVEL_CODES.md` (sections 3-4); each prefab
+records the section it follows (`evidence`).
 
-1. **writes** -- the exact `(plane, dx, dy, value)` set, relative to an anchor;
-2. **precondition** -- what must already be true of the cells it covers;
-3. **preview** -- what to draw before the click, which is the writes;
-4. **undo** -- inherent, because a prefab becomes one command;
-5. **validation** -- the diagnostic code when the precondition fails;
-6. **rotation** -- how the footprint turns, and what happens to facings;
-
-plus a **source reference**, so anyone can check where the word set came from.
-
-The rule that shapes all of them: a prefab writes raw words and nothing else.
-There is no second representation, so a map built with these tools is exactly a
-map somebody could have built by hand, and the editor never becomes something
-the file format has to know about.
+Doors are a special case: their axis is part of the word (rules.py), so a door
+prefab is placed with `placement_on(document, x, y)`, which picks the even or
+odd code from the neighbouring walls.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, replace
 
+from . import rules
 from .document import MapDocument
 from .errors import Diagnostic, Severity
 from .planes import linear_index
 
-#: Corridor 7's empty object-plane marker.
-EMPTY_OBJECT = 18
+EMPTY_OBJECT = rules.EMPTY_OBJECT
+#: A plain wall for prefabs that need one and have no better choice.
+DEFAULT_WALL = 1
+#: What erasing a structure puts back on plane 0: area 4, floor set 0.
+DEFAULT_FLOOR = MapDocument.DEFAULT_FLOOR
 
-#: Plane-0 words that a person can stand on.
-def is_floor(value: int) -> bool:
-    return value == 0 or 256 <= value <= 300
-
-
-def is_wall(value: int) -> bool:
-    """A solid wall page. Doors and specials are walls too, but not plain ones."""
-    return 1 <= value <= 250
+is_floor = rules.is_floor
+is_wall = rules.is_wall
 
 
 @dataclass(frozen=True)
@@ -58,7 +47,6 @@ class Write:
     value: int
 
     def rotated(self, quarter_turns: int) -> "Write":
-        """Turn the offset clockwise. The value is handled by the caller."""
         dx, dy = self.dx, self.dy
         for _ in range(quarter_turns % 4):
             dx, dy = -dy, dx
@@ -72,7 +60,7 @@ class Precondition:
     dx: int
     dy: int
     #: "floor", "wall", "any", "empty" (nothing on plane 1), or "reachable"
-    #: (at least one orthogonal neighbor is floor).
+    #: (at least one orthogonal neighbour is floor).
     requires: str
     why: str
 
@@ -88,12 +76,12 @@ class Precondition:
         if self.requires == "wall":
             return is_wall(plane0)
         if self.requires == "empty":
-            return plane1 in (0, EMPTY_OBJECT)
+            return plane1 < 19
         if self.requires == "reachable":
-            for nx, ny in ((cx, cy - 1), (cx + 1, cy), (cx, cy + 1), (cx - 1, cy)):
-                if not (0 <= nx < document.width and 0 <= ny < document.height):
-                    continue
-                if is_floor(document.planes.planes[0][linear_index(nx, ny, document.width)]):
+            for nx, ny in rules.neighbours(cx, cy):
+                if 0 <= nx < document.width and 0 <= ny < document.height and is_floor(
+                    document.planes.planes[0][linear_index(nx, ny, document.width)]
+                ):
                     return True
             return False
         return True
@@ -115,16 +103,14 @@ class Prefab:
     category: str
     writes: tuple[Write, ...]
     preconditions: tuple[Precondition, ...] = ()
-    #: The diagnostic raised when a precondition fails.
-    diagnostic: str = "C7E-CELL-004"
-    #: What erasing puts back, by offset. Empty means "plain floor and nothing".
+    diagnostic: str = "OBC-CELL-004"
     erase_to: tuple[Write, ...] = ()
-    #: Whether the footprint has an orientation the user can turn.
     rotatable: bool = False
-    #: True for structures only offered under Advanced.
     advanced: bool = False
     evidence: str = ""
     notes: str = ""
+    #: For doors: the look (0-3); the axis is chosen where it is placed.
+    door_lock: int | None = None
 
     def __post_init__(self) -> None:
         if not self.writes:
@@ -134,22 +120,13 @@ class Prefab:
 
     @property
     def footprint(self) -> tuple[tuple[int, int], ...]:
-        """Every cell the prefab touches, deduplicated, in reading order."""
         cells = {(write.dx, write.dy) for write in self.writes}
         cells |= {(check.dx, check.dy) for check in self.preconditions}
         return tuple(sorted(cells, key=lambda cell: (cell[1], cell[0])))
 
     def rotated(self, quarter_turns: int) -> "Prefab":
-        """The same structure turned clockwise.
-
-        Only the offsets move. A prefab whose *values* encode a facing -- none
-        do today, because the facing ones are single words and go through the
-        catalog -- would override this.
-        """
         if not self.rotatable or quarter_turns % 4 == 0:
             return self
-        from dataclasses import replace
-
         return replace(
             self,
             writes=tuple(write.rotated(quarter_turns) for write in self.writes),
@@ -157,23 +134,30 @@ class Prefab:
         )
 
     def check(self, document: MapDocument, x: int, y: int) -> list[Diagnostic]:
-        """Every reason this prefab may not go here. Empty means it may."""
         problems = []
         for cell in self.footprint:
             cx, cy = x + cell[0], y + cell[1]
             if not (0 <= cx < document.width and 0 <= cy < document.height):
                 problems.append(Diagnostic(
-                    "C7E-BOUNDARY-001", Severity.ERROR,
+                    "OBC-BOUNDARY-001", Severity.ERROR,
                     f"{self.name} does not fit here; it would reach outside the map",
-                    f"cell ({cx}, {cy})",
+                    f"cell ({cx}, {cy})", cell=(cx, cy),
                 ))
                 return problems
         for check in self.preconditions:
             if not check.holds(document, x, y):
+                cx, cy = x + check.dx, y + check.dy
                 problems.append(Diagnostic(
-                    self.diagnostic, Severity.ERROR,
-                    f"{self.name} needs {check.why}",
-                    f"cell ({x + check.dx}, {y + check.dy})",
+                    self.diagnostic, Severity.ERROR, f"{self.name} needs {check.why}",
+                    f"cell ({cx}, {cy})", cell=(cx, cy),
+                ))
+        if self.door_lock is not None and not problems:
+            axis = rules.door_axis(document, x, y)
+            if not axis.two_sided:
+                problems.append(Diagnostic(
+                    "OBC-DOOR-003", Severity.ERROR,
+                    f"{self.name} needs walls on two opposite sides and floor on the "
+                    "other two", f"cell ({x}, {y})", cell=(x, y),
                 ))
         return problems
 
@@ -181,330 +165,147 @@ class Prefab:
         """The `(plane, x, y, value)` writes for an anchor at `(x, y)`."""
         return [(w.plane, x + w.dx, y + w.dy, w.value) for w in self.writes]
 
-    def removal(self, x: int, y: int) -> list[tuple[int, int, int, int]]:
-        """The writes that take it away again.
+    def placement_on(self, document: MapDocument, x: int, y: int) -> list[tuple[int, int, int, int]]:
+        """Like `placement`, resolving anything that depends on the map (a door's axis)."""
+        writes = self.placement(x, y)
+        if self.door_lock is None:
+            return writes
+        code = rules.door_for_cell(document, x, y, self.door_lock)
+        return [(p, wx, wy, code if p == 0 and (wx, wy) == (x, y) else v)
+                for p, wx, wy, v in writes]
 
-        Not the inverse of placement -- that is what undo is for. This is what
-        the eraser does to a structure somebody placed earlier and now wants
-        gone, which means a defined safe base state rather than whatever was
-        there before.
-        """
+    def removal(self, x: int, y: int) -> list[tuple[int, int, int, int]]:
         if self.erase_to:
             return [(w.plane, x + w.dx, y + w.dy, w.value) for w in self.erase_to]
         writes = []
         for cell in self.footprint:
-            writes.append((0, x + cell[0], y + cell[1], 0))
+            writes.append((0, x + cell[0], y + cell[1], DEFAULT_FLOOR))
             writes.append((1, x + cell[0], y + cell[1], EMPTY_OBJECT))
         return writes
 
 
-# ---------------------------------------------------------------------------
-# The catalog
-# ---------------------------------------------------------------------------
-
-#: A wall page that reads as a plain surface, used where a prefab needs a wall
-#: and the author has not chosen one. Page 0, the gray diagonal.
-DEFAULT_WALL = 1
-#: What erasing a structure puts back on plane 0. A sound area, not zero: see
-#: MapDocument.DEFAULT_FLOOR -- a cell with no area is a cell nothing can hear
-#: through, and the shipped maps never use word 0.
-DEFAULT_FLOOR = 256
+_REACH = Precondition(0, 0, "reachable", "floor beside it, to reach it from")
+_TO_FLOOR = (Write(0, 0, 0, DEFAULT_FLOOR), Write(1, 0, 0, EMPTY_OBJECT))
 
 
-#: The four-frame retractable doors, named from their artwork. `base` is the
-#: closed frame; `base+1` to `base+3` are the opening animation and are never
-#: placed on a map by anything.
-ANIMATED_DOORS = (
-    (45, "Retractable door (alien machinery)",
-     "A gray and red alien bulkhead that retracts to an open aperture."),
-    (49, "Retractable door (red membrane)",
-     "A red organic membrane that draws back to an open aperture."),
-    (53, "Retractable door (iris hatch)",
-     "A circular metal iris in a blue frame that opens outward."),
-    (73, "Retractable door (hazard shutter)",
-     "A slatted silver shutter with hazard striping that rolls up."),
-    (81, "Force field door",
-     "A cross-hatched energy screen that thins to nothing as it opens. Its "
-     "closed frame is already half aperture, because it is a screen you can "
-     "see through rather than a solid door."),
-    (117, "Retractable door (green organic)",
-     "A green organic panel with yellow veins that parts in the middle."),
-    (193, "Retractable door (arrow door)",
-     "A pale double door with inward-pointing arrows that draws apart. Present "
-     "in the artwork; no shipped map places one."),
-    (229, "Retractable door (metal iris)",
-     "A spiral metal iris that winds open."),
-    (233, "Retractable door (louvre slats)",
-     "Horizontal white slats that draw back one band at a time. Present in the "
-     "artwork; no shipped map places one."),
-    (241, "Retractable door (hazard cross)",
-     "A yellow-and-white door whose central cross opens outward. Present in "
-     "the artwork; no shipped map places one."),
-)
-
-#: Every wall word that is an intermediate frame of one of those animations.
-#: Word 84 is deliberately absent: it is the force field's open state and the
-#: shipped maps place it directly, 59 times.
-#:
-#: The ten bases were found two ways, because neither alone is enough. Seven
-#: carry marker 106 somewhere in the shipped archive, which is proof. The other
-#: three are in the artwork only, found by measuring how much of each wall page
-#: is palette index 255 -- the masked aperture -- and looking for four
-#: consecutive pages where that fraction only grows. That measurement also
-#: proposes bases one page early, where an ordinary wall happens to precede a
-#: door, so every candidate was looked at before being accepted: 80, 192 and
-#: 240 are a red texture, gray static and a monitor screen respectively.
-ANIMATION_FRAMES = tuple(
-    sorted({base + step for base, _, _ in ANIMATED_DOORS for step in (1, 2, 3)} - {84})
-)
-
-
-def _animated_door(base: int, name: str, description: str) -> Prefab:
-    """A retractable door: its closed wall page, plus the marker that opens it."""
+def _door(lock: int, name: str) -> Prefab:
     return Prefab(
-        key=f"prefab.door.animated.{base:03d}",
-        name=name,
-        description=description,
-        category="specials",
-        writes=(Write(0, 0, 0, base), Write(1, 0, 0, 106)),
-        erase_to=(Write(0, 0, 0, DEFAULT_FLOOR), Write(1, 0, 0, EMPTY_OBJECT)),
-        evidence=f"xlat/corridor7.txt things trigger 106, Wall_AnimateRemove; the "
-                 f"archive places wall {base} under marker 106 and never places "
-                 f"{base + 1}..{base + 3} at all",
-        notes=f"Frames {base + 1}, {base + 2} and {base + 3} belong to this door "
-              "and are not paint.",
+        key=f"prefab.door.{lock + 1}", name=name,
+        description="A door. Its axis follows the walls around it: walls north and "
+                    "south make a door you walk through east-west. The look is "
+                    "cosmetic; Operation Body Count has no locked doors.",
+        category="specials", writes=(Write(0, 0, 0, rules.door_value(lock, True)),
+                                     Write(1, 0, 0, EMPTY_OBJECT)),
+        erase_to=_TO_FLOOR, door_lock=lock,
+        evidence="LEVEL_CODES 3.4: 130-137, even vertical, lock = (code - 130) / 2",
     )
 
 
-def _terminal(key, name, value, description, evidence) -> Prefab:
-    """A one-shot wall terminal: a single plane-0 word with floor to reach it."""
+def _door_look(base: int, marker: int) -> Prefab:
+    see = marker == 106
     return Prefab(
-        key=key, name=name, description=description, category="specials",
-        writes=(Write(0, 0, 0, value),),
-        preconditions=(Precondition(0, 0, "reachable", "floor beside it to reach it from"),),
-        erase_to=(Write(0, 0, 0, DEFAULT_FLOOR), Write(1, 0, 0, EMPTY_OBJECT)),
+        key=f"prefab.doorlook.{base}.{marker}",
+        name=f"Sliding panel {base}{' (see-through)' if see else ''}",
+        description="A wall that slides open when used and stays open until used again; "
+                    "enemies open it by walking into it. "
+                    + ("Enemies can see through it." if see else "It blocks sight when shut."),
+        category="specials", writes=(Write(0, 0, 0, base), Write(1, 0, 0, marker)),
+        preconditions=(_REACH,), erase_to=_TO_FLOOR,
+        evidence="LEVEL_CODES 3.3 and 4.4: door-look walls 13/29/49/65/69 with plane-1 "
+                 "103 (opaque) or 106 (see-through)",
+        notes=f"Walls {base + 1}-{base + 3} are its animation frames and are not paint.",
+    )
+
+
+def _wall_with(key, name, wall, marker, description, evidence, *, reach=True,
+               category="specials", erase_wall=None) -> Prefab:
+    writes = [Write(0, 0, 0, wall)]
+    if marker is not None:
+        writes.append(Write(1, 0, 0, marker))
+    return Prefab(
+        key=key, name=name, description=description, category=category, writes=tuple(writes),
+        preconditions=(_REACH,) if reach else (),
+        erase_to=(Write(0, 0, 0, erase_wall), Write(1, 0, 0, EMPTY_OBJECT))
+        if erase_wall is not None else _TO_FLOOR,
         evidence=evidence,
     )
 
 
-def _wall_marker(key, name, marker, description, evidence, *, wall=DEFAULT_WALL,
-                 advanced=False, notes="") -> Prefab:
-    """A plane-1 marker over a plane-0 wall: the shape most of these take."""
+def _marker_on_wall(key, name, marker, description, evidence, *, advanced=False) -> Prefab:
+    """A plane-1 marker on whatever wall is already there."""
     return Prefab(
         key=key, name=name, description=description, category="walls",
-        writes=(Write(0, 0, 0, wall), Write(1, 0, 0, marker)),
-        preconditions=(),
-        erase_to=(Write(0, 0, 0, wall), Write(1, 0, 0, EMPTY_OBJECT)),
-        evidence=evidence, advanced=advanced, notes=notes,
+        writes=(Write(1, 0, 0, marker),),
+        preconditions=(Precondition(0, 0, "wall", "a wall to mark"),),
+        erase_to=(Write(1, 0, 0, EMPTY_OBJECT),), evidence=evidence, advanced=advanced,
     )
 
 
 PREFABS: tuple[Prefab, ...] = (
-    _wall_marker(
-        "prefab.pushwall.secret", "Secret pushwall", 98,
-        "Slides two tiles when used, and counts toward the floor's restricted-area "
-        "total. This is the one that makes a secret a secret.",
-        "xlat/corridor7.txt things trigger 98, secret = true",
+    *(_door(lock, f"Door, look {lock + 1}") for lock in range(4)),
+    *(_door_look(base, marker) for base in rules.DOOR_LOOK_BASES for marker in (103, 106)),
+    _marker_on_wall(
+        "prefab.pushwall", "Push wall (secret)", rules.PUSHWALL,
+        "The wall slides exactly two cells away from whoever uses it, then stays put "
+        "for good. Counts as a secret. Needs floor on the side you push from and two "
+        "open cells ahead.",
+        "LEVEL_CODES 4.7: plane-1 98, MovePWalls moves it exactly two cells",
     ),
-    _wall_marker(
-        "prefab.pushwall.plain", "Moving wall", 101,
-        "Slides two tiles when used. Unlike the secret pushwall it is not counted, "
-        "so it is the one to use for a shortcut rather than a discovery.",
-        "xlat/corridor7.txt things trigger 101; the released maps use 101 and 102",
-    ),
-    # The seven retractable doors. Each is a specific base wall plus marker
-    # 106, and the base matters: the marker advances through the *next three*
-    # wall pages, so it only makes a door where those three pages are the rest
-    # of an opening animation. An earlier version of this offered one generic
-    # "disintegrating wall" over wall 1, which would have animated into three
-    # unrelated materials.
-    #
-    # The seven were found rather than assumed: across the shipped archive,
-    # every cell carrying marker 106 has one of these seven words under it, and
-    # the three frames after each base are never placed by any map.
-    *(
-        _animated_door(base, name, description)
-        for base, name, description in ANIMATED_DOORS
+    *(_wall_with(f"prefab.exit.{kind}", f"Exit: {kind}", code, None,
+                 "Leaves the floor when used, once half the floor's enemies are dead. "
+                 + ("Plays the elevator sequence." if code == 115 else ""),
+                 "LEVEL_CODES 3.3: exits 113 ladder, 114 stairs, 115 elevator (exitkind 1)")
+      for code, kind in rules.EXITS.items()),
+    _wall_with("prefab.generator.on", "Generator switch (lights on)", 95, None,
+               "Using it turns the lights off (GENERATORS OFF); again turns them on.",
+               "LEVEL_CODES 3.3: 95/96 toggled by Cmd_Use; 95 -> 96 = GENERATORS OFF"),
+    _wall_with("prefab.generator.off", "Generator switch (lights off)", 96, None,
+               "A floor with this switch starts dark; using it turns the lights on.",
+               "start_play_loop: a 96 tile on the floor means it starts dark"),
+    _wall_with("prefab.glass", "Glass pane", 57, 104,
+               "See-through for you, blocks enemy sight; an explosion breaks it.",
+               "LEVEL_CODES 3.3 and 4.6: 57 with window marker 104", reach=False),
+    _wall_with("prefab.screen", "Screen pane", 117, 104,
+               "A second glass pane, broken by explosions.",
+               "LEVEL_CODES 3.3 and 4.6: 117 with window marker 104", reach=False),
+    *(_wall_with(f"prefab.fan.{speed}", f"Porthole fan ({speed})", 73, marker,
+                 "A spinning porthole fan; it stays solid.",
+                 "LEVEL_CODES 4.4: wall 73 with plane-1 86/87/88", reach=False)
+      for marker, speed in ((86, "slow"), (87, "medium"), (88, "fast"))),
+    _wall_with("prefab.rock-opening", "Rock opening (sewer)", 88, rules.OPEN_PASSAGE,
+               "A hole in the rock you can walk through; using it heals 25 below your "
+               "healing limit, as in the original.",
+               "LEVEL_CODES 3.3 and 4.4: wall 88 with plane-1 107", reach=False),
+    _marker_on_wall("prefab.explosion-proof", "Explosion-proof wall", 89,
+                    "Grenades cannot damage this wall. Every original map marks its border "
+                    "this way.", "LEVEL_CODES 4.8: plane-1 89"),
+    _marker_on_wall("prefab.window", "See-through wall (window)", 104,
+                    "The wall is drawn see-through; blocks enemy sight.",
+                    "LEVEL_CODES 4.6: plane-1 104", advanced=True),
+    _marker_on_wall("prefab.grille", "See-through wall (grille)", 105,
+                    "The wall is drawn see-through; enemies see through it too.",
+                    "LEVEL_CODES 4.6: plane-1 105", advanced=True),
+    Prefab(
+        key="prefab.ambush.soldier", name="Ambush: soldier",
+        description="A soldier who waits where he stands until he sees you. The floor "
+                    "under him is an ambush marker the game clears to the neighbouring "
+                    "floor's area.",
+        category="enemies", writes=(Write(0, 0, 0, rules.AMBUSH), Write(1, 0, 0, 116)),
+        preconditions=(Precondition(0, 0, "floor", "open floor"),), erase_to=_TO_FLOOR,
+        evidence="LEVEL_CODES 2 step 9 and 4.5: 138 under a SpawnStand actor",
     ),
     Prefab(
-        key="prefab.door.forcefield-open",
-        name="Force field door (already open)",
-        description="The force field door in its open state, which is how the "
-                    "shipped maps store one that starts open. 59 cells use it.",
-        category="specials",
-        writes=(Write(0, 0, 0, 84), Write(1, 0, 0, 107)),
-        erase_to=(Write(0, 0, 0, DEFAULT_FLOOR), Write(1, 0, 0, EMPTY_OBJECT)),
-        evidence="xlat things ignore 107; the archive places wall 84 with marker "
-                 "107, and 84 is the last frame of the wall-81 animation",
-        advanced=True,
-    ),
-    Prefab(
-        key="prefab.door.plain",
-        name="Door",
-        description="Opens on use. The engine works out which way it slides from the "
-                    "walls beside it, so it needs solid walls on one axis and floor "
-                    "on the other.",
-        category="specials",
-        writes=(Write(0, 0, 0, 251),),
-        preconditions=(
-            Precondition(0, 0, "any", "a cell to sit in"),
-        ),
-        erase_to=(Write(0, 0, 0, DEFAULT_FLOOR), Write(1, 0, 0, EMPTY_OBJECT)),
-        evidence="xlat/corridor7.txt tiles trigger 251, Door_Open",
-        notes="Axis is inferred, never stored. See rules.door_axis.",
-    ),
-    Prefab(
-        key="prefab.door.blue",
-        name="Door (BLUE lock)",
-        description="Needs the BLUE access card, which a terminal grants rather "
-                    "than the floor holding one.",
-        category="specials",
-        writes=(Write(0, 0, 0, 252),),
-        erase_to=(Write(0, 0, 0, DEFAULT_FLOOR), Write(1, 0, 0, EMPTY_OBJECT)),
-        evidence="xlat/corridor7.txt tiles trigger 252, arg3 = 1; lockdefs.txt "
-                 "Lock 1 Corridor7 is C7Static002, 'BLUE Access Required'",
-        notes="Lock 1 is the blue card and lock 2 is the red one, which is the "
-              "opposite of the order the two words appear in. Both doors were "
-              "labeled with the other color here until a lab map proved a "
-              "player carrying C7Static002 opens 252.",
-    ),
-    Prefab(
-        key="prefab.door.red",
-        name="Door (RED lock)",
-        description="Needs the RED access card.",
-        category="specials",
-        writes=(Write(0, 0, 0, 253),),
-        erase_to=(Write(0, 0, 0, DEFAULT_FLOOR), Write(1, 0, 0, EMPTY_OBJECT)),
-        evidence="xlat/corridor7.txt tiles trigger 253, arg3 = 2; lockdefs.txt "
-                 "Lock 2 Corridor7 is C7Static001, 'RED Access Required'",
-    ),
-    Prefab(
-        key="prefab.elevator",
-        name="Elevator",
-        description="The ordinary floor exit. Its arrow lights when it accepts you, "
-                    "which only happens once enough of the floor is cleared.",
-        category="specials",
-        writes=(Write(0, 0, 0, 63),),
-        preconditions=(
-            Precondition(0, 0, "reachable", "floor beside it to stand on"),
-        ),
-        erase_to=(Write(0, 0, 0, DEFAULT_FLOOR), Write(1, 0, 0, EMPTY_OBJECT)),
-        evidence="xlat/corridor7.txt tiles trigger 63, Exit_Normal arg0 = 1",
-        notes="arg1 = 64 is the lit panel the engine swaps in on use.",
-    ),
-    _terminal(
-        "prefab.terminal.red", "RED access terminal", 9,
-        "Grants the RED access card and switches to its used panel. There is no "
-        "red card lying on any floor -- a terminal is the only way to get one.",
-        "xlat/corridor7.txt tiles trigger 9, C7_WallSwitch arg0 = 10, arg1 = 1; "
-        "lnspec.cpp maps arg1 = 1 to C7Static001",
-    ),
-    _terminal(
-        "prefab.terminal.blue", "BLUE access terminal", 11,
-        "Grants the BLUE access card and switches to its used panel.",
-        "xlat/corridor7.txt tiles trigger 11, C7_WallSwitch arg0 = 12, arg1 = 2; "
-        "lnspec.cpp maps arg1 = 2 to C7Static002",
-    ),
-    _terminal(
-        "prefab.terminal.alarm", "Intruder alarm", 30,
-        "Wakes every alien on the floor that can hear it. One shot, and there is "
-        "no undoing it in play.",
-        "xlat/corridor7.txt tiles trigger 30, C7_WallSwitch arg1 = 3, which calls "
-        "P_AlertCorridor7Monsters",
-    ),
-    Prefab(
-        key="prefab.dispenser.health",
-        name="Health chamber",
-        description="The wall unit that restores health. It opens a four-frame "
-                    "aperture, turns the player to face out, and closes again.",
-        category="specials",
-        writes=(Write(0, 0, 0, 85),),
-        preconditions=(
-            Precondition(0, 0, "reachable", "floor beside it to stand in"),
-        ),
-        erase_to=(Write(0, 0, 0, DEFAULT_FLOOR), Write(1, 0, 0, EMPTY_OBJECT)),
-        evidence="xlat/corridor7.txt tiles trigger 85, C7_Dispenser arg0 = 1",
-        notes="The engine drives the aperture from the player's own tic; the map "
-              "only needs the one wall.",
-    ),
-    Prefab(
-        key="prefab.dispenser.ammo",
-        name="Ammo dispenser",
-        description="The wall unit that refills standard rounds.",
-        category="specials",
-        writes=(Write(0, 0, 0, 111),),
-        preconditions=(Precondition(0, 0, "reachable", "floor beside it"),),
-        erase_to=(Write(0, 0, 0, DEFAULT_FLOOR), Write(1, 0, 0, EMPTY_OBJECT)),
-        evidence="xlat/corridor7.txt tiles trigger 111, C7_Dispenser arg0 = 2",
-    ),
-    Prefab(
-        key="prefab.dispenser.visor",
-        name="Visor battery station",
-        description="The fan-shaped wall unit adds 100 visor charge once, then "
-                    "becomes its spent frame (wall 94).",
-        category="specials",
-        writes=(Write(0, 0, 0, 93),),
-        preconditions=(Precondition(0, 0, "reachable", "floor beside it"),),
-        erase_to=(Write(0, 0, 0, DEFAULT_FLOOR), Write(1, 0, 0, EMPTY_OBJECT)),
-        evidence="retail MAP02 (57,54); xlat trigger 93, C7_Dispenser arg0 = 3",
-    ),
-    _wall_marker(
-        "prefab.pushwall.plain-alt", "Moving wall (alternate)", 102,
-        "The same moving wall as 101. The released maps use both words, so both "
-        "exist here rather than one being silently rewritten to the other.",
-        "xlat/corridor7.txt things trigger 102, identical arguments to 101",
-    ),
-    Prefab(
-        key="prefab.door.plain-alt",
-        name="Door (alternate)",
-        description="The same door as 251, with the other of the two words the "
-                    "released maps use for it.",
-        category="specials",
-        writes=(Write(0, 0, 0, 254),),
-        erase_to=(Write(0, 0, 0, DEFAULT_FLOOR), Write(1, 0, 0, EMPTY_OBJECT)),
-        evidence="xlat/corridor7.txt tiles trigger 254, identical arguments to 251",
-    ),
-    Prefab(
-        key="prefab.dispenser.health-alt",
-        name="Health chamber (alternate)",
-        description="The same health unit as 85, on the wall page two released maps "
-                    "use for it directly.",
-        category="specials",
-        writes=(Write(0, 0, 0, 88),),
-        preconditions=(Precondition(0, 0, "reachable", "floor beside it to stand in"),),
-        erase_to=(Write(0, 0, 0, DEFAULT_FLOOR), Write(1, 0, 0, EMPTY_OBJECT)),
-        evidence="xlat/corridor7.txt tiles trigger 88, C7_Dispenser arg0 = 1",
-    ),
-    Prefab(
-        key="prefab.exit.floor",
-        name="Floor exit",
-        description="Completes the floor when the player walks over it, rather than "
-                    "when they use it. This is the crossed marker, not the elevator.",
-        category="specials",
-        writes=(Write(0, 0, 0, 287),),
-        preconditions=(Precondition(0, 0, "any", "a cell to sit in"),),
-        erase_to=(Write(0, 0, 0, DEFAULT_FLOOR), Write(1, 0, 0, EMPTY_OBJECT)),
-        evidence="xlat/corridor7.txt tiles trigger 287, Exit_Normal with playercross",
-    ),
-    Prefab(
-        key="prefab.exit.vortex",
-        name="Exit vortex",
-        description="Completes the floor when the player walks into it. The two boss "
-                    "floors finish this way instead of by elevator.",
-        category="specials",
-        writes=(Write(1, 0, 0, 268),),
-        preconditions=(
-            Precondition(0, 0, "floor", "floor to stand on"),
-            Precondition(0, 0, "empty", "nothing else on the cell"),
-        ),
-        erase_to=(Write(1, 0, 0, EMPTY_OBJECT),),
-        evidence="xlat/corridor7.txt things 268, C7ExitVortex",
+        key="prefab.squad", name="Squad of three allies",
+        description="Three allies in a row facing east, as the original lines them up at "
+                    "the start of a floor.",
+        category="starts",
+        writes=tuple(Write(1, dx, 0, 224) for dx in range(3)),
+        preconditions=tuple(Precondition(dx, 0, "floor", "open floor") for dx in range(3)),
+        erase_to=tuple(Write(1, dx, 0, EMPTY_OBJECT) for dx in range(3)),
+        rotatable=True,
+        evidence="LEVEL_CODES 4.5: 224-227 SpawnAlly",
     ),
 )
-
-#: Transporters are a pair, so they are their own tool rather than a prefab:
-#: one channel, two endpoints, and the second click is what completes it.
-TRANSPORTER_CHANNELS = tuple(range(279, 287))
 
 
 def by_key(key: str) -> Prefab | None:

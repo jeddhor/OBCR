@@ -41,18 +41,17 @@ def resource_root() -> Path:
 
 def catalog_path() -> Path:
     """The editor catalog, wherever this build keeps it."""
-    return resource_root() / "resources" / "editor_catalog.json"
+    return resource_root() / "resources" / "catalog.json"
 
 
 def workspace_root() -> Path:
-    """Where to look for a sibling EC7Wolf build and game data.
+    """Where to look for a sibling OBCR build and game data.
 
-    From a checkout this is the containing workspace -- three levels above this
-    file -- which is how the first-run page can offer `builds/release` without
-    searching anyone's home directory. A packaged editor has no checkout above
-    it, so it looks beside itself instead: someone who unpacked the editor next
-    to their game has done the same thing, and the suggestions are as useful.
+    From a checkout this is the OBCR repository (`obcedit/` is one of its
+    folders), whose `target/` holds the engine. A packaged editor is installed
+    as `<install>/obcedit/`, beside `<install>/obcr[.exe]` and
+    `<install>/data/`, so it answers with `<install>`.
     """
     if frozen():
-        return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parents[3]
+        return Path(sys.executable).resolve().parent.parent
+    return Path(__file__).resolve().parents[2]

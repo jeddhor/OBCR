@@ -48,7 +48,7 @@ def validate_dimensions(width: int, height: int, *, where: str = "") -> None:
     for name, value in (("width", width), ("height", height)):
         if not MIN_DIMENSION <= value <= MAX_DIMENSION:
             raise native_error(
-                "C7E-BOUNDARY-001" if value == 0 else "C7E-NATIVE-001",
+                "OBC-BOUNDARY-001" if value == 0 else "OBC-NATIVE-001",
                 f"{name} {value} is outside the engine's {MIN_DIMENSION}..{MAX_DIMENSION}",
                 where,
             )
@@ -70,13 +70,13 @@ class MapPlanes:
         validate_dimensions(self.width, self.height)
         if len(self.planes) != PLANE_COUNT:
             raise native_error(
-                "C7E-SCHEMA-002", f"expected {PLANE_COUNT} planes, got {len(self.planes)}"
+                "OBC-SCHEMA-002", f"expected {PLANE_COUNT} planes, got {len(self.planes)}"
             )
         expected = self.width * self.height
         for number, plane in enumerate(self.planes):
             if len(plane) != expected:
                 raise native_error(
-                    "C7E-SCHEMA-002",
+                    "OBC-SCHEMA-002",
                     f"plane {number} holds {len(plane)} cells, "
                     f"{self.width}x{self.height} needs {expected}",
                 )

@@ -2,55 +2,54 @@
 # Copyright (C) 2026 Jason Tripp
 """The semantic catalog: raw map words to things a person can recognize.
 
-A map cell is a number. `23` is a filing cabinet, `108` is an alien facing
-east, `251` is a door, and `1` is a wall painted with page 0. The catalog is
-what lets a palette show those as pictures with names instead of as a list of
-integers, and what lets the editor write the right number back.
+A map cell is a number. Plane-1 `116` is a soldier standing facing east,
+plane-0 `130` a door, `1` a wall painted with page 0. The catalog is what lets
+the palette show those as pictures with names, and what lets the validator and
+the tools ask what a word *is*.
 
-It is *generated*, not written by hand, from three inputs that already exist:
+It is not written here. `resources/catalog.json` is generated from OBCR's own
+code (`cargo run -p obc-tool -- catalog`): every plane-1 code is spawned into a
+scratch world by the engine's real `SetupGameLevel`, so a name, class, sprite
+and difficulty tier here is what the game does with that word. This module
+only groups that file into palette entries:
 
-* [`xlat.py`](xlat.py) reads the engine's translation -- which value spawns
-  which class, which values are a facing, which are ignored;
-* [`decorate.py`](decorate.py) reads the actor definitions -- what each class
-  inherits from and which sprite page it shows;
-* a small curated file supplies the things neither can know: that `C7Rodex` is
-  called a Rodex, that it travels in packs, and what to search for to find it.
+* one entry per wall, door, floor or static value;
+* one entry per actor *kind and tier*, carrying its four facings as
+  `directions` (the raw word for each), so a soldier is one palette item with
+  a facing control rather than four items;
+* player starts as one entry with four facings; patrol arrows as one with
+  eight.
 
-Generating it matters because all three inputs are living files. A translator
-entry fixed during a bug hunt should change the editor's palette, not leave it
-quietly describing a game that no longer exists.
-
-Two rules hold the honesty line:
-
-* **an unresolved join is reported, never guessed.** If XLAT spawns a class
-  DECORATE does not define, that is a defect somewhere and the catalog says
-  so rather than inventing a plausible entry;
-* **only entries with a complete raw write mapping are offered in the normal
-  palette.** Everything else is reachable through Raw, where the user can see
-  exactly what they are placing.
+`schema`/`version` are checked: a catalog from a newer OBCR is refused rather
+than half-understood.
 """
 
 from __future__ import annotations
 
 import json
-import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
-from .decorate import ActorInfo
-from .xlat import Xlat, XlatThing
-
-#: Bump when the entry shape changes in a way a stored project could notice.
+#: The `version` this module understands (obc-tool's SCHEMA_VERSION).
 CATALOG_SCHEMA = 1
+SCHEMA_NAME = "obcedit-catalog"
 
-#: Palette tabs, in the order section 8.6 lists them.
-CATEGORIES = ("walls", "specials", "objects", "enemies", "starts", "zones", "raw")
+#: Palette tabs, in display order.
+CATEGORIES = ("walls", "specials", "floors", "objects", "enemies", "starts", "markers", "raw")
 
 #: Plane-0 wall values map to GFXTILES pages one lower: wall 1 is page 0.
 WALL_PAGE_OFFSET = 1
 
-#: Plane-1 statics index the executable's 83-row table starting at word 23.
+#: Plane-1 statics: `statinfo[code - 23]`.
 STATIC_WORD_BASE = 23
+
+#: Compass names for the 8-way patrol arrows (90 + index).
+ARROW_ORDER = ("east", "northeast", "north", "northwest", "west", "southwest", "south", "southeast")
+
+
+class CatalogError(ValueError):
+    """The catalog file is missing, malformed or from a newer OBCR."""
 
 
 @dataclass(frozen=True)
@@ -69,32 +68,54 @@ class CatalogEntry:
     description: str = ""
     aliases: tuple[str, ...] = ()
 
+    #: The actor class name (enemies, allies), or "".
     actor: str = ""
+    #: Sprite number (index into GFXTILES' sprite list) for thumbnails.
     sprite: int | None = None
-    texture: str = ""
+    #: Wall page for plane-0 entries drawn as a texture.
+    page: int | None = None
+    #: The raw catalog record of `value`, for anything not lifted into fields.
+    data: dict = field(default_factory=dict, compare=False, hash=False)
 
     #: Facing name to the exact raw value that produces it.
     directions: tuple[tuple[str, int], ...] = ()
-    #: "stand" / "patrol", and the difficulty band, where the value encodes one.
+    #: "stand" / "patrol" for actors.
     variant: str = ""
+    #: Lowest game type that spawns it (0 = all, 1 = types 2 and 3, 2 = type 3).
     minskill: int = 0
 
     placement: str = "floor"  # floor | wall | any
     blocking: bool | None = None
-    #: False for values only ever seen in imported maps, or needing Advanced.
+    #: False for values that only appear as animation frames or are unused.
     safe_for_new_maps: bool = True
-
-    evidence: str = ""
-    grade: str = "A"
-    test_vector: str = ""
 
     @property
     def resolved(self) -> bool:
-        """Whether this entry knows exactly what to write."""
         return bool(self.values)
 
+    @property
+    def texture(self) -> str:
+        return f"page {self.page}" if self.page is not None else ""
+
+    @property
+    def kind(self) -> str:
+        return str(self.data.get("kind", ""))
+
+    def value_for(self, facing: str) -> int:
+        """The raw word for `facing`, or `value` when this entry has no facings."""
+        for name, value in self.directions:
+            if name == facing:
+                return value
+        return self.value
+
+    def facing_of(self, value: int) -> str:
+        for name, raw in self.directions:
+            if raw == value:
+                return name
+        return ""
+
     def matches(self, query: str) -> bool:
-        """Search by friendly name, raw value, class, texture or alias."""
+        """Search by friendly name, raw value, class, page or alias."""
         needle = query.strip().lower()
         if not needle:
             return True
@@ -107,11 +128,18 @@ class CatalogEntry:
 
 @dataclass
 class Catalog:
-    """Every entry, plus what could not be resolved while building it."""
+    """Every entry, plus the generated file's limits and floor sets."""
 
     entries: tuple[CatalogEntry, ...] = ()
     unresolved: tuple[str, ...] = ()
     schema: int = CATALOG_SCHEMA
+    limits: dict = field(default_factory=dict)
+    floor_sets: tuple[dict, ...] = ()
+    #: Every raw record by (plane, value), as generated.
+    records: dict = field(default_factory=dict, repr=False)
+
+    _by_value: dict | None = field(default=None, repr=False, compare=False)
+    _by_key: dict | None = field(default=None, repr=False, compare=False)
 
     def __len__(self) -> int:
         return len(self.entries)
@@ -119,35 +147,30 @@ class Catalog:
     def __iter__(self):
         return iter(self.entries)
 
-    #: Built on first use, not in __init__: a Catalog is a frozen-ish value
-    #: that tests construct directly, and an index built eagerly would have to
-    #: be rebuilt by every one of them.
-    _by_value: dict | None = field(default=None, repr=False, compare=False)
-    _by_key: dict | None = field(default=None, repr=False, compare=False)
-
     def _index(self) -> dict:
         if self._by_value is None:
             index: dict[tuple[int, int], CatalogEntry] = {}
             for entry in self.entries:
                 for value in entry.values:
                     index.setdefault((entry.plane, value), entry)
-            object.__setattr__(self, "_by_value", index)
+            self._by_value = index
         return self._by_value
 
     def by_key(self, key: str) -> CatalogEntry | None:
         if self._by_key is None:
-            object.__setattr__(self, "_by_key",
-                               {entry.key: entry for entry in self.entries})
+            self._by_key = {entry.key: entry for entry in self.entries}
         return self._by_key.get(key)
 
     def for_value(self, plane: int, value: int) -> CatalogEntry | None:
-        """The entry that owns a raw value on a plane, if any does.
-
-        Indexed, because the validator asks this once per cell per rule: on a
-        64x64 map a linear scan over 457 entries is millions of comparisons and
-        it was most of a full validation's cost.
-        """
+        """The entry that owns a raw value on a plane, if any does."""
         return self._index().get((plane, value))
+
+    def record(self, plane: int, value: int) -> dict:
+        """The generated record for one raw value ({} when unknown)."""
+        return self.records.get((plane, value), {})
+
+    def kind(self, plane: int, value: int) -> str:
+        return str(self.record(plane, value).get("kind", ""))
 
     def in_category(self, category: str) -> list[CatalogEntry]:
         return sorted(
@@ -159,434 +182,215 @@ class Catalog:
         pool = self.in_category(category) if category else list(self.entries)
         return [entry for entry in pool if entry.matches(query)]
 
+    # -- convenience for rules and validation -------------------------------
+
+    def limit(self, name: str, default: int = 0) -> int:
+        return int(self.limits.get(name, default))
+
+    def is_solid(self, value: int) -> bool:
+        """Plane 0: solid for the engine's first pass (< AREATILE)."""
+        return value < self.limit("areatile", 140)
+
+    def wall_page(self, value: int) -> int | None:
+        page = self.record(0, value).get("page")
+        return int(page) if page is not None else None
+
+    def floor_set(self, index: int) -> dict:
+        for item in self.floor_sets:
+            if item.get("set") == index:
+                return item
+        return {}
+
+    def rotation_groups(self) -> list[tuple[int, ...]]:
+        """Raw words that are one thing facing different ways.
+
+        Each group is ordered by compass heading, quarter turns apart for
+        4-way groups (north, east, south, west) and eighth turns for the
+        8-way patrol arrows (east, northeast, ...). Rotation tools step
+        through a group; nothing hardcodes the codes.
+        """
+        groups = []
+        for entry in self.entries:
+            if len(entry.directions) < 2:
+                continue
+            facing = dict(entry.directions)
+            if len(facing) == 8:
+                groups.append(tuple(facing[name] for name in ARROW_ORDER))
+            elif {"north", "east", "south", "west"} <= facing.keys():
+                groups.append(tuple(facing[n] for n in ("north", "east", "south", "west")))
+            elif len(facing) == 2 and {"east", "north"} <= facing.keys():
+                # The brute only comes facing east or north (142/143, 160/161).
+                groups.append((facing["north"], facing["east"]))
+        return groups
+
 
 # ---------------------------------------------------------------------------
-# Curated identity
+# Building entries from the generated file
 # ---------------------------------------------------------------------------
 
-
-@dataclass
-class Curation:
-    """The names, aliases and notes that no generated input can supply."""
-
-    actors: dict[str, dict] = field(default_factory=dict)
-    values: dict[str, dict] = field(default_factory=dict)  # "plane:value" -> fields
-    walls: dict[str, dict] = field(default_factory=dict)  # str(value) -> fields
-
-    @classmethod
-    def load(cls, path: Path | str) -> "Curation":
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
-        return cls(
-            actors=data.get("actors", {}),
-            values=data.get("values", {}),
-            walls=data.get("walls", {}),
-        )
-
-    def for_actor(self, name: str) -> dict:
-        return self.actors.get(name, {})
-
-    def for_value(self, plane: int, value: int) -> dict:
-        return self.values.get(f"{plane}:{value}", {})
-
-    def for_wall(self, value: int) -> dict:
-        return self.walls.get(str(value), {})
-
-
-def _pretty(classname: str) -> str:
-    """`C7OrganicEye` to `Organic Eye`, for an actor with no curated name."""
-    stem = classname[2:] if classname.startswith("C7") else classname
-    spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", stem)
-    return spaced.replace("_", " ").strip() or classname
-
-
-# ---------------------------------------------------------------------------
-# The join
-# ---------------------------------------------------------------------------
-
-
-def _wall_entries(xlat: Xlat, curation: Curation) -> list[CatalogEntry]:
-    """Ordinary paint only.
-
-    A plane-0 value can be two things at once: value 9 both paints wall page 8
-    and is the access terminal, and every door is a tile with a texture as well
-    as a trigger. Those belong in Doors & Specials, not in the wall palette --
-    painting a corridor with "wall 9" would scatter working terminals down it.
-    """
-    entries = []
-    for value, tile in sorted(xlat.tiles.items()):
-        if value in xlat.tile_triggers:
-            continue
-        custom = curation.for_wall(value)
-        if custom.get("animation_frame"):
-            # A frame of a door's opening animation, not a material. It goes to
-            # Raw so an imported map that somehow uses one still shows it, but
-            # it is not offered as paint -- painting frame 3 of a door gives a
-            # wall that is half aperture and opens on to nothing.
-            entries.append(
-                CatalogEntry(
-                    key=f"raw.0.{value:03d}",
-                    category="raw",
-                    subcategory=custom.get("subcategory", "animation frame"),
-                    rank=value,
-                    name=custom.get("name", f"Wall {value:03d} (animation frame)"),
-                    description=custom.get("description", ""),
-                    aliases=tuple(custom.get("aliases", [])) + (tile.texture,),
-                    plane=0,
-                    value=value,
-                    values=(value,),
-                    texture=tile.texture,
-                    placement="wall",
-                    blocking=True,
-                    safe_for_new_maps=False,
-                    evidence=custom.get("evidence", f"xlat/corridor7.txt tile {value}"),
-                    grade="B",
-                    test_vector=f"frame-{value:03d}",
-                )
-            )
-            continue
-        page = value - WALL_PAGE_OFFSET
-        entries.append(
-            CatalogEntry(
-                key=f"wall.{value:03d}",
-                category="walls",
-                subcategory=custom.get("subcategory", "material"),
-                rank=value,
-                name=custom.get("name", f"Wall {value:03d}"),
-                description=custom.get("description", ""),
-                aliases=tuple(custom.get("aliases", [])) + (tile.texture,),
-                plane=0,
-                value=value,
-                values=(value,),
-                texture=tile.texture,
-                sprite=None,
-                placement="wall",
-                blocking=True,
-                evidence=f"xlat/corridor7.txt tile {value}",
-                test_vector=f"wall-{value:03d}",
-            )
-        )
-    return entries
-
-
-_SPECIAL_SUBCATEGORY = {
-    "Door_Open": "door",
-    "Exit_Normal": "exit",
-    "Teleport_Relative": "transporter",
-    "C7_WallSwitch": "switch",
-    "C7_Dispenser": "dispenser",
-    "Elevator_SwitchFloor": "elevator",
-    "Pushwall_Move": "moving wall",
-    "Wall_AnimateRemove": "mutable wall",
+_SPECIAL_KINDS = {
+    "door_look": ("Door-look walls", 10),
+    "glass": ("Glass", 20),
+    "glass_broken": ("Glass", 21),
+    "fan": ("Fans", 30),
+    "damaged": ("Walls", 40),
+    "panel": ("Panels", 50),
+    "rock_opening": ("Openings", 60),
+    "generator": ("Generator switches", 70),
+    "exit": ("Exits", 0),
 }
 
-
-def _trigger_entries(xlat: Xlat, curation: Curation) -> list[CatalogEntry]:
-    entries = []
-    sources = [(0, xlat.tile_triggers), (1, xlat.thing_triggers)]
-    for plane, triggers in sources:
-        for value, trigger in sorted(triggers.items()):
-            custom = curation.for_value(plane, value)
-            subcategory = custom.get(
-                "subcategory", _SPECIAL_SUBCATEGORY.get(trigger.action, "special")
-            )
-            # Section 8.6 puts transporters with the zones, not with the doors.
-            category = "zones" if trigger.action == "Teleport_Relative" else "specials"
-            entries.append(
-                CatalogEntry(
-                    key=f"special.{plane}.{value:03d}",
-                    category=category,
-                    subcategory=subcategory,
-                    rank=value,
-                    name=custom.get("name", f"{_pretty(trigger.action)} {value}"),
-                    description=custom.get("description", ""),
-                    aliases=tuple(custom.get("aliases", [])) + (trigger.action,),
-                    plane=plane,
-                    value=value,
-                    values=(value,),
-                    # A plane-1 trigger has no artwork of its own. The tiles and
-                    # the things share one numeric namespace without sharing a
-                    # meaning, so xlat.tiles[98] is the wall that happens to be
-                    # numbered 98, not anything to do with the pushwall marker
-                    # numbered 98 -- and showing that wall for it is a picture
-                    # of the wrong thing. What a marker looks like is whatever
-                    # wall it was put on, which is the cell's own plane 0.
-                    texture="",
-                    # Corridor 7's plane-1 triggers all configure the wall cell
-                    # they sit in -- a pushwall slides a wall, a disintegrating
-                    # wall opens one. Calling them floor placements made the
-                    # validator report five errors on every shipped map, which
-                    # is how this was found.
-                    placement="wall",
-                    blocking=None,
-                    evidence=f"xlat/corridor7.txt {trigger.section} trigger {value}",
-                    test_vector=f"special-{plane}-{value:03d}",
-                )
-            )
-    return entries
+_UNPLACEABLE = {"door_look_frame", "glass_frame", "fan_frame", "invalid", "unused"}
 
 
-def _zone_entries(xlat: Xlat, curation: Curation) -> list[CatalogEntry]:
-    entries = []
-    for value, zone in sorted(xlat.zones.items()):
-        if value in xlat.tile_triggers:
-            # 279..286 are declared as zones *and* as teleport triggers -- that
-            # is how the engine models a transporter pad. The trigger is the
-            # useful thing to place, so it owns the value; see `_trigger_entries`.
-            continue
-        custom = curation.for_value(0, value)
-        modifiers = " ".join(zone.modifiers)
-        entries.append(
+def _plane0_entries(records: list[dict]) -> list[CatalogEntry]:
+    out = []
+    for rec in records:
+        value = int(rec["value"])
+        kind = rec.get("kind", "")
+        common = dict(name=rec.get("name", f"Plane 0 value {value}"), plane=0, value=value,
+                      values=(value,), data=rec, page=rec.get("page"),
+                      description=rec.get("note", ""))
+        if kind == "wall":
+            out.append(CatalogEntry(f"wall-{value}", "walls", "Walls", value, placement="any",
+                                    blocking=True, **common))
+        elif kind in _SPECIAL_KINDS:
+            sub, rank = _SPECIAL_KINDS[kind]
+            out.append(CatalogEntry(f"special-{value}", "specials", sub, rank * 1000 + value,
+                                    placement="any", blocking=True, **common))
+        elif kind == "door":
+            out.append(CatalogEntry(f"door-{value}", "specials", "Doors", 5000 + value,
+                                    placement="any", blocking=True, **common))
+        elif kind == "ambush":
+            out.append(CatalogEntry("ambush", "markers", "Ambush", 0, placement="floor",
+                                    blocking=False, **common))
+        elif kind == "floor":
+            area = int(rec.get("area", 0))
+            fset = rec.get("floor_set")
+            sub = "Floors" if fset is not None else "Floors (no texture set)"
+            out.append(CatalogEntry(f"floor-{value}", "floors", sub, value, placement="any",
+                                    blocking=False, aliases=(f"area {area}",), **common))
+        else:
+            out.append(CatalogEntry(f"raw0-{value}", "raw", kind or "raw", value,
+                                    placement="any", safe_for_new_maps=kind not in _UNPLACEABLE,
+                                    **common))
+    return out
+
+
+def _actor_entries(records: list[dict]) -> list[CatalogEntry]:
+    """Enemies and allies, one entry per (name without facing, tier)."""
+    groups: dict[tuple, list[dict]] = {}
+    for rec in records:
+        tier = int(rec.get("difficulty", {}).get("tier", 0))
+        base = rec["name"].rsplit(" ", 1)[0] if rec.get("facing") else rec["name"]
+        groups.setdefault((rec["kind"], base, tier, rec.get("class")), []).append(rec)
+    out = []
+    for (kind, base, tier, cls), recs in groups.items():
+        recs.sort(key=lambda r: r["value"])
+        first = recs[0]
+        tier_label = ("", " (game types 2-3)", " (game type 3 only)")[min(tier, 2)]
+        directions = tuple((r["facing"], int(r["value"])) for r in recs if r.get("facing"))
+        category = "starts" if kind == "ally" else "enemies"
+        name = base + tier_label
+        key = f"{kind}-{first['value']}"
+        out.append(
             CatalogEntry(
-                key=f"zone.{value:03d}",
-                category="zones",
-                subcategory="ambush" if "ambush" in zone.modifiers else "area",
-                rank=value,
-                name=custom.get("name", f"Area {value}" + (f" ({modifiers})" if modifiers else "")),
-                description=custom.get("description", ""),
-                aliases=tuple(custom.get("aliases", [])) + (("zone", "sound area")),
-                plane=0,
-                value=value,
-                values=(value,),
-                placement="floor",
-                blocking=False,
-                evidence=f"xlat/corridor7.txt zone {value}",
-                test_vector=f"zone-{value:03d}",
+                key, category, "Allies" if kind == "ally" else first.get("class_name", "Enemies"),
+                int(first.get("class", 0)) * 1000 + tier * 100 + int(first["value"]) % 100,
+                name, 1, int(first["value"]), tuple(int(r["value"]) for r in recs),
+                actor=first.get("class_name", ""), sprite=first.get("sprite"), data=first,
+                directions=directions,
+                variant="patrol" if first.get("patrol") else "stand",
+                minskill=tier, placement="floor", blocking=True,
+                description="Ends the game when killed." if first.get("ends_game") else "",
             )
         )
-    return entries
+    return out
 
 
-def _ignored_entries(xlat: Xlat, curation: Curation) -> list[CatalogEntry]:
-    """Values the translation deliberately ignores, as Raw entries.
-
-    The shipped maps are full of these -- plane-1 words 86 to 88 configure a
-    masked wall in the DOS engine rather than spawning anything, and 99 and
-    103 to 105 hit nothing in the executable's object switch at all. They spawn
-    nothing, so they are not palette items, but they are *in the data*, and an
-    editor that had no entry for them would show an imported map as having
-    cells it could not name and could not put back.
-
-    So they exist, in Raw, marked as imported-only: visible, preserved,
-    explained, and not offered for new work.
-    """
-    entries = []
-    for plane, section in ((0, "tiles"), (1, "things")):
-        for value in sorted(xlat.ignored.get(section, ())):
-            custom = curation.for_value(plane, value)
-            entries.append(
-                CatalogEntry(
-                    key=f"raw.{plane}.{value:03d}",
-                    category="raw",
-                    subcategory=custom.get("subcategory", "ignored"),
-                    rank=value,
-                    name=custom.get("name", f"Raw value {value}"),
-                    description=custom.get(
-                        "description",
-                        "The translation ignores this value: it spawns nothing. It is "
-                        "preserved exactly where an imported map uses it.",
-                    ),
-                    aliases=tuple(custom.get("aliases", [])) + ("raw", "ignored"),
-                    plane=plane,
-                    value=value,
-                    values=(value,),
-                    placement="any",
-                    safe_for_new_maps=False,
-                    evidence=f"xlat/corridor7.txt {section} ignore {value}",
-                    grade="B",
-                    test_vector=f"raw-{plane}-{value:03d}",
-                )
-            )
-    return entries
-
-
-def _category_for_role(role: str) -> str:
-    return {
-        "enemy": "enemies",
-        "player": "starts",
-        "item": "objects",
-        "decoration": "objects",
-        "effect": "objects",
-    }.get(role, "objects")
+def _plane1_entries(records: list[dict]) -> list[CatalogEntry]:
+    out = []
+    actors = [r for r in records if r.get("kind") in ("enemy", "ally")]
+    out.extend(_actor_entries(actors))
+    players = sorted((r for r in records if r.get("kind") == "player"), key=lambda r: r["value"])
+    if players:
+        out.append(CatalogEntry(
+            "player-start", "starts", "Player", 0, "Player start", 1, players[0]["value"],
+            tuple(r["value"] for r in players), data=players[0],
+            directions=tuple((r["facing"], r["value"]) for r in players), placement="floor",
+            description="Exactly one per map.",
+        ))
+    arrows = sorted((r for r in records if r.get("kind") == "patrol_arrow"), key=lambda r: r["value"])
+    if arrows:
+        out.append(CatalogEntry(
+            "patrol-arrow", "markers", "Patrol routes", 10, "Patrol turn arrow", 1,
+            arrows[0]["value"], tuple(r["value"] for r in arrows), data=arrows[0],
+            directions=tuple((r["direction"], r["value"]) for r in arrows), placement="floor",
+            description="A patrolling actor stepping on it turns to face this way.",
+        ))
+    for rec in records:
+        value = int(rec["value"])
+        kind = rec.get("kind", "")
+        common = dict(name=rec["name"], plane=1, value=value, values=(value,), data=rec)
+        if kind in ("static", "pickup"):
+            out.append(CatalogEntry(
+                f"{kind}-{value}", "objects", "Pickups" if kind == "pickup" else
+                ("Obstacles" if rec.get("blocking") else "Decorations"), value,
+                sprite=rec.get("sprite"), blocking=bool(rec.get("blocking")), **common))
+        elif kind == "fire":
+            if value == min(r["value"] for r in records if r.get("kind") == "fire"):
+                fires = tuple(r["value"] for r in records if r.get("kind") == "fire")
+                out.append(CatalogEntry("fire", "enemies", "Fire", 99000, "Fire", 1, value, fires,
+                                        data=rec, actor="Fire", placement="floor"))
+        elif kind == "anim_wall":
+            out.append(CatalogEntry(
+                f"anim-{value}", "markers", "Wall behaviour", 100 + value, placement="wall",
+                safe_for_new_maps=not rec.get("unused_in_maps"), **common))
+        elif kind == "push_wall":
+            out.append(CatalogEntry("push-wall", "markers", "Wall behaviour", 98,
+                                    placement="wall", **common))
+        elif kind == "marker":
+            out.append(CatalogEntry(f"marker-{value}", "markers", "Wall behaviour", 200 + value,
+                                    placement="wall" if value != 125 else "wall", **common))
+        elif kind == "empty":
+            out.append(CatalogEntry("empty", "markers", "Empty", 0, placement="any", **common))
+    return out
 
 
-def _thing_entry(
-    thing: XlatThing,
-    actor: ActorInfo | None,
-    curation: Curation,
-    *,
-    extra_values: tuple[int, ...] = (),
-    has_patrol_variant: bool = False,
-) -> CatalogEntry:
-    custom = curation.for_actor(thing.classname)
-    role = actor.role if actor else ""
-    values = tuple(thing.values) + extra_values
-
-    if thing.classname == "PatrolPoint":
-        category, subcategory = "starts", "patrol"
-    elif thing.classname.endswith("Start") or role == "player":
-        category, subcategory = "starts", "player"
-    else:
-        category = _category_for_role(role)
-        subcategory = custom.get("subcategory", role or "unknown")
-
-    # "Standing" only means something where the same class also has a
-    # patrolling band. A player start and a patrol marker have a facing but no
-    # opposite, and calling them "stand" would put a distinction in the key
-    # that does not exist in the game.
-    variant = "patrol" if thing.pathing else ("stand" if has_patrol_variant else "")
-    suffix = []
-    if variant:
-        suffix.append(variant)
-    if thing.minskill:
-        suffix.append(f"skill{thing.minskill}")
-    key = ".".join(["thing", thing.classname.lower(), *suffix]) if suffix else \
-        f"thing.{thing.classname.lower()}"
-
-    name = custom.get("name") or _pretty(thing.classname)
-    if thing.pathing:
-        name = f"{name} (patrolling)"
-    if thing.minskill > 1:
-        name = f"{name} — skill {thing.minskill}+"
-
-    directions = tuple(
-        (thing.direction_for(value), value)
-        for value in thing.values
-        if thing.direction_for(value)
-    )
-
-    static_index = thing.value - STATIC_WORD_BASE
-    description = custom.get("description", "")
-    if not description and actor and actor.note:
-        description = actor.note
-
-    return CatalogEntry(
-        key=key,
-        category=category,
-        subcategory=subcategory,
-        rank=thing.value,
-        name=name,
-        description=description,
-        aliases=tuple(custom.get("aliases", []))
-        + ((f"static {static_index:03d}",) if 0 <= static_index < 83 else ()),
-        plane=1,
-        value=thing.value,
-        values=values,
-        actor=thing.classname,
-        sprite=actor.spawn_sprite if actor else None,
-        directions=directions,
-        variant=variant,
-        minskill=thing.minskill,
-        placement="floor",
-        blocking=actor.blocking if actor else None,
-        evidence=f"xlat/corridor7.txt things {thing.value}"
-        + (f"; actor {thing.classname}" if actor else ""),
-        grade="A" if actor else "C",
-        test_vector=f"thing-{thing.value:03d}",
-    )
-
-
-def build_catalog(
-    xlat: Xlat, actors: dict[str, ActorInfo], curation: Curation | None = None
-) -> Catalog:
-    """Join the three inputs into one catalog, reporting what will not join."""
-    curation = curation or Curation()
-    unresolved: list[str] = []
-
-    entries: list[CatalogEntry] = []
-    entries.extend(_wall_entries(xlat, curation))
-    entries.extend(_trigger_entries(xlat, curation))
-    entries.extend(_zone_entries(xlat, curation))
-    entries.extend(_ignored_entries(xlat, curation))
-
-    # Two raw values can spawn exactly the same thing -- 142 and 143 are both
-    # a skill-1 Eniram, 232 and 233 both a Mechanoid. That is one item in a
-    # palette, not two identical ones, so entries are merged and the lowest
-    # value is what gets written. An imported map using either still resolves,
-    # because lookup is by membership.
-    patrolling = {thing.classname for thing in xlat.things if thing.pathing}
-    merged: dict[tuple, list[XlatThing]] = {}
-    for thing in xlat.things:
-        merged.setdefault(
-            (thing.classname, thing.angles, thing.flags, thing.minskill), []
-        ).append(thing)
-
-    for group in merged.values():
-        group.sort(key=lambda t: t.value)
-        primary = group[0]
-        actor = actors.get(primary.classname)
-        if actor is None and primary.classname not in ("PatrolPoint", "Player1Start"):
-            unresolved.append(
-                f"xlat things {primary.value} spawns {primary.classname}, "
-                "which no Corridor 7 DECORATE file defines"
-            )
-        extra = tuple(v for other in group[1:] for v in other.values)
-        entries.append(
-            _thing_entry(
-                primary,
-                actor,
-                curation,
-                extra_values=extra,
-                has_patrol_variant=primary.classname in patrolling,
-            )
+def catalog_from_data(data: dict[str, Any]) -> Catalog:
+    if data.get("schema") != SCHEMA_NAME:
+        raise CatalogError(f"not an OBCEdit catalog (schema {data.get('schema')!r})")
+    version = int(data.get("version", 0))
+    if version > CATALOG_SCHEMA:
+        raise CatalogError(
+            f"catalog version {version} is newer than this OBCEdit understands "
+            f"({CATALOG_SCHEMA}); use the OBCEdit that came with that OBCR"
         )
-
-    # An actor that exists but nothing can place is worth knowing about: it is
-    # either dead weight in the pk3 or a translator entry somebody forgot.
-    placeable = {thing.classname for thing in xlat.things}
-    bases = {actor.parent for actor in actors.values() if actor.parent}
-    for name, actor in sorted(actors.items()):
-        if name in bases:
-            continue  # something inherits from it; it is a base, not an item
-        # A class with no spawn sprite is bookkeeping -- an ammo type, a
-        # capacity, an inheritance base -- and was never meant to be placed.
-        if actor.spawn_sprite is None or name in placeable:
-            continue
-        # Nor is a starting weapon missing: the player is handed it, and no
-        # map word puts one down. Reporting the Taser as an unplaced item was
-        # a statement about this check, not about the game.
-        if actor.granted:
-            continue
-        if actor.role in ("enemy", "item"):
-            unresolved.append(f"actor {name} ({actor.role}) has no xlat entry that places it")
-
-    entries.sort(key=lambda e: (CATEGORIES.index(e.category), e.rank, e.key))
-    return Catalog(tuple(entries), tuple(unresolved))
-
-
-# ---------------------------------------------------------------------------
-# Serialisation: metadata only, never pixels
-# ---------------------------------------------------------------------------
-
-
-def catalog_to_json(catalog: Catalog) -> str:
-    """Deterministic JSON. Sorted keys, fixed separators, trailing newline.
-
-    No image data of any kind: the catalog says *which* sprite page to draw,
-    and the pixels are decoded from the user's own copy at runtime. That is the
-    difference between a distributable file and one that is not.
-    """
-    payload = {
-        "schema": catalog.schema,
-        "entries": [
-            {key: value for key, value in asdict(entry).items() if value not in ((), "", None)}
-            for entry in catalog.entries
-        ],
-        "unresolved": list(catalog.unresolved),
-    }
-    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    plane0 = list(data.get("plane0", ()))
+    plane1 = list(data.get("plane1", ()))
+    records = {(0, int(r["value"])): r for r in plane0}
+    records.update({(1, int(r["value"])): r for r in plane1})
+    entries = _plane0_entries(plane0) + _plane1_entries(plane1)
+    return Catalog(
+        tuple(entries), (), version, dict(data.get("limits", {})),
+        tuple(data.get("floor_sets", ())), records,
+    )
 
 
 def catalog_from_json(text: str) -> Catalog:
-    data = json.loads(text)
-    entries = []
-    for raw in data["entries"]:
-        raw = dict(raw)
-        raw["aliases"] = tuple(raw.get("aliases", ()))
-        raw["values"] = tuple(raw.get("values", ()))
-        raw["directions"] = tuple(tuple(pair) for pair in raw.get("directions", ()))
-        entries.append(CatalogEntry(**raw))
-    return Catalog(tuple(entries), tuple(data.get("unresolved", ())), data.get("schema", 0))
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise CatalogError(f"catalog is not valid JSON: {error}") from error
+    return catalog_from_data(data)
 
 
 def load_catalog(path: Path | str) -> Catalog:
     return catalog_from_json(Path(path).read_text(encoding="utf-8"))
+
+
+def default_catalog() -> Catalog:
+    """The catalog this build ships (`resources/catalog.json`)."""
+    from .bundle import catalog_path
+
+    return load_catalog(catalog_path())

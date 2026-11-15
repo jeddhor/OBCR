@@ -1,52 +1,62 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Jason Tripp
-"""A deliberately small validator: the things that stop a map loading or playing.
+"""The validator: what stops a map loading or playing, and what probably hurts.
 
-E5's scope is explicit about this being basic, and that is the right shape. A
-validator that reported forty advisory notes on a map somebody just started
-would train them to ignore it, and the note that mattered would be lost in the
-list. E7 extends *this* service rather than a second one, so a rule added later
-appears everywhere the editor already shows problems.
+Deliberately small, in EC7Edit's spirit: a validator that reports forty
+advisory notes on a map somebody just started trains them to ignore it. The
+rules are Operation Body Count's (docs/MODS_AND_OBCEDIT.md section 5.7), from
+docs/re/LEVEL_CODES.md and the engine's limits in the catalog.
 
-What is checked now:
+Errors (block export and playtest):
 
-* the outer boundary is solid, because an open edge lets the player walk out of
-  the world;
-* exactly one player start, because zero will not spawn and more than one is
-  ambiguous;
-* every word is a word the translation knows, so nothing silently spawns
-  nothing;
-* things stand on floor rather than inside walls;
-* a locked door has a matching key somewhere on the floor;
-* the floor is made of sound areas, because a cell with no area is a cell
-  nothing can hear the player through;
-* the floor can be finished: an exit the player can walk to, given the doors,
-  the keys and the transporters between them.
+* the map is not 64x64 (the engine refuses anything else);
+* the outer boundary is open (the player walks out of the world);
+* no player start, or more than one;
+* more doors, actors, statics or animated walls than the engine holds;
+* plane-0 words the engine cannot make sense of (0, or 162 and up);
+* doors on the edge, or without floor on the sides they open to;
+* a push wall marker that is not on a wall;
+* plane-1 words past the original's spawn table (318 and up);
+* things standing inside walls (a warning on maps imported from the game).
 
-Reachability is advisory and its model is written down in `reachability.py`,
-limits included. It under-reports rather than inventing errors.
+Warnings (advisory):
 
-Each diagnostic carries a stable `C7E-*` code and a cell, so the GUI can put
-the cursor on the problem instead of describing it.
+* no exit reachable, or not enough reachable enemies for the half-kill
+  quota (reachability.py);
+* a push wall that cannot move, an exit with no floor to use it from;
+* an ambush marker with no standing enemy on it (it stays a wall);
+* a door-look marker on something that is not a door-look wall;
+* plane-1 words the game ignores (19-317 with no meaning);
+* static 71, which blocks only in the CD release.
+
+Every diagnostic has a stable `OBC-*` code and a cell, so the GUI can put the
+cursor on the problem.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from . import rules
 from .catalog import Catalog
 from .document import MapDocument
 from .errors import Diagnostic, Severity
 from .planes import coordinates, linear_index
-from .reachability import analyze, unreachable_floor
+from .reachability import PLAYER_STARTS, analyze, unreachable_floor
 
-#: Corridor 7's empty object-plane marker. Not zero.
-EMPTY_OBJECT = 18
+EMPTY_OBJECT = rules.EMPTY_OBJECT
+MAP_SIZE = 64
+#: Engine limits, used when no catalog is given (the catalog's `limits` win).
+DEFAULT_LIMITS = {"max_doors": 64, "max_actors": 100, "max_statics": 224, "max_anim_walls": 32}
+#: Plane-1 codes that spawn an animated-wall record.
+ANIM_CODES = frozenset({86, 87, 88, 103, 106, 107, 124})
+#: The spawn table runs 19-317 (jump table 1823:06c3); past it the original jumps wild.
+LAST_SPAWN_CODE = 317
+DOOR_LOOK_FRAMES = frozenset(v for base in rules.DOOR_LOOK_BASES for v in range(base, base + 4))
 
-#: Plane-0 words that are floor rather than wall. Zero is open floor; the sound
-#: zones are floor with an area number on them.
+
 def _is_floor(value: int) -> bool:
-    return value == 0 or 256 <= value <= 300
+    return rules.is_floor(value)
 
 
 def _where(x: int, y: int) -> str:
@@ -55,85 +65,66 @@ def _where(x: int, y: int) -> str:
 
 @dataclass(frozen=True)
 class Profile:
-    """What kind of map is being checked.
-
-    Corridor 7's rules are not the same for every slot: a floor exported to a
-    stock single-player slot must have exactly one start and a way out, and a
-    map being built as a deathmatch arena has neither. Rather than a pile of
-    booleans at every call site, the profile is one object the rules ask.
-    """
+    """What kind of map is being checked."""
 
     key: str
     name: str
     #: How many player starts are right. None means "do not check".
     starts: int | None = 1
-    #: Whether the floor has to be completable.
     needs_exit: bool = True
-    #: Whether unreachable floor is worth reporting.
     reports_unreachable: bool = True
 
 
-#: The default, and the only one the exporters currently target.
-SINGLE_PLAYER = Profile("single_player_stock_slot", "Single player, stock slot")
-#: The stock slots that hold a network arena rather than a campaign floor.
-#:
-#: From wadsrc/static/mapinfo/corridor7.txt, where each of these names itself as
-#: its own `next` and sets `nointermission` -- a finished match starts another
-#: on the same arena. They are not the contiguous block the compendium
-#: describes: the maps at 58 and 59 are bare boxes and the eighth arena is at
-#: 60. An arena has no exit and several starts, and judging one by the
-#: campaign's rules reports both as faults.
-ARENA_SLOTS = frozenset({51, 52, 53, 54, 55, 56, 57, 60})
-#: A map for the multiplayer arenas: several starts, no exit, and unreachable
-#: pockets are usually deliberate scenery.
-DEATHMATCH = Profile("deathmatch", "Deathmatch arena",
-                     starts=None, needs_exit=False, reports_unreachable=False)
-PROFILES = {profile.key: profile for profile in (SINGLE_PLAYER, DEATHMATCH)}
+SINGLE_PLAYER = Profile("single_player", "Single-player floor")
+#: Network arenas (original slots 50-59): exits work for everyone, no quota.
+NETWORK = Profile("network", "Network arena", starts=None, needs_exit=False,
+                  reports_unreachable=False)
+PROFILES = {profile.key: profile for profile in (SINGLE_PLAYER, NETWORK)}
+NETWORK_SLOTS = frozenset(range(50, 60))
+#: EC7Edit's name for the same idea.
+DEATHMATCH = NETWORK
 
 
 def profile_for_slot(slot: int) -> Profile:
-    """The rules that apply to the stock slot a map is exported to.
-
-    This is the plan's "target-slot context": the same map is right or wrong
-    depending on where it is going, and the editor knows where it is going
-    because the document says which slot it occupies.
-    """
-    return DEATHMATCH if slot in ARENA_SLOTS else SINGLE_PLAYER
+    return NETWORK if slot in NETWORK_SLOTS else SINGLE_PLAYER
 
 
-#: Codes whose answer depends only on the cells around the one that changed.
-#: An incremental pass runs these and keeps the rest of the previous result,
-#: which is what makes validating on every stroke affordable; a full pass runs
-#: everything and is what the Problems panel and the export preflight use.
 LOCAL_CODES = frozenset({
-    "C7E-BOUNDARY-001", "C7E-CELL-002", "C7E-THING-001", "C7E-WALL-001",
-    "C7E-ZONE-001",
+    "OBC-BOUNDARY-001", "OBC-CELL-002", "OBC-THING-001", "OBC-THING-002", "OBC-THING-003",
+    "OBC-DOOR-001", "OBC-DOOR-002", "OBC-DOOR-003", "OBC-DOOR-004", "OBC-PUSH-001",
+    "OBC-PUSH-002", "OBC-AMBUSH-001", "OBC-WALL-002", "OBC-EXIT-002", "OBC-RELEASE-001",
 })
-
-#: Codes that are a claim about the whole map: starts, keys, routes, exits.
 GLOBAL_CODES = frozenset({
-    "C7E-START-001", "C7E-START-002", "C7E-START-003", "C7E-DOOR-003",
-    "C7E-DOOR-004", "C7E-EXIT-001", "C7E-ZONE-002",
+    "OBC-SIZE-001", "OBC-START-001", "OBC-START-002", "OBC-LIMIT-001", "OBC-LIMIT-002",
+    "OBC-LIMIT-003", "OBC-LIMIT-004", "OBC-EXIT-001", "OBC-KILL-001", "OBC-UNREACH-001",
 })
 
 
 def validate_local(document: MapDocument, catalog: Catalog | None = None, *,
                    profile: Profile = SINGLE_PLAYER,
                    previous: list[Diagnostic] | None = None) -> list[Diagnostic]:
-    """A cheap pass for "the user just painted a cell".
-
-    Runs the rules whose answer is local and reuses the previous result for the
-    ones that are not, so the panel stays useful between full passes without
-    flooding a stroke with reachability work. The contract the tests hold it
-    to: for every code in `LOCAL_CODES`, this agrees exactly with a full
-    validation of the same document.
-    """
+    """The rules whose answer is local, plus the previous result for the rest."""
     fresh = validate_map(document, catalog, profile=profile, only=LOCAL_CODES)
-    local = [problem for problem in fresh if problem.code in LOCAL_CODES]
-    stale = [problem for problem in (previous or []) if problem.code not in LOCAL_CODES]
-    return sorted(local + stale,
-                  key=lambda problem: (-problem.severity.value, problem.code,
-                                       problem.cell or (0, 0)))
+    local = [p for p in fresh if p.code in LOCAL_CODES]
+    stale = [p for p in (previous or []) if p.code not in LOCAL_CODES]
+    return _sorted(local + stale)
+
+
+def _sorted(problems):
+    return sorted(problems, key=lambda p: (-p.severity.value, p.code, p.cell or (0, 0)))
+
+
+def _limits(catalog: Catalog | None) -> dict:
+    limits = dict(DEFAULT_LIMITS)
+    if catalog is not None:
+        limits.update({k: v for k, v in catalog.limits.items() if k in limits})
+    return limits
+
+
+def _kind(catalog: Catalog | None, plane: int, value: int) -> str:
+    if catalog is None:
+        return ""
+    return catalog.kind(plane, value)
 
 
 def validate_map(document: MapDocument, catalog: Catalog | None = None, *,
@@ -141,304 +132,179 @@ def validate_map(document: MapDocument, catalog: Catalog | None = None, *,
                  only: frozenset[str] | None = None) -> list[Diagnostic]:
     """Check one map. Returns diagnostics worst first.
 
-    Imported maps are judged more gently than authored ones, which is the
-    plan's rule and also just true: the shipped maps have twelve cells with a
-    thing inside a wall, and an editor that opens somebody's legally purchased
-    game and reports it as broken has taught them to ignore the panel. The same
-    placement made by hand *is* an error, because it is a mistake being made
-    now rather than one preserved from 1994.
+    Maps imported from the game are judged more gently where the original
+    itself breaks a rule (the shipped maps have things inside walls).
     """
     problems: list[Diagnostic] = []
+
+    def add(code, severity, message, x=None, y=None, fix="", detail=""):
+        if only is not None and code not in only:
+            return
+        cell = (x, y) if x is not None else None
+        problems.append(Diagnostic(code, severity, message,
+                                   _where(x, y) if cell else "", cell, fix, detail))
+
     imported = document.source is not None and bool(document.source.sha256)
     preserved = Severity.WARNING if imported else Severity.ERROR
     width, height = document.width, document.height
     plane0 = document.planes.planes[0]
     plane1 = document.planes.planes[1]
+    limits = _limits(catalog)
+
+    if (width, height) != (MAP_SIZE, MAP_SIZE):
+        add("OBC-SIZE-001", Severity.ERROR,
+            f"the map is {width}x{height}; Operation Body Count only plays 64x64 maps")
 
     # -- the outer boundary ----------------------------------------------
-    open_edges = []
-    for x in range(width):
-        for y in (0, height - 1):
-            if _is_floor(plane0[linear_index(x, y, width)]):
-                open_edges.append((x, y))
-    for y in range(height):
-        for x in (0, width - 1):
-            if _is_floor(plane0[linear_index(x, y, width)]):
-                open_edges.append((x, y))
-    if open_edges:
-        first = open_edges[0]
-        problems.append(Diagnostic(
-            "C7E-BOUNDARY-001", preserved if imported else Severity.ERROR,
-            f"{len(open_edges)} cell(s) on the outer boundary are walkable; "
-            "the player can leave the map",
-            _where(*first), first, fix="seal_boundary",
-        ))
+    for index, value in enumerate(plane0):
+        x, y = coordinates(index, width)
+        if (x in (0, width - 1) or y in (0, height - 1)) and value >= rules.AREATILE:
+            add("OBC-BOUNDARY-001", Severity.ERROR,
+                "the map edge is open here; the player could walk out of the world",
+                x, y, fix="seal_boundary")
 
-    # -- player starts ----------------------------------------------------
+    # -- cells ---------------------------------------------------------
+    doors = anims = statics = actors = 0
     starts = []
-    if catalog is not None:
-        for index, value in enumerate(plane1):
-            entry = catalog.for_value(1, value)
-            if entry is not None and entry.category == "starts" and entry.subcategory == "player":
-                starts.append(coordinates(index, width))
-    if catalog is not None and profile.starts is not None:
+    bad_words: dict[int, list[tuple[int, int]]] = {}
+    for index in range(width * height):
+        x, y = coordinates(index, width)
+        w0, w1 = plane0[index], plane1[index]
+        if w0 == 0 or w0 > rules.LAST_FLOOR:
+            bad_words.setdefault(w0, []).append((x, y))
+        if rules.is_door(w0):
+            doors += 1
+            for problem in rules.check_door(document, x, y):
+                add(problem.code, problem.severity, problem.message, x, y)
+        if w1 in PLAYER_STARTS:
+            starts.append((x, y))
+        if w1 in ANIM_CODES:
+            anims += 1
+        kind = _kind(catalog, 1, w1)
+        if 23 <= w1 <= 85:
+            statics += 1
+        if kind in ("enemy", "ally", "fire") or (catalog is None and 108 <= w1 <= LAST_SPAWN_CODE):
+            actors += 1
+        if w1 > LAST_SPAWN_CODE and w1 != 0xFFFF:
+            add("OBC-THING-002", Severity.ERROR,
+                f"plane-1 word {w1} is past the original's spawn table (19-{LAST_SPAWN_CODE})",
+                x, y)
+        elif w1 >= 19 and catalog is not None and catalog.for_value(1, w1) is None \
+                and not catalog.record(1, w1):
+            add("OBC-THING-003", Severity.WARNING,
+                f"plane-1 word {w1} means nothing to the game; it is ignored", x, y)
+        solid = w0 < rules.AREATILE and not rules.is_door(w0) and w0 != rules.AMBUSH
+        if solid and (w1 in PLAYER_STARTS or 23 <= w1 <= 85
+                      or kind in ("enemy", "ally", "fire")):
+            add("OBC-THING-001", preserved,
+                f"plane-1 word {w1} stands inside a wall and will be stuck there", x, y)
+        if w1 == rules.PUSHWALL:
+            for problem in rules.check_pushwall(document, x, y):
+                # The original leaves a few 98s on open floor: inert there.
+                severity = preserved if problem.code == "OBC-PUSH-001" else problem.severity
+                add(problem.code, severity, problem.message, x, y)
+        if w0 == rules.AMBUSH and not (kind == "enemy" or (catalog is None and 108 <= w1)):
+            add("OBC-AMBUSH-001", Severity.WARNING,
+                "an ambush marker with no enemy standing on it stays a solid cell", x, y)
+        if w1 in rules.OPENABLE_MARKERS and rules.is_wall(w0) and w0 not in DOOR_LOOK_FRAMES:
+            add("OBC-WALL-002", Severity.WARNING,
+                f"marker {w1} slides this wall open, but wall {w0} has no door-look "
+                "animation frames; it will animate through unrelated walls", x, y)
+        if w0 in rules.EXITS and not any(
+            0 <= nx < width and 0 <= ny < height
+            and _is_floor(plane0[linear_index(nx, ny, width)])
+            for nx, ny in rules.neighbours(x, y)
+        ):
+            add("OBC-EXIT-002", Severity.WARNING,
+                "an exit with no floor beside it cannot be used", x, y)
+        if w1 == 71:
+            add("OBC-RELEASE-001", Severity.INFORMATION,
+                "object 71 is passable in the floppy release and blocks in the CD release",
+                x, y)
+
+    for word, cells in sorted(bad_words.items()):
+        x, y = cells[0]
+        more = f" ({len(cells)} cells)" if len(cells) > 1 else ""
+        add("OBC-CELL-002", Severity.ERROR,
+            f"plane-0 word {word} is not a wall, door or floor the engine knows "
+            f"(floors are {rules.AREATILE}-{rules.LAST_FLOOR}){more}", x, y)
+
+    # -- whole-map counts ----------------------------------------------
+    if profile.starts is not None:
         if not starts:
-            problems.append(Diagnostic(
-                "C7E-START-001", Severity.ERROR,
-                "there is no player start on this map", "",
-            ))
+            add("OBC-START-001", Severity.ERROR, "the map has no player start")
         elif len(starts) > profile.starts:
-            problems.append(Diagnostic(
-                "C7E-START-002", Severity.ERROR,
-                f"{len(starts)} player starts; {profile.name} needs exactly "
-                f"{profile.starts}",
-                _where(*starts[1]), starts[1],
-            ))
-    if catalog is not None:
-        for start in starts:
-            if not _is_floor(plane0[linear_index(start[0], start[1], width)]):
-                problems.append(Diagnostic(
-                    "C7E-START-003", Severity.ERROR,
-                    "the player start is inside a wall", _where(*start), start,
-                ))
+            for x, y in starts[1:]:
+                add("OBC-START-002", Severity.ERROR,
+                    f"the map has {len(starts)} player starts; the game uses exactly one",
+                    x, y)
+    if doors > limits["max_doors"]:
+        add("OBC-LIMIT-001", Severity.ERROR,
+            f"{doors} doors; the engine holds at most {limits['max_doors']}")
+    if actors + 1 > limits["max_actors"]:
+        add("OBC-LIMIT-002", Severity.ERROR,
+            f"{actors} actors plus the player; the engine holds at most {limits['max_actors']}")
+    if statics > limits["max_statics"]:
+        add("OBC-LIMIT-003", Severity.ERROR,
+            f"{statics} objects; the engine holds at most {limits['max_statics']}")
+    if anims > limits["max_anim_walls"]:
+        add("OBC-LIMIT-004", Severity.ERROR,
+            f"{anims} animated walls; the engine holds at most {limits['max_anim_walls']}")
 
-    # -- words the translation does not know ------------------------------
-    if catalog is not None:
-        unknown0, unknown1 = set(), set()
-        for index, value in enumerate(plane0):
-            if value and catalog.for_value(0, value) is None:
-                unknown0.add((value, coordinates(index, width)))
-        for index, value in enumerate(plane1):
-            if value and value != EMPTY_OBJECT and catalog.for_value(1, value) is None:
-                unknown1.add((value, coordinates(index, width)))
-        for plane, unknown in ((0, unknown0), (1, unknown1)):
-            for value, cell in sorted(unknown)[:5]:
-                problems.append(Diagnostic(
-                    "C7E-CELL-002", Severity.WARNING,
-                    f"plane {plane} word {value} is not in the catalog; it is "
-                    "preserved exactly and spawns nothing the editor knows about",
-                    _where(*cell),
-                ))
-
-    # -- things standing in walls -----------------------------------------
-    if catalog is not None:
-        buried = []
-        for index, value in enumerate(plane1):
-            if not value or value == EMPTY_OBJECT:
-                continue
-            entry = catalog.for_value(1, value)
-            if entry is None or entry.placement != "floor":
-                continue
-            if not _is_floor(plane0[index]):
-                buried.append((coordinates(index, width), entry.name))
-        for cell, name in buried[:5]:
-            problems.append(Diagnostic(
-                "C7E-THING-001", preserved,
-                f"{name} is inside a wall"
-                + (" (preserved from the imported map)" if imported else ""),
-                _where(*cell),
-            ))
-
-    # -- wall markers with no wall under them ------------------------------
-    # The mirror of the check above, and the one that catches a pushwall placed
-    # as a bare marker: 98, 101, 102 and 106 modify the wall cell they sit in,
-    # so on open floor they are a moving wall with nothing to move.
-    if catalog is not None:
-        floating = []
-        for index, value in enumerate(plane1):
-            if not value or value == EMPTY_OBJECT:
-                continue
-            entry = catalog.for_value(1, value)
-            if entry is None or entry.placement != "wall":
-                continue
-            if not (1 <= plane0[index] <= 250):
-                floating.append((coordinates(index, width), entry.name))
-        for cell, name in floating[:5]:
-            problems.append(Diagnostic(
-                "C7E-WALL-001", preserved if imported else Severity.ERROR,
-                f"{name} has no wall to act on; it needs a solid wall in the same cell",
-                _where(*cell),
-            ))
-
-    # -- floor with no sound area ------------------------------------------
-    #
-    # Corridor 7's floor words are Wolf3D areas. The engine decides whether a
-    # monster hears gunfire by asking map->CheckLink() whether the shooter's
-    # area reaches the listener's, and CheckLink answers false the moment
-    # either side is NULL. Word 0 is walkable but carries no area, so on a
-    # floor built from it nothing can hear anything: aliens ignore gunfire
-    # entirely and wake only on sight or on contact, which reads as "the
-    # monsters are broken" rather than as a property of the floor. None of the
-    # sixty shipped maps contains a single plane-0 zero.
-    # Severity follows the same rule as the other authored-content checks: an
-    # error in a map somebody is drawing, a warning in one that came out of the
-    # retail archive, where an unexpected word is evidence about the original
-    # rather than a mistake to correct.
-    zoneless = [index for index, value in enumerate(plane0) if value == 0]
-    if zoneless:
-        problems.append(Diagnostic(
-            "C7E-ZONE-001", preserved if imported else Severity.ERROR,
-            f"{len(zoneless)} floor cell(s) have no sound area, so nothing on this "
-            "map can hear the player; Tools -> Give the floor sound areas fixes it",
-            _where(*coordinates(zoneless[0], width)),
-            coordinates(zoneless[0], width), fix="sound_areas",
-        ))
-
-    # -- locked doors without their key ------------------------------------
-    if catalog is not None:
-        locks = {}
-        for index, value in enumerate(plane0):
-            entry = catalog.for_value(0, value)
-            if entry is not None and entry.subcategory == "door" and "locked" in entry.aliases:
-                color = "RED" if "red" in entry.aliases else "BLUE"
-                locks.setdefault(color, coordinates(index, width))
-        if locks:
-            # Retail access comes from wall terminals. Catalog-declared floor
-            # keys can serve custom maps; ordinary ceiling lamps must never
-            # count as keys.
-            keys = set()
-            for value in plane1:
-                entry = catalog.for_value(1, value)
-                if entry is not None and "keycard" in entry.aliases:
-                    keys.add("RED" if "red key" in entry.aliases else "BLUE")
-            for value in plane0:
-                entry = catalog.for_value(0, value)
-                if entry is not None and entry.subcategory == "terminal" \
-                        and "keycard" in entry.aliases:
-                    keys.add("RED" if "red" in entry.aliases else "BLUE")
-            for color, cell in locks.items():
-                if color not in keys:
-                    problems.append(Diagnostic(
-                        "C7E-DOOR-003", Severity.WARNING,
-                        f"a {color}-locked door has no {color} access card on this "
-                        f"floor and no {color} terminal to grant one",
-                        _where(*cell),
-                    ))
-
-    # -- reachability -----------------------------------------------------
-    #
-    # Advisory by design: the model in reachability.py under-reports rather
-    # than inventing routes, and the plan is explicit that this is not a proof
-    # that a floor can be finished.
-    if catalog is not None and starts and (only is None or (GLOBAL_CODES & only)):
+    # -- reachability (advisory) ---------------------------------------
+    wants_reach = only is None or bool({"OBC-EXIT-001", "OBC-KILL-001", "OBC-UNREACH-001"} & only)
+    if wants_reach and profile.needs_exit and starts:
         reach = analyze(document, catalog)
-
-        # A key behind the only door it opens. The flood is a fixpoint, so a
-        # color still blocking when it stops is a color whose key the player
-        # can never hold -- which is the one shape of key puzzle that is always
-        # a mistake rather than a design.
-        for color, cells in sorted(reach.blocked.items()):
-            if color in reach.keys:
-                continue
-            cell = coordinates(cells[0], width)
-            problems.append(Diagnostic(
-                "C7E-DOOR-004", Severity.WARNING,
-                f"the {color} access card cannot be reached without the "
-                f"{color} card; the route through this door is closed to the player",
-                _where(*cell), cell,
-            ))
-
-        if profile.needs_exit:
-            exits = []
-            for plane, words in ((0, plane0), (1, plane1)):
-                for index, value in enumerate(words):
-                    entry = catalog.for_value(plane, value)
-                    if entry is not None and entry.subcategory in ("exit",) \
-                            or (entry is not None and "exit" in entry.aliases):
-                        exits.append(index)
-            if not exits:
-                # A warning, not an error, and deliberately: a map somebody
-                # started ten minutes ago has no exit yet, and a validator that
-                # opens with an error on every new map is one they learn to
-                # ignore. It still has to be said -- a floor with no way out is
-                # not finishable -- so it is said once, quietly.
-                problems.append(Diagnostic(
-                    "C7E-EXIT-001", Severity.WARNING,
-                    "there is no way to finish this floor; place an elevator "
-                    "switch, a floor exit or an exit vortex", "",
-                ))
-            elif not any(_touches(index, reach.reached, width, height)
-                         for index in exits):
-                cell = coordinates(exits[0], width)
-                problems.append(Diagnostic(
-                    "C7E-EXIT-001", Severity.WARNING,
-                    "the player cannot reach any exit on this floor",
-                    _where(*cell), cell,
-                ))
-
+        if not reach.exits and not reach.victor_reached:
+            add("OBC-EXIT-001", Severity.WARNING,
+                "no exit (ladder, stairs or elevator) can be reached from the player start")
+        elif reach.exits and not reach.victor_reached and len(reach.enemies_reached) < reach.quota:
+            add("OBC-KILL-001", Severity.WARNING,
+                f"the exit needs {reach.quota} kills, but only {len(reach.enemies_reached)} "
+                f"of {len(reach.enemies)} enemies can be reached")
         if profile.reports_unreachable:
-            stranded = unreachable_floor(document, reach)
-            if stranded:
-                cell = coordinates(stranded[0], width)
-                problems.append(Diagnostic(
-                    "C7E-ZONE-002", Severity.WARNING,
-                    f"{len(stranded)} floor cell(s) cannot be reached from the "
-                    "player start",
-                    _where(*cell), cell,
-                ))
+            cut = unreachable_floor(document, reach)
+            if cut:
+                x, y = coordinates(cut[0], width)
+                add("OBC-UNREACH-001", Severity.INFORMATION,
+                    f"{len(cut)} floor cells cannot be reached from the start", x, y)
 
-    problems.sort(key=lambda problem: (-problem.severity.value, problem.code,
-                                       problem.cell or (0, 0)))
-    return problems
-
-
-def _touches(index: int, reached: set[int], width: int, height: int) -> bool:
-    """Whether a cell is reached, or has a reached cell beside it.
-
-    An exit is often a switch in a wall, which the player never stands on --
-    they stand next to it and use it. Asking only whether the exit cell itself
-    was flooded would report every elevator in the game as unreachable.
-    """
-    if index in reached:
-        return True
-    x, y = index % width, index // width
-    for nx, ny in ((x, y - 1), (x + 1, y), (x, y + 1), (x - 1, y)):
-        if 0 <= nx < width and 0 <= ny < height and (ny * width + nx) in reached:
-            return True
-    return False
+    return _sorted(problems)
 
 
 # -- safe repairs ---------------------------------------------------------
-#
-# A fix is offered only where there is exactly one thing the author can have
-# meant. Sealing a boundary and giving the floor sound areas both qualify:
-# neither has a second reasonable answer, and both are tedious by hand. Most
-# diagnostics have no fix on purpose -- "there is no exit" has a hundred
-# answers and picking one for somebody is not a repair, it is a guess.
 
 
 def _fix_seal_boundary(document: MapDocument) -> list[tuple[int, int, int, int]]:
-    """Paint the outer ring solid."""
+    """Paint the open cells of the outer ring as explosion-proof wall."""
     width, height = document.width, document.height
-    plane0 = document.planes.planes[0]
     writes = []
-    for x in range(width):
-        for y in (0, height - 1):
-            if _is_floor(plane0[linear_index(x, y, width)]):
-                writes.append((0, x, y, document.SOLID_WALL))
-    for y in range(height):
-        for x in (0, width - 1):
-            if _is_floor(plane0[linear_index(x, y, width)]):
-                writes.append((0, x, y, document.SOLID_WALL))
+    for index, value in enumerate(document.planes.planes[0]):
+        x, y = coordinates(index, width)
+        if (x in (0, width - 1) or y in (0, height - 1)) and value >= rules.AREATILE:
+            writes.append((0, x, y, document.SOLID_WALL))
+            writes.append((1, x, y, document.BORDER_OBJECT))
     return writes
 
 
-def _fix_sound_areas(document: MapDocument) -> list[tuple[int, int, int, int]]:
-    from .rules import assign_sound_areas
+def _fix_door_axes(document: MapDocument) -> list[tuple[int, int, int, int]]:
+    """Give every door whose walls say otherwise the code for the other axis."""
+    writes = []
+    for x, y in rules.door_cells(document):
+        value = document.planes.at(0, x, y)
+        axis = rules.door_axis(document, x, y)
+        if axis.two_sided and axis.vertical != rules.door_is_vertical(value):
+            writes.append((0, x, y, rules.door_value(rules.door_lock(value), axis.vertical)))
+    return writes
 
-    return assign_sound_areas(document)
 
-
-#: id -> (label, builder). The builder returns `write_words` input, so a fix is
-#: an ordinary command: one undo, and no path that edits a document directly.
 FIXES = {
     "seal_boundary": ("Seal the map boundary", _fix_seal_boundary),
-    "sound_areas": ("Give the floor sound areas", _fix_sound_areas),
+    "door-axis": ("Turn doors to match their walls", _fix_door_axes),
 }
 
 
 def fix_writes(fix: str, document: MapDocument) -> list[tuple[int, int, int, int]]:
-    """The writes a fix would make, or an empty list if there is nothing to do."""
     entry = FIXES.get(fix)
     return entry[1](document) if entry else []
 
@@ -446,6 +312,10 @@ def fix_writes(fix: str, document: MapDocument) -> list[tuple[int, int, int, int
 def fix_label(fix: str) -> str:
     entry = FIXES.get(fix)
     return entry[0] if entry else ""
+
+
+def errors_in(problems) -> list[Diagnostic]:
+    return [p for p in problems if p.severity is Severity.ERROR]
 
 
 def summarize(problems) -> str:
@@ -459,4 +329,6 @@ def summarize(problems) -> str:
         parts.append(f"{errors} error{'s' if errors > 1 else ''}")
     if warnings:
         parts.append(f"{warnings} warning{'s' if warnings > 1 else ''}")
+    if not parts:
+        return f"{len(problems)} note{'s' if len(problems) > 1 else ''}"
     return ", ".join(parts)

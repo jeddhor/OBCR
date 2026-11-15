@@ -35,7 +35,7 @@ def read_png(path: Path | str) -> tuple[int, int, bytes]:
     path = Path(path)
     blob = path.read_bytes()
     if blob[:8] != b"\x89PNG\r\n\x1a\n":
-        raise export_error("C7E-IMG-001", f"{path.name} is not a PNG", str(path))
+        raise export_error("OBC-IMG-001", f"{path.name} is not a PNG", str(path))
 
     header = None
     palette = b""
@@ -55,31 +55,31 @@ def read_png(path: Path | str) -> tuple[int, int, bytes]:
         at += 12 + length
 
     if header is None:
-        raise export_error("C7E-IMG-001", f"{path.name} has no header", str(path))
+        raise export_error("OBC-IMG-001", f"{path.name} has no header", str(path))
     width, height, depth, mode, compression, filt, interlace = header
     if depth != 8:
         raise export_error(
-            "C7E-IMG-002",
+            "OBC-IMG-002",
             f"{path.name} is {depth} bits a channel; frames must be 8. "
             "ffmpeg writes 8-bit by default.", str(path))
     if interlace:
         raise export_error(
-            "C7E-IMG-002",
+            "OBC-IMG-002",
             f"{path.name} is interlaced, which this does not read. Save it "
             "without interlacing.", str(path))
     channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}.get(mode)
     if channels is None:
-        raise export_error("C7E-IMG-002",
+        raise export_error("OBC-IMG-002",
                            f"{path.name} uses PNG color type {mode}", str(path))
     if mode == 3 and len(palette) < 3:
-        raise export_error("C7E-IMG-002",
+        raise export_error("OBC-IMG-002",
                            f"{path.name} is paletted but carries no palette",
                            str(path))
 
     raw = zlib.decompress(bytes(data))
     stride = width * channels
     if len(raw) < (stride + 1) * height:
-        raise export_error("C7E-IMG-001",
+        raise export_error("OBC-IMG-001",
                            f"{path.name} ends part way through the image",
                            str(path))
 
@@ -131,7 +131,7 @@ def _unfilter(method: int, line: bytearray, previous: bytearray, channels: int) 
             line[i] = (line[i] + (a if pa <= pb and pa <= pc
                                   else b if pb <= pc else c)) & 0xFF
         else:
-            raise export_error("C7E-IMG-001", f"unknown PNG row filter {method}")
+            raise export_error("OBC-IMG-001", f"unknown PNG row filter {method}")
 
 
 def _bucket(red: int, green: int, blue: int) -> int:

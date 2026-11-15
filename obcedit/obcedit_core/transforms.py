@@ -5,8 +5,10 @@
 Moving cells around is the easy half. The half worth writing carefully is what
 happens to things that *face* a direction.
 
-Corridor 7 encodes an actor's facing in the raw word itself: values 108 to 111
-are the same alien looking east, north, west and south. Rotating a selection
+Operation Body Count encodes an actor's facing in the raw word itself: values
+116 to 119 are the same soldier looking east, north, west and south, player
+starts 19 to 22 look north, east, south and west, and patrol arrows 90 to 97
+point in eight directions. Rotating a selection
 therefore has to rewrite those words, and the tempting way to do it -- add one
 to the value, since the directions are consecutive -- is wrong in a way that
 looks right on the first thing you try. The bands are not all four long, they
@@ -27,12 +29,11 @@ from dataclasses import dataclass
 from .catalog import Catalog
 from .document import MapDocument
 from .planes import PLANE_COUNT, linear_index
-from .xlat import DIRECTIONS_4, DIRECTIONS_8
-
-#: Compass directions in counter-clockwise order, which is the order both of
-#: Corridor 7's bands run in. One step here is 45 degrees; the four-direction
-#: bands take two steps at a time.
-_COMPASS = DIRECTIONS_8
+#: Compass directions in counter-clockwise order (the patrol arrows' order).
+#: One step here is 45 degrees; the four-direction bands take two at a time.
+_COMPASS = ("east", "northeast", "north", "northwest", "west", "southwest", "south", "southeast")
+DIRECTIONS_8 = _COMPASS
+DIRECTIONS_4 = ("east", "north", "west", "south")
 
 
 def rotate_direction(name: str, quarter_turns: int) -> str:
@@ -110,12 +111,23 @@ def copy_region(document: MapDocument, x: int, y: int, width: int, height: int) 
     return Clip(x1 - x0, y1 - y0, tuple(planes), document.uuid)
 
 
-def _remap(clip: Clip, catalog: Catalog | None, convert) -> tuple[tuple[int, ...], ...]:
-    """Rewrite directional plane-1 words through `convert(name) -> name`."""
+def _remap(
+    clip: Clip, catalog: Catalog | None, convert, *, swap_doors: bool = False
+) -> tuple[tuple[int, ...], ...]:
+    """Rewrite directional plane-1 words through `convert(name) -> name`.
+
+    With `swap_doors`, plane-0 doors change axis too: in Operation Body Count
+    the code says the axis (even vertical, odd horizontal, 130-137), so a
+    quarter turn has to rewrite it or the door would stand across its frame.
+    """
     if catalog is None:
         return clip.planes
 
     planes = list(clip.planes)
+    if swap_doors:
+        planes[0] = tuple(
+            value ^ 1 if catalog.kind(0, value) == "door" else value for value in planes[0]
+        )
     rewritten = []
     for value in planes[1]:
         entry = catalog.for_value(1, value)
@@ -136,7 +148,8 @@ def rotate_clip(clip: Clip, quarter_turns: int, catalog: Catalog | None = None) 
     if quarter_turns == 0:
         return clip
 
-    turned = _remap(clip, catalog, lambda name: rotate_direction(name, quarter_turns))
+    turned = _remap(clip, catalog, lambda name: rotate_direction(name, quarter_turns),
+                    swap_doors=quarter_turns % 2 == 1)
     width, height = clip.width, clip.height
     for _ in range(quarter_turns):
         rotated = []

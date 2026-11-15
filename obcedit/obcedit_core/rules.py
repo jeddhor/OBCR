@@ -1,234 +1,238 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Jason Tripp
-"""Corridor 7's placement rules, mirrored from the engine rather than invented.
+"""Operation Body Count's placement rules, mirrored from the engine.
 
-Two things in this format are decided by *topology* rather than stored, and an
-editor that guesses differently from the engine shows the author one thing and
-ships another.
+Sources: `docs/re/LEVEL_CODES.md` (sections 2-4) and the engine's
+`SetupGameLevel`, `SpawnDoor` and `MovePWalls` ports in `crates/obc-sim`.
 
-**A door has no axis.** The map records its color and nothing else; the engine
-works out which way it slides by counting how many of its four neighbors are
-open. `door_axis` is that count, copied from `gamemap_planes.cpp` including the
-tie-break, so the preview matches what will load.
+**Plane 0 splits at 140.** Words below 140 are solid (`tilemap`); 140-161 are
+open floor, the area being `word - 140` (22 areas). 130-137 are doors and
+138 an ambush marker, which the engine turns into floor under a standing enemy.
 
-**A transporter is a pair.** Eight channels, each needing exactly two
-endpoints. One is an error and three is an error, and both are the kind of
-mistake that is invisible in the raw words and obvious in a list.
+**A door's axis is in its word.** Unlike Corridor 7, where the engine decides
+by topology, OBC's door codes come in pairs: even = vertical (the slab runs
+north-south, you pass east-west, walls to the north and south), odd =
+horizontal. The engine copies the area from the west (vertical) or north
+(horizontal) neighbour, so that side must be floor. The door tool picks the
+code from the neighbouring walls; the validator checks the word agrees.
+
+**A push wall moves exactly two cells** away from whoever pushes it, and
+stops early only if the player stands in the way; at rest it cannot be pushed
+again (LEVEL_CODES section 4.7).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .document import MapDocument
 from .errors import Diagnostic, Severity
-from .planes import linear_index
-from .prefabs import TRANSPORTER_CHANNELS, is_floor
 
-#: The engine calls a neighboring cell "open" when it is not a tile -- floor
-#: or a sound zone. A wall, a door and a special are all tiles, and all closed.
-def is_open(value: int) -> bool:
-    return is_floor(value)
+AREATILE = 140
+NUM_AREAS = 22
+LAST_FLOOR = AREATILE + NUM_AREAS - 1
+AMBUSH = 138
+FIRST_DOOR = 130
+LAST_DOOR = 137
+PUSHWALL = 98
+EMPTY_OBJECT = 18
+#: Door-look walls (first frames) and the plane-1 words that make them open.
+DOOR_LOOK_BASES = (13, 29, 49, 65, 69)
+OPENABLE_MARKERS = (103, 106)
+EXITS = {113: "ladder", 114: "stairs", 115: "elevator"}
+#: Plane-1 107: always open, thin (pipe mouths, rock holes).
+OPEN_PASSAGE = 107
+
+_STEPS = ((0, -1), (1, 0), (0, 1), (-1, 0))  # N, E, S, W
+
+
+def is_floor(value: int) -> bool:
+    """An open cell with a valid area (140-161)."""
+    return AREATILE <= value <= LAST_FLOOR
+
+
+is_open = is_floor
+
+
+def is_door(value: int) -> bool:
+    return FIRST_DOOR <= value <= LAST_DOOR
+
+
+def is_wall(value: int) -> bool:
+    """A solid wall word (1-129): any texture, including special walls."""
+    return 1 <= value <= 129
+
+
+def door_value(lock: int, vertical: bool) -> int:
+    """The plane-0 word for a door of look `lock` (0-3) and axis."""
+    return FIRST_DOOR + 2 * lock + (0 if vertical else 1)
+
+
+def door_lock(value: int) -> int:
+    return (value - FIRST_DOOR) // 2
+
+
+def door_is_vertical(value: int) -> bool:
+    return (value - FIRST_DOOR) % 2 == 0
+
+
+def _word(document, plane: int, x: int, y: int) -> int | None:
+    if 0 <= x < document.width and 0 <= y < document.height:
+        return document.planes.at(plane, x, y)
+    return None
+
+
+def _solid(value: int | None) -> bool:
+    return value is not None and value < AREATILE and not is_door(value)
 
 
 @dataclass(frozen=True)
 class DoorAxis:
-    """Which way a door slides, and how sure the map is about it."""
+    """What the neighbours say about a door's orientation."""
 
-    horizontal: bool
-    open_north: bool
-    open_south: bool
-    open_west: bool
-    open_east: bool
+    walls_north_south: bool
+    walls_east_west: bool
+    open_east_west: bool
+    open_north_south: bool
 
     @property
     def vertical(self) -> bool:
-        return not self.horizontal
-
-    @property
-    def label(self) -> str:
-        """What the door does, in terms a person can check against the map.
-
-        The engine's own name for this is `horizontal`, meaning the tile's
-        horizontal offset -- which is the opposite of the corridor it blocks
-        and reads backwards to everyone. So the label describes the corridor.
-        """
-        return "a north-south corridor" if self.horizontal else "an east-west corridor"
-
-    @property
-    def approaches(self) -> int:
-        return sum((self.open_north, self.open_south, self.open_west, self.open_east))
-
-    @property
-    def tie(self) -> bool:
-        """Equal openness both ways: the engine picks vertical, but only just."""
-        return (self.open_north + self.open_south) == (self.open_west + self.open_east)
+        """Vertical (pass east-west) unless only the other way fits."""
+        if self.walls_north_south and self.open_east_west:
+            return True
+        if self.walls_east_west and self.open_north_south:
+            return False
+        return self.walls_north_south or not self.walls_east_west
 
     @property
     def two_sided(self) -> bool:
-        """A door somebody can walk through from both sides, which is the point."""
-        if self.horizontal:
-            return self.open_north and self.open_south
-        return self.open_west and self.open_east
+        """Walls on both sides of the slab and floor on both passage sides."""
+        return (self.walls_north_south and self.open_east_west) or (
+            self.walls_east_west and self.open_north_south
+        )
+
+    @property
+    def label(self) -> str:
+        return "vertical (pass east-west)" if self.vertical else "horizontal (pass north-south)"
 
 
-def door_axis(document: MapDocument, x: int, y: int) -> DoorAxis:
-    """Reproduce `gamemap_planes.cpp`'s inference exactly.
+def door_axis(document, x: int, y: int) -> DoorAxis:
+    def opened(dx, dy):
+        value = _word(document, 0, x + dx, y + dy)
+        return value is not None and (is_floor(value) or value == AMBUSH)
 
-        const bool horizontal = (openNorth + openSouth) > (openWest + openEast);
+    def walled(dx, dy):
+        return _solid(_word(document, 0, x + dx, y + dy))
 
-    Note the `>`: a tie is *not* horizontal, so a door with the same number of
-    open cells each way takes the default vertical plane. Off the edge of the
-    map counts as closed, because the engine's bounds checks make it so.
-    """
-    plane0 = document.planes.planes[0]
-    width, height = document.width, document.height
-
-    def open_at(cx: int, cy: int) -> bool:
-        if not (0 <= cx < width and 0 <= cy < height):
-            return False
-        return is_open(plane0[linear_index(cx, cy, width)])
-
-    north, south = open_at(x, y - 1), open_at(x, y + 1)
-    west, east = open_at(x - 1, y), open_at(x + 1, y)
-    return DoorAxis((north + south) > (west + east), north, south, west, east)
+    return DoorAxis(
+        walls_north_south=walled(0, -1) and walled(0, 1),
+        walls_east_west=walled(-1, 0) and walled(1, 0),
+        open_east_west=opened(-1, 0) and opened(1, 0),
+        open_north_south=opened(0, -1) and opened(0, 1),
+    )
 
 
-def check_door(document: MapDocument, x: int, y: int) -> list[Diagnostic]:
-    """What is wrong with a door here, if anything."""
-    axis = door_axis(document, x, y)
+def door_for_cell(document, x: int, y: int, lock: int) -> int:
+    """The door word of look `lock` whose axis fits the cell's neighbours."""
+    return door_value(lock, door_axis(document, x, y).vertical)
+
+
+def check_door(document, x: int, y: int) -> list[Diagnostic]:
+    """Problems with the door at (x, y): axis, edges, frame."""
+    value = document.planes.at(0, x, y)
     where = f"cell ({x}, {y})"
     problems = []
-
-    if not axis.two_sided:
+    if x in (0, document.width - 1) or y in (0, document.height - 1):
+        problems.append(Diagnostic("OBC-DOOR-002", Severity.ERROR,
+                                   "a door on the map edge leads out of the world", where,
+                                   cell=(x, y)))
+        return problems
+    vertical = door_is_vertical(value)
+    if vertical:
+        passage = [_word(document, 0, x - 1, y), _word(document, 0, x + 1, y)]
+        frame = [_word(document, 0, x, y - 1), _word(document, 0, x, y + 1)]
+    else:
+        passage = [_word(document, 0, x, y - 1), _word(document, 0, x, y + 1)]
+        frame = [_word(document, 0, x - 1, y), _word(document, 0, x + 1, y)]
+    if not all(v is not None and (is_floor(v) or v == AMBUSH) for v in passage):
+        axis = door_axis(document, x, y)
+        if axis.two_sided and axis.vertical != vertical:
+            problems.append(Diagnostic(
+                "OBC-DOOR-001", Severity.ERROR,
+                f"door {value} is {'vertical' if vertical else 'horizontal'}, but its walls "
+                f"say {axis.label}; use {door_value(door_lock(value), axis.vertical)}",
+                where, cell=(x, y), fix="door-axis",
+            ))
+        else:
+            problems.append(Diagnostic(
+                "OBC-DOOR-003", Severity.ERROR,
+                "a door needs open floor on both sides it opens to "
+                f"({'west and east' if vertical else 'north and south'})",
+                where, cell=(x, y),
+            ))
+    elif not all(_solid(v) for v in frame):
         problems.append(Diagnostic(
-            "C7E-DOOR-001", Severity.WARNING,
-            f"this door blocks {axis.label}, but the floor it needs on both sides "
-            "of that corridor is not there, so it opens onto a wall",
-            where,
-        ))
-    if axis.tie and axis.approaches:
-        problems.append(Diagnostic(
-            "C7E-DOOR-002", Severity.WARNING,
-            "the walls around this door are equally open both ways; the engine "
-            f"will treat it as blocking {axis.label}, which may not be what it "
-            "looks like on the canvas",
-            where,
-        ))
-    return problems
-
-
-# ---------------------------------------------------------------------------
-# Transporters
-# ---------------------------------------------------------------------------
-
-
-def transporter_endpoints(document: MapDocument) -> dict[int, list[tuple[int, int]]]:
-    """Every transporter cell on the map, grouped by channel."""
-    found: dict[int, list[tuple[int, int]]] = {c: [] for c in TRANSPORTER_CHANNELS}
-    plane0 = document.planes.planes[0]
-    for index, value in enumerate(plane0):
-        if value in found:
-            found[value].append((index % document.width, index // document.width))
-    return {channel: cells for channel, cells in found.items() if cells}
-
-
-def check_transporters(document: MapDocument) -> list[Diagnostic]:
-    """A channel needs exactly two ends."""
-    problems = []
-    for channel, cells in sorted(transporter_endpoints(document).items()):
-        if len(cells) == 2:
-            continue
-        first = cells[0]
-        problems.append(Diagnostic(
-            "C7E-WARP-001", Severity.ERROR,
-            f"transporter channel {channel} has {len(cells)} endpoint"
-            f"{'s' if len(cells) != 1 else ''}; a channel needs exactly two",
-            f"cell ({first[0]}, {first[1]})",
+            "OBC-DOOR-004", Severity.WARNING,
+            "a door should have walls on both sides of its slab "
+            f"({'north and south' if vertical else 'west and east'})",
+            where, cell=(x, y),
         ))
     return problems
 
 
-def free_channel(document: MapDocument) -> int | None:
-    """The lowest channel with room for another endpoint, or None."""
-    used = transporter_endpoints(document)
-    for channel in TRANSPORTER_CHANNELS:
-        if len(used.get(channel, ())) < 2:
-            return channel
-    return None
+def door_cells(document, catalog=None) -> list[tuple[int, int]]:
+    """Every door cell, in reading order."""
+    cells = []
+    for y, row in enumerate(document.planes.rows(0)):
+        for x, value in enumerate(row):
+            if is_door(value):
+                cells.append((x, y))
+    return cells
 
 
-def door_cells(document: MapDocument, catalog=None) -> list[tuple[int, int]]:
-    """Every cell holding a door, so the checks know where to look."""
-    doors = {251, 252, 253, 254}
-    plane0 = document.planes.planes[0]
-    return [(index % document.width, index // document.width)
-            for index, value in enumerate(plane0) if value in doors]
+def pushwall_directions(document, x: int, y: int) -> list[int]:
+    """Directions (0 N, 1 E, 2 S, 3 W) a push wall at (x, y) can travel.
 
-
-#: The plane-0 words that are sound areas. Corridor 7 defines 256..286 in the
-#: translation; anything outside that is not an area the engine knows.
-AREA_FIRST = 256
-AREA_LAST = 286
-
-
-def assign_sound_areas(document) -> list[tuple[int, int, int, int]]:
-    """Give every floor cell that has no sound area one, as `write_words` input.
-
-    Corridor 7's floor words are Wolf3D areas, and the engine carries sound
-    between two actors only if `CheckLink` finds a path from one's area to the
-    other's. Word 0 is walkable but carries no area at all, so a floor built
-    from it is a floor nothing can hear through -- see
-    `MapDocument.DEFAULT_FLOOR`.
-
-    Regions are the connected runs of floor, four-connected. A door is a
-    plane-0 word rather than floor, so it already separates the rooms it joins,
-    which is what makes the areas mean anything: sound crosses a doorway when
-    the door opens and links the two areas, exactly as it does in the shipped
-    maps.
-
-    A region touching cells that already have an area joins that one rather
-    than being given a new number -- repairing part of a map must not cut it
-    off from the part that was already right. Fresh regions take the next
-    unused number, and if a map has more regions than Corridor 7 has area
-    words they share the last one: too few areas is a map that hears too much,
-    which is recoverable, and an out-of-range word is not a map at all.
+    The player stands on the far side and pushes; the wall needs the two cells
+    ahead of it open, as `MovePWalls` makes it move exactly two.
     """
-    from .prefabs import is_floor
+    out = []
+    for direction, (dx, dy) in enumerate(_STEPS):
+        behind = _word(document, 0, x - dx, y - dy)
+        ahead = [_word(document, 0, x + dx * k, y + dy * k) for k in (1, 2)]
+        if behind is not None and is_floor(behind) and all(
+            v is not None and is_floor(v) for v in ahead
+        ):
+            out.append(direction)
+    return out
 
-    width, height = document.width, document.height
-    plane0 = document.planes.planes[0]
 
-    def at(x, y):
-        return plane0[y * width + x]
+def pushwall_path(x: int, y: int, direction: int) -> list[tuple[int, int]]:
+    """The two cells a push wall at (x, y) travels through when pushed `direction`."""
+    dx, dy = _STEPS[direction]
+    return [(x + dx, y + dy), (x + 2 * dx, y + 2 * dy)]
 
-    used = {value for value in plane0 if AREA_FIRST <= value <= AREA_LAST}
-    spare = (n for n in range(AREA_FIRST, AREA_LAST + 1) if n not in used)
 
-    writes: list[tuple[int, int, int, int]] = []
-    seen = [False] * (width * height)
-    for start in range(width * height):
-        if seen[start] or at(start % width, start // width) != 0:
-            continue
-        # One region: every zoneless floor cell reachable from here.
-        region, neighbors, stack = [], set(), [start]
-        seen[start] = True
-        while stack:
-            index = stack.pop()
-            x, y = index % width, index // width
-            region.append((x, y))
-            for nx, ny in ((x, y - 1), (x + 1, y), (x, y + 1), (x - 1, y)):
-                if not (0 <= nx < width and 0 <= ny < height):
-                    continue
-                value = at(nx, ny)
-                if value == 0:
-                    if not seen[ny * width + nx]:
-                        seen[ny * width + nx] = True
-                        stack.append(ny * width + nx)
-                elif AREA_FIRST <= value <= AREA_LAST:
-                    neighbors.add(value)
-                elif is_floor(value):
-                    pass
-        area = min(neighbors) if neighbors else next(spare, AREA_LAST)
-        writes.extend((0, x, y, area) for x, y in region)
-    return writes
+def check_pushwall(document, x: int, y: int) -> list[Diagnostic]:
+    where = f"cell ({x}, {y})"
+    if not is_wall(document.planes.at(0, x, y)):
+        return [Diagnostic("OBC-PUSH-001", Severity.ERROR,
+                           "push wall marker 98 is not on a wall; there is nothing to push",
+                           where, cell=(x, y))]
+    if not pushwall_directions(document, x, y):
+        return [Diagnostic("OBC-PUSH-002", Severity.WARNING,
+                           "this push wall cannot move: no side has floor to push from "
+                           "with two open floor cells ahead", where, cell=(x, y))]
+    return []
+
+
+def neighbours(x: int, y: int):
+    for dx, dy in _STEPS:
+        yield x + dx, y + dy
+
+
+__all__ = [
+    "AMBUSH", "AREATILE", "DoorAxis", "EMPTY_OBJECT", "EXITS", "LAST_FLOOR", "NUM_AREAS",
+    "PUSHWALL", "check_door", "check_pushwall", "door_axis", "door_cells", "door_for_cell",
+    "door_is_vertical", "door_lock", "door_value", "is_door", "is_floor", "is_open", "is_wall",
+    "neighbours", "pushwall_directions", "pushwall_path",
+]

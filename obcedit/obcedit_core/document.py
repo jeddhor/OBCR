@@ -14,7 +14,7 @@ with itself.
 **Documents are immutable.** An edit returns a new document rather than
 mutating one. That is what makes undo a matter of keeping the old value, makes
 a background thread's snapshot safe to hold, and makes "has this changed?" a
-comparison of two integers instead of a deep walk. Corridor 7's maps are 64x64,
+comparison of two integers instead of a deep walk. Operation Body Count's maps are 64x64,
 so a full copy is twelve thousand words -- cheap enough that the simple thing
 is also the fast thing.
 
@@ -31,12 +31,12 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 
 from .archive import MapRecord
-from .errors import Ec7EditError, Severity
+from .errors import ObcEditError, Severity
 from .names import NativeName
 from .planes import MapPlanes
 
 #: Bumped only for changes the on-disk schema notices. See `project.py`.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 1
 
 
 def new_uuid() -> str:
@@ -49,14 +49,14 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-class DocumentError(Ec7EditError):
-    """A `C7E-SCHEMA-*` failure: the document does not hold together."""
+class DocumentError(ObcEditError):
+    """A `OBC-SCHEMA-*` failure: the document does not hold together."""
 
 
 def _schema_error(message: str, where: str = "") -> DocumentError:
     from .errors import Diagnostic
 
-    return DocumentError(Diagnostic("C7E-SCHEMA-002", Severity.ERROR, message, where))
+    return DocumentError(Diagnostic("OBC-SCHEMA-002", Severity.ERROR, message, where))
 
 
 @dataclass(frozen=True)
@@ -94,8 +94,8 @@ class MapDocument:
     source: SourceReference | None = None
 
     def __post_init__(self) -> None:
-        if not 1 <= self.slot <= 100:
-            raise _schema_error(f"slot {self.slot} is outside MAP01..MAP100", self.uuid)
+        if not 0 <= self.slot <= 99:
+            raise _schema_error(f"slot {self.slot} is outside 0..99", self.uuid)
 
     @property
     def name(self) -> str:
@@ -103,8 +103,11 @@ class MapDocument:
         return self.native_name.text
 
     @property
-    def lump_name(self) -> str:
-        return f"MAP{self.slot:02d}"
+    def label(self) -> str:
+        """`slot 06`: the 0-based archive slot (the original's floor is slot + 1)."""
+        return f"slot {self.slot:02d}"
+
+    lump_name = label
 
     @property
     def width(self) -> int:
@@ -150,27 +153,21 @@ class MapDocument:
             source=source,
         )
 
-    #: Plane-0 word for a plain solid wall, and plane-1's empty marker. The
-    #: second is 18, not 0: a new map whose object plane were all zeros would
-    #: place whatever word 0 means on every cell of it.
+    #: Plane-0 word for a plain solid wall, and plane-1's empty marker (18,
+    #: the original editor's background; codes below 19 are ignored).
     SOLID_WALL = 1
     EMPTY_OBJECT = 18
-    #: The plane-0 word for open floor. NOT zero.
-    #:
-    #: Corridor 7's floor words are sound areas -- Wolf3D "areas" -- and the
-    #: engine propagates noise by asking map->CheckLink() whether the shooter's
-    #: area connects to the listener's. CheckLink answers false the moment
-    #: either side is NULL, and word 0 carries no area at all, so on a map
-    #: floored with zeros nothing can ever hear anything: aliens ignore gunfire
-    #: entirely and wake only on sight or contact. None of the sixty shipped
-    #: maps contains a single plane-0 zero; 256 is the area they use most.
-    DEFAULT_FLOOR = 256
-    #: The player start facing east. Corridor 7 reflects a start's angle, so
-    #: this band reads north, east, south, west -- 20 is east, not 19.
+    #: The plane-1 word every original map puts on its border walls: 89,
+    #: explosion-proof, so a grenade cannot open the edge of the world.
+    BORDER_OBJECT = 89
+    #: The plane-0 word for open floor: area 4, floor texture set 0, the
+    #: shipped maps' most common floor. Not 0: that is area -140 to the engine.
+    DEFAULT_FLOOR = 144
+    #: Player starts 19-22 face north, east, south, west.
     PLAYER_START_EAST = 20
 
     @classmethod
-    def blank(cls, *, slot: int = 1, name: str = "NEW MAP", width: int = 64,
+    def blank(cls, *, slot: int = 0, name: str = "NEW MAP", width: int = 64,
               height: int = 64) -> "MapDocument":
         """Three planes of zeros. The primitive, with no opinions."""
         return cls(
@@ -181,19 +178,16 @@ class MapDocument:
         )
 
     @classmethod
-    def new_room(cls, *, slot: int = 1, name: str = "NEW MAP", width: int = 64,
+    def new_room(cls, *, slot: int = 0, name: str = "NEW MAP", width: int = 64,
                  height: int = 64, with_start: bool = True) -> "MapDocument":
         """A map somebody would actually want to start drawing on.
 
-        Four differences from `blank`, all of which every author would make
-        immediately: the boundary is solid, because an open edge lets the
-        player walk out of the world; the floor is a sound area rather than
-        zero, because an area of zero is no area and nothing on such a map can
-        hear anything (see DEFAULT_FLOOR); the object plane holds Corridor 7's
-        empty marker rather than zeros, since a plane of zeros would place
-        whatever word 0 means on every cell; and there is a player start in the
-        middle, because the engine refuses a map without one -- it prints "No
-        player 1 start!" and exits, which looks exactly like a crash.
+        The differences from `blank`, all of which every author would make
+        immediately: the boundary is solid and explosion-proof (89), because
+        an open edge lets the player walk out of the world; the floor is a real
+        area with a texture set (see DEFAULT_FLOOR); the object plane holds the
+        empty marker 18; and there is a player start in the middle, because a
+        map without one cannot be played.
         """
         cells = width * height
         floor = [cls.DEFAULT_FLOOR] * cells
@@ -203,6 +197,9 @@ class MapDocument:
             floor[y * width] = floor[y * width + width - 1] = cls.SOLID_WALL
 
         objects = [cls.EMPTY_OBJECT] * cells
+        for index, word in enumerate(floor):
+            if word == cls.SOLID_WALL:
+                objects[index] = cls.BORDER_OBJECT
         if with_start:
             objects[(height // 2) * width + (width // 2)] = cls.PLAYER_START_EAST
 
@@ -240,21 +237,10 @@ class ProjectDocument:
     #: rather than acted on: a catalog change must never rewrite raw words.
     catalog_version: int = 0
     export_defaults: dict = field(default_factory=dict)
-    #: The map-pack campaign, as raw JSON. Kept unparsed here so `document` has
-    #: no opinion about pack metadata: `campaign.Campaign.from_json` owns the
-    #: schema, and a project that never builds a pack carries an empty dict and
-    #: pays nothing for it.
+    #: The mod's manifest data (title, author, levels...), as raw JSON. Kept
+    #: unparsed here: `campaign.Campaign.from_json` owns the schema, and a
+    #: project that never exports a mod carries an empty dict.
     campaign: dict = field(default_factory=dict)
-    #: Attached resource packs, as raw JSON, in the order they were added.
-    #: Stored like a map's source: the digest identifies it, the path is inert
-    #: text, and opening a project someone shared never touches either.
-    #: `resources.Resource` owns the schema; this holds it and no opinion.
-    resources: tuple[dict, ...] = ()
-    #: `"plane:word" -> {"resource": digest, "kind": ..., "name": ...}`, the
-    #: map words allocated to custom content. Kept in the project because
-    #: allocation has to be STABLE: a word that moved between sessions would
-    #: silently change what a map already containing it spawns.
-    allocations: dict = field(default_factory=dict)
 
     @property
     def dirty(self) -> bool:
@@ -299,13 +285,6 @@ class ProjectDocument:
         maps = list(self.maps)
         del maps[index]
         return replace(self, maps=tuple(maps), revision=self.revision + 1)
-
-    def with_resources(self, resources, allocations: dict | None = None) -> "ProjectDocument":
-        """A new project with this set of resource packs, counted as an edit."""
-        return replace(self, resources=tuple(dict(r) for r in resources),
-                       allocations=dict(allocations if allocations is not None
-                                        else self.allocations),
-                       revision=self.revision + 1)
 
     def with_campaign(self, campaign: dict) -> "ProjectDocument":
         """A new project carrying this campaign, counted as an edit.

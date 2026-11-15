@@ -9,7 +9,7 @@ hundred kilobytes and buys the ability to see what changed.
 
 Two ideas run through the whole file.
 
-**A shared project is untrusted input.** Someone else's `.ec7project` is data,
+**A shared project is untrusted input.** Someone else's `.obcproject` is data,
 not instructions. It may name a path; that path is inert text and opening the
 project must not stat, hash, open or contact it. External content resolves only
 through the user's own local profile or a relink they deliberately asked for.
@@ -45,15 +45,16 @@ from .errors import Diagnostic, Severity, export_error
 from .names import NAME_FIELD_BYTES, NativeName
 from .planes import MapPlanes
 
-PROJECT_SUFFIX = ".ec7project"
-RECOVERY_SUFFIX = ".ec7recovery"
+PROJECT_SUFFIX = ".obcproject"
+RECOVERY_SUFFIX = ".obcrecovery"
+#: Written at the top of every project, so an EC7Edit project is told apart.
+FORMAT_NAME = "obcedit-project"
 
 #: The oldest schema this build can still open. Raise it only by dropping a
 #: migration, which is a decision, not a cleanup.
 OLDEST_SUPPORTED_SCHEMA = 1
 
-_PROJECT_KEYS = {"schema_version", "project", "maps", "export_defaults",
-                 "campaign", "resources", "allocations"}
+_PROJECT_KEYS = {"format", "schema_version", "project", "maps", "export_defaults", "campaign"}
 _META_KEYS = {"uuid", "name", "author", "notes", "created_at", "catalog_version"}
 _MAP_KEYS = {
     "uuid", "slot", "native_name", "native_name_raw_hex", "width", "height",
@@ -63,11 +64,11 @@ _SOURCE_KEYS = {"display_path", "sha256", "map_number", "imported_at"}
 
 
 def _schema_error(message: str, where: str = "") -> DocumentError:
-    return DocumentError(Diagnostic("C7E-SCHEMA-002", Severity.ERROR, message, where))
+    return DocumentError(Diagnostic("OBC-SCHEMA-002", Severity.ERROR, message, where))
 
 
 def _unsupported(message: str) -> DocumentError:
-    return DocumentError(Diagnostic("C7E-SCHEMA-001", Severity.ERROR, message))
+    return DocumentError(Diagnostic("OBC-SCHEMA-001", Severity.ERROR, message))
 
 
 def _reject_unknown(present, allowed, where: str) -> None:
@@ -95,6 +96,7 @@ def serialize(project: ProjectDocument) -> str:
     save protocol compare a digest and what makes a project diffable.
     """
     payload = {
+        "format": FORMAT_NAME,
         "schema_version": project.schema_version,
         "project": {
             "uuid": project.uuid,
@@ -106,8 +108,6 @@ def serialize(project: ProjectDocument) -> str:
         },
         "export_defaults": project.export_defaults,
         "campaign": project.campaign,
-        "resources": [dict(r) for r in project.resources],
-        "allocations": project.allocations,
         "maps": [
             {
                 "uuid": document.uuid,
@@ -185,7 +185,7 @@ def _load_map(raw: dict, where: str) -> MapDocument:
             for value in row:
                 if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= 0xFFFF:
                     raise DocumentError(
-                        Diagnostic("C7E-CELL-001", Severity.ERROR,
+                        Diagnostic("OBC-CELL-001", Severity.ERROR,
                                    f"plane {number} row {y} holds {value!r}, "
                                    "which is not a word in 0..65535", where)
                     )
@@ -227,6 +227,11 @@ def deserialize(text: str) -> ProjectDocument:
     if not isinstance(payload, dict):
         raise _schema_error("a project file is a JSON object")
 
+    if payload.get("format") != FORMAT_NAME:
+        raise _unsupported(
+            "this is not an OBCEdit project (an EC7Edit project, or another file); "
+            "import its maps instead"
+        )
     version = payload.get("schema_version")
     if not isinstance(version, int):
         raise _schema_error("schema_version is missing or not an integer")
@@ -276,14 +281,6 @@ def deserialize(text: str) -> ProjectDocument:
     if not isinstance(raw_campaign, dict):
         raise _schema_error("campaign must be an object")
 
-    raw_resources = payload.get("resources") or []
-    if not isinstance(raw_resources, list) or not all(
-            isinstance(r, dict) for r in raw_resources):
-        raise _schema_error("resources must be a list of objects")
-    raw_allocations = payload.get("allocations") or {}
-    if not isinstance(raw_allocations, dict):
-        raise _schema_error("allocations must be an object")
-
     revision = len(maps)
     return ProjectDocument(
         uuid=meta["uuid"],
@@ -298,8 +295,6 @@ def deserialize(text: str) -> ProjectDocument:
         catalog_version=meta.get("catalog_version", 0),
         export_defaults=export_defaults,
         campaign=raw_campaign,
-        resources=tuple(raw_resources),
-        allocations=raw_allocations,
     )
 
 
@@ -307,29 +302,8 @@ def deserialize(text: str) -> ProjectDocument:
 # Migration
 # ---------------------------------------------------------------------------
 
-def _add_campaign(payload: dict) -> dict:
-    """1 -> 2: projects gained a map-pack campaign.
-
-    An absent campaign and an empty one mean the same thing -- this project
-    does not build a pack -- so the migration is an insertion with no decision
-    in it. Every schema-1 project keeps exporting exactly the preview WAD it
-    did before, because that path never consults this block.
-    """
-    return {**payload, "campaign": {}}
-
-
-def _add_resources(payload: dict) -> dict:
-    """2 -> 3: projects gained attached resource packs and their allocations.
-
-    Both empty, and both meaning the same as absent -- this project uses only
-    Corridor 7's own content. Every schema-2 project exports exactly what it
-    did before, because neither path consults these.
-    """
-    return {**payload, "resources": [], "allocations": {}}
-
-
 #: `version -> pure function from payload to the next version's payload`.
-MIGRATIONS: dict[int, callable] = {1: _add_campaign, 2: _add_resources}
+MIGRATIONS: dict[int, callable] = {}
 
 
 def migrate(payload: dict) -> dict:
@@ -471,7 +445,7 @@ def save_project(
     reloaded = deserialize(text)
     if len(reloaded.maps) != len(project.maps):
         raise export_error(
-            "C7E-EXPORT-002",
+            "OBC-EXPORT-002",
             f"serialising lost maps: {len(project.maps)} in, {len(reloaded.maps)} out",
             str(destination),
         )
@@ -497,14 +471,14 @@ def save_project(
         faults.check("verify")
         if _digest(written) != expected:
             raise export_error(
-                "C7E-EXPORT-002", "the file on disk differs from what was written",
+                "OBC-EXPORT-002", "the file on disk differs from what was written",
                 str(temporary),
             )
         # Parsing it back is the check that matters: equal bytes only proves
         # the write worked, not that the document survived serialisation.
         if len(deserialize(written).maps) != len(project.maps):
             raise export_error(
-                "C7E-EXPORT-002", "the reloaded project does not match the document",
+                "OBC-EXPORT-002", "the reloaded project does not match the document",
                 str(temporary),
             )
 

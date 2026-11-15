@@ -24,22 +24,22 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 
 from .document import MapDocument, ProjectDocument
-from .errors import Diagnostic, Ec7EditError, Severity
+from .errors import Diagnostic, ObcEditError, Severity
 from .names import NativeName
 from .planes import MapPlanes, linear_index
 
-#: A history longer than this is memory nobody uses. Corridor 7 maps are small,
+#: A history longer than this is memory nobody uses. Operation Body Count maps are small,
 #: so the cap that binds first is the edit count, not the step count.
 DEFAULT_STEP_CAP = 200
 DEFAULT_EDIT_CAP = 2_000_000
 
 
-class CommandError(Ec7EditError):
+class CommandError(ObcEditError):
     pass
 
 
 def _command_error(message: str, where: str = "") -> CommandError:
-    return CommandError(Diagnostic("C7E-SCHEMA-002", Severity.ERROR, message, where))
+    return CommandError(Diagnostic("OBC-SCHEMA-002", Severity.ERROR, message, where))
 
 
 @dataclass(frozen=True)
@@ -82,7 +82,7 @@ class MapEdit:
 
     The whole document is kept, not just its id, because undoing a deletion
     has to put the map *back* -- every plane, its name, its source reference
-    and its identity. Corridor 7 maps are twelve thousand words, so holding one
+    and its identity. Operation Body Count maps are twelve thousand words, so holding one
     is cheap, and the alternative is a delete you cannot take back.
     """
 
@@ -100,7 +100,7 @@ class MapEdit:
 
 @dataclass(frozen=True)
 class SlotEdit:
-    """A map's target `MAPxx` slot changed."""
+    """A map's target archive slot changed."""
 
     map_uuid: str
     before: int
@@ -194,7 +194,7 @@ def apply_command(project: ProjectDocument, command: Command) -> ProjectDocument
             if not 0 <= edit.after <= 0xFFFF:
                 raise CommandError(
                     Diagnostic(
-                        "C7E-CELL-001",
+                        "OBC-CELL-001",
                         Severity.ERROR,
                         f"value {edit.after} is outside 0..65535",
                         map_uuid,

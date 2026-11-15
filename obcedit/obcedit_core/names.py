@@ -12,8 +12,8 @@ and only a deliberate rename replaces the field.
 That gives three outcomes, matching appendix C:
 
 * imported and canonical      -- silent;
-* imported and noncanonical   -- `C7E-NATIVE-007`, information, still exportable;
-* renamed to something unencodable -- `C7E-NATIVE-004`, error, nothing is written.
+* imported and noncanonical   -- `OBC-NATIVE-007`, information, still exportable;
+* renamed to something unencodable -- `OBC-NATIVE-004`, error, nothing is written.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ class NativeName:
     def __post_init__(self) -> None:
         if len(self.raw) != NAME_FIELD_BYTES:
             raise native_error(
-                "C7E-NATIVE-004",
+                "OBC-NATIVE-004",
                 f"name field is {len(self.raw)} bytes, must be exactly {NAME_FIELD_BYTES}",
             )
 
@@ -91,7 +91,7 @@ class NativeName:
         """Note a preserved noncanonical field. Information, not a complaint."""
         if self.imported and not self.is_canonical:
             log.information(
-                "C7E-NATIVE-007",
+                "OBC-NATIVE-007",
                 f"name field preserved exactly: {self.describe_noncanonical()}",
                 where,
             )
@@ -113,17 +113,17 @@ class NativeName:
             encoded = text.encode("ascii")
         except UnicodeEncodeError as error:
             raise native_error(
-                "C7E-NATIVE-004",
+                "OBC-NATIVE-004",
                 f"name {text!r} is not ASCII: {error.reason} at position {error.start}",
             ) from error
         if any(b not in _PRINTABLE for b in encoded):
             raise native_error(
-                "C7E-NATIVE-004",
+                "OBC-NATIVE-004",
                 f"name {text!r} contains a control character; printable ASCII only",
             )
         if len(encoded) > MAX_CANONICAL_TEXT:
             raise native_error(
-                "C7E-NATIVE-004",
+                "OBC-NATIVE-004",
                 f"name {text!r} is {len(encoded)} bytes; the limit is "
                 f"{MAX_CANONICAL_TEXT} plus a terminator",
             )

@@ -1,34 +1,20 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Jason Tripp
-"""Snapshot: an exact EC7Wolf frame of the map you are drawing.
+"""Snapshot: an exact OBCR frame of the map you are drawing.
 
-Not an approximation of the renderer, and deliberately not one. Milestone E10's
-whole argument is that a second renderer written in Python would be a second
-authority on what Corridor 7 looks like, and the moment the two disagreed the
-editor would be lying to somebody. So the picture comes from the engine: the
-editor asks it to stand at a tile, face an angle, draw one frame and exit.
+Not an approximation of the renderer, and deliberately not one: a second
+renderer written in Python would be a second authority on what Operation Body
+Count looks like. So the picture comes from OBCR itself, headless:
 
-Three things make that usable rather than a curiosity.
+    obcr --data DATA --mod MOD --play N --start X,Y,DIR --shot TICS --shot-out FILE.png
 
-**It is anchored to a simulation tic**, not a frame. A frame number is not a
-property of the game -- how many frames pass in a tic depends on how fast the
-machine draws -- so "frame 30" is a different moment on a busy box. `tic 20` is
-the same moment everywhere, which is what makes the same request give the same
-picture.
+The player stands on tile (X, Y) facing a compass direction, the game runs
+`TICS` tics (past the level's fade-in) and writes the frame.
 
-**The camera is checked before the engine is asked.** A tile outside the map or
-inside a wall produces a picture of nothing, and the engine would draw it
-without complaint. It is checked here, and again in the engine against the map
-that actually loaded.
-
-**The cache is keyed by everything that could change the picture.** The engine
-binary, its pk3, the game data, the render profile, the map, and the camera. A
-key that left any of those out would hand back a stale picture after the very
-change somebody made it to look at.
-
-Nothing cached here leaves the user's machine, and no retail byte is written
-into the project: the cache is derived data in the workspace, keyed by digests,
-and it is disposable.
+The camera is checked before the engine is asked (a tile outside the map or in
+a wall is a picture of nothing), and the cache key covers everything that
+could change the picture: the engine binary, the game data, the exported mod,
+the camera, the tic and the render profile.
 """
 
 from __future__ import annotations
@@ -38,43 +24,28 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .document import MapDocument
-from .errors import Diagnostic, Ec7EditError, Severity
+from .errors import Diagnostic, ObcEditError, Severity
 
-#: The snapshot always runs software at a fixed size with upscaling off.
-#:
-#: Pinned, not offered. The PNG path is only a true picture of the world under
-#: the software renderer -- under OpenGL the GPU owns the world and the 8-bit
-#: framebuffer `--capture-file` reads holds just the 2D overlay, which is how a
-#: parity gate once passed while comparing a black frame. A GL snapshot is a
-#: different contract (its own PPM capture) and is not what this writes.
-RENDER_PROFILE = {
-    "renderer": "software",
-    "width": 640,
-    "height": 400,
-    "upscale": "off",
-}
+#: Classic: the original 320x200 picture. Enhanced shots follow the player's
+#: own settings and so are not reproducible; the snapshot pins Classic.
+RENDER_PROFILE = {"mode": "classic"}
 
-#: Which simulation tic to photograph. Late enough that the level has settled
-#: and the weapon is in its ready pose, early enough that nothing has wandered
-#: into shot.
-SNAPSHOT_TIC = 20
+#: A floor fades in over its first ~25 tics; 30 is past it and before anything
+#: wanders off (verified against OBCR: earlier frames are nearly black).
+SNAPSHOT_TIC = 30
 
 
-def _error(message: str) -> Ec7EditError:
-    return Ec7EditError(Diagnostic("C7E-SNAPSHOT-001", Severity.ERROR, message))
+def _error(message: str) -> ObcEditError:
+    return ObcEditError(Diagnostic("OBC-SNAPSHOT-001", Severity.ERROR, message))
 
 
 @dataclass(frozen=True)
 class Camera:
     """Where the picture is taken from, and which way it looks.
 
-    Tile coordinates, and degrees **counter-clockwise from east** -- 0 east,
-    90 north, 180 west, 270 south. That is the engine's own convention: an
-    angle between 45 and 135 sends `Cmd_Use` to `tiley - 1`, and
-    `--capture-warp` maps these degrees straight onto `angle_t` and assigns
-    them to the player. This docstring said "clockwise" for a while and cost an
-    afternoon: the canvas drew every camera facing backwards, and zero was the
-    only angle that looked right.
+    Tile coordinates, and degrees counter-clockwise from east (0 east, 90
+    north, 180 west, 270 south). OBCR's `--start` takes a compass direction,
+    so the angle is rounded to the nearest quarter turn.
     """
 
     x: float
@@ -82,28 +53,28 @@ class Camera:
     angle: float = 0.0
 
     def normalized(self) -> "Camera":
-        angle = self.angle % 360.0
-        return Camera(self.x, self.y, angle)
+        quarter = round((self.angle % 360.0) / 90.0) % 4
+        return Camera(float(int(self.x)), float(int(self.y)), quarter * 90.0)
+
+    @property
+    def direction(self) -> int:
+        """`--start`'s DIR: 0 N, 1 E, 2 S, 3 W."""
+        return {0.0: 1, 90.0: 0, 180.0: 3, 270.0: 2}[self.normalized().angle]
 
     def arguments(self) -> list[str]:
         camera = self.normalized()
-        return ["--capture-warp", f"{camera.x:g}", f"{camera.y:g}", f"{camera.angle:g}"]
+        return ["--start", f"{int(camera.x)},{int(camera.y)},{self.direction}"]
 
-    #: The compass name for each right angle. Only the four the Turn button
-    #: can reach are named; anything else keeps its number, because inventing
-    #: "north-ish" for 87 degrees would be worse than saying 87.
     _COMPASS = {0.0: "east", 90.0: "north", 180.0: "west", 270.0: "south"}
 
     def describe(self) -> str:
         camera = self.normalized()
-        compass = self._COMPASS.get(camera.angle)
-        facing = f"{camera.angle:g}°" + (f" ({compass})" if compass else "")
-        return f"({camera.x:g}, {camera.y:g}) facing {facing}"
+        return f"({camera.x:g}, {camera.y:g}) facing {self._COMPASS[camera.angle]}"
 
 
 def check_camera(document: MapDocument, camera: Camera) -> None:
     """Refuse a camera that cannot produce a picture. Raises, or returns."""
-    from .prefabs import is_floor
+    from .rules import is_floor
 
     for value, name in ((camera.x, "x"), (camera.y, "y"), (camera.angle, "angle")):
         if value != value or value in (float("inf"), float("-inf")):
@@ -121,27 +92,19 @@ def check_camera(document: MapDocument, camera: Camera) -> None:
 
 
 def _digest_file(path: Path | str) -> str:
-    """A file's SHA-256, or a marker saying it was not there."""
     try:
         return hashlib.sha256(Path(path).read_bytes()).hexdigest()
     except OSError:
         return "missing"
 
 
-def snapshot_key(*, engine: Path | str, pk3: Path | str, data_fingerprint: str,
-                 export_digest: str, camera: Camera, tic: int = SNAPSHOT_TIC) -> str:
-    """What this picture is a picture of.
-
-    Everything that could change it, and nothing that could not. Leaving any of
-    these out means handing back a stale image after exactly the change
-    somebody took the snapshot to see -- a new engine build, a re-exported map,
-    a different camera.
-    """
+def snapshot_key(*, engine: Path | str, data_fingerprint: str, export_digest: str,
+                 camera: Camera, tic: int = SNAPSHOT_TIC, pk3: Path | str = "") -> str:
+    """What this picture is a picture of. (`pk3` is accepted and ignored: EC7Edit's.)"""
     camera = camera.normalized()
     parts = [
-        "v1",
+        "obcr-v1",
         _digest_file(engine),
-        _digest_file(pk3),
         data_fingerprint or "no-data",
         export_digest or "no-export",
         f"{camera.x:g},{camera.y:g},{camera.angle:g}",
@@ -151,40 +114,30 @@ def snapshot_key(*, engine: Path | str, pk3: Path | str, data_fingerprint: str,
     return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
 
 
-def snapshot_arguments(camera: Camera, output: Path | str,
-                       tic: int = SNAPSHOT_TIC) -> list[str]:
-    """The engine arguments for one snapshot, profile sealed."""
-    return [
-        "--vid-renderer", RENDER_PROFILE["renderer"],
-        "--res", str(RENDER_PROFILE["width"]), str(RENDER_PROFILE["height"]),
-        "--no-upscale",
-        *camera.arguments(),
-        "--capture-snapshot", str(output), str(tic),
-    ]
+def snapshot_arguments(camera: Camera, output: Path | str, tic: int = SNAPSHOT_TIC) -> list[str]:
+    """The engine arguments for one snapshot, beyond `--data/--mod/--play`."""
+    return [*camera.arguments(), "--shot", str(tic), "--shot-out", str(output), "--classic"]
 
 
 def looks_like_a_world(png: Path | str, *, view_fraction: float = 0.5) -> bool:
     """Whether a PNG holds a rendered world rather than a blank frame.
 
-    The one check that matters, and the reason it exists: this project has
-    already shipped a gate that passed while comparing a black frame, because
-    nothing asked whether there was a picture in it. A snapshot that is one
-    flat color is a failure however cleanly the process exited, and caching it
-    would make that failure permanent.
-
-    Counts distinct colors in the upper part of the frame, which is world
-    rather than status bar.
+    Counts distinct colours in the upper part of the frame (world, not status
+    bar) using the editor's own PNG reader, so no imaging library is needed.
     """
+    from .imagery import read_png
+
     try:
-        from PIL import Image
-    except ImportError:  # pragma: no cover - Pillow is a GUI-side dependency
-        return True
-    try:
-        with Image.open(png) as image:
-            width, height = image.size
-            view = image.convert("RGB").crop(
-                (0, 0, width, max(1, int(height * view_fraction))))
-            colors = view.getcolors(maxcolors=1 << 20)
-    except (OSError, ValueError):
+        width, height, rgb = read_png(png)
+    except Exception:  # noqa: BLE001 - unreadable means no picture
         return False
-    return colors is not None and len(colors) >= 8
+    rows = max(1, int(height * view_fraction))
+    channels = len(rgb) // (width * height) if width * height else 3
+    colors = set()
+    for y in range(rows):
+        row = rgb[y * width * channels:(y + 1) * width * channels]
+        for x in range(0, len(row), channels * 4):
+            colors.add(bytes(row[x:x + 3]))
+            if len(colors) >= 8:
+                return True
+    return False

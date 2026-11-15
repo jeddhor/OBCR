@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Jason Tripp
-"""Bounded decoders for Corridor 7's graphics containers.
+"""Bounded decoders for Operation Body Count's graphics containers.
 
 Every decoder here takes bytes and returns pixels. None of them opens a file,
 none writes one, and none keeps a copy: the retail data is the user's, and the
@@ -10,8 +10,10 @@ of the game on disk, with all the licensing that implies.
 
 Three containers:
 
-* the palette, which lives in `CORR7CD.EXE` rather than in any data file;
-* `GFXTILES.CO7`, holding 64x64 wall pages and Wolfenstein column-post sprites;
+* the palette, which lives in the executable (`COUNT.EXE` or `BCCD.EXE`)
+  rather than in any data file;
+* `GFXTILES.BC`, Wolfenstein's VSWAP page file: 64x64 wall pages and
+  column-post sprites (the authority is `crates/obc-formats/src/vswap.rs`);
 * the `VGADICT`/`VGAHEAD`/`VGAGRAPH` set, holding Huffman-compressed planar
   pictures.
 
@@ -28,11 +30,16 @@ import zlib
 from collections import OrderedDict
 from dataclasses import dataclass
 
-#: The 6-bit VGA DAC palette sits at this offset in the CD executable. There is
-#: no copy of it in any .CO7 file, which is why the executable is one of the
-#: required game files even though nothing ever runs it.
-PALETTE_OFFSET = 0x2FFC0
+#: `gamepal`, the 6-bit VGA DAC palette, in each release's executable
+#: (obc_formats::release): the floppy `COUNT.EXE` and the CD `BCCD.EXE`.
+PALETTE_OFFSETS = {"COUNT.EXE": 0x2DDB0, "BCCD.EXE": 0x2E450}
+#: Executable sizes, to pick the offset from the bytes alone.
+EXECUTABLE_SIZES = {235440: "COUNT.EXE", 237056: "BCCD.EXE"}
+#: The floppy's, kept for callers that ask for one number.
+PALETTE_OFFSET = PALETTE_OFFSETS["COUNT.EXE"]
 PALETTE_SIZE = 768
+#: VGAGRAPH chunk holding the first picture (pictures are chunk 3 on).
+STARTPICS = 3
 
 WALL_SIZE = 64
 SPRITE_SIZE = 64
@@ -47,17 +54,32 @@ class AssetError(ValueError):
 # ---------------------------------------------------------------------------
 
 
-def load_palette(executable: bytes) -> list[int]:
+def palette_offset(executable: bytes, name: str = "") -> int:
+    """Where `gamepal` is in this executable: by name, else by size."""
+    key = name.upper()
+    if key in PALETTE_OFFSETS:
+        return PALETTE_OFFSETS[key]
+    known = EXECUTABLE_SIZES.get(len(executable))
+    if known:
+        return PALETTE_OFFSETS[known]
+    raise AssetError(
+        f"a {len(executable)}-byte executable is neither COUNT.EXE nor BCCD.EXE; "
+        "the palette's place in it is unknown"
+    )
+
+
+def load_palette(executable: bytes, name: str = "") -> list[int]:
     """Expand the embedded 6-bit DAC palette to 8-bit RGB triples.
 
-    The six-bit check is the useful part: it is what tells a real Corridor 7
-    executable from a file of the same name that happens to be long enough.
+    The six-bit check is what tells a real executable from a file of the same
+    name that happens to be long enough.
     """
-    raw = executable[PALETTE_OFFSET : PALETTE_OFFSET + PALETTE_SIZE]
+    offset = palette_offset(executable, name)
+    raw = executable[offset : offset + PALETTE_SIZE]
     if len(raw) != PALETTE_SIZE:
         raise AssetError(
             f"executable is {len(executable)} bytes; the palette needs "
-            f"{PALETTE_OFFSET + PALETTE_SIZE}"
+            f"{offset + PALETTE_SIZE}"
         )
     if any(component > 63 for component in raw):
         raise AssetError("no 6-bit VGA palette at the expected offset")
@@ -114,7 +136,7 @@ def encode_png(width: int, height: int, pixels: bytes, *, alpha: bool) -> bytes:
 
 @dataclass(frozen=True)
 class GfxHeader:
-    """The chunk directory at the head of GFXTILES.CO7."""
+    """The chunk directory at the head of GFXTILES.BC."""
 
     chunk_count: int
     sprite_start: int
@@ -270,7 +292,7 @@ def _huff_expand(source: bytes, nodes: list[tuple[int, int]], expected: int) -> 
 class VgaPicture:
     """One decoded VGAGRAPH picture, row-major RGB."""
 
-    number: int  # the C7G#### id the engine uses
+    number: int  # picture number (chunk - STARTPICS)
     width: int
     height: int
     rgb: bytes
@@ -281,10 +303,10 @@ def extract_vga(
 ) -> list[VgaPicture]:
     """Decode every picture chunk.
 
-    Chunk 0 is PICTABLE (the dimensions), 1 and 2 are fonts, 3 is TILE8, and
-    the pictures start at 4 -- so picture *i* is chunk *i+4* and carries the
-    engine's id *i+3*. A chunk whose size does not match its declared
-    dimensions is skipped rather than guessed at.
+    Chunk 0 is PICTABLE (the dimensions), 1 and 2 are fonts, and the pictures
+    start at chunk 3 (`STARTPICS`), so picture *i* is chunk *i+3*. A chunk
+    whose size does not match its declared dimensions is skipped rather than
+    guessed at.
     """
     if len(vgadict) < 255 * 4:
         raise AssetError(f"VGADICT is {len(vgadict)} bytes, needs {255 * 4}")
@@ -314,13 +336,13 @@ def extract_vga(
         dimensions.append((width, height))
 
     pictures: list[VgaPicture] = []
-    for index in range(min(len(dimensions), max(0, len(decoded) - 4))):
+    for index in range(min(len(dimensions), max(0, len(decoded) - STARTPICS))):
         width, height = dimensions[index]
-        data = decoded[index + 4]
+        data = decoded[index + STARTPICS]
         if len(data) != width * height or width % 4:
             continue
         pictures.append(
-            VgaPicture(index + 3, width, height, _unplane(data, width, height, palette))
+            VgaPicture(index, width, height, _unplane(data, width, height, palette))
         )
     return pictures
 
