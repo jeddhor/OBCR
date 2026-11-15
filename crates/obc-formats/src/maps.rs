@@ -225,3 +225,86 @@ mod tests {
         }
     }
 }
+
+/// Compresses `words` with RLEW: runs of 4 or more, and any word equal to the
+/// tag, become `tag, count, value` (runs of 3 cost the same either way; the
+/// original's encoder wrote them as literals).
+pub fn rlew_compress(words: &[u16], tag: u16) -> Vec<u16> {
+    let mut out = Vec::with_capacity(words.len());
+    let mut i = 0;
+    while i < words.len() {
+        let v = words[i];
+        let run = words[i..].iter().take(0xFFFF).take_while(|&&w| w == v).count();
+        if run >= 4 || v == tag {
+            out.extend_from_slice(&[tag, run as u16, v]);
+            i += run;
+        } else {
+            out.push(v);
+            i += 1;
+        }
+    }
+    out
+}
+
+/// Writes maps in the original's format: `(MAPHEAD, MAPTEMP)`, RLEW only,
+/// a slot per entry of `maps` (`None` leaves it empty). `MAPTEMP` starts with
+/// the `TED5v1.0` signature, so no map sits at offset 0 (an empty slot).
+pub fn write_archive(maps: &[Option<&Map>], rlew_tag: u16) -> (Vec<u8>, Vec<u8>) {
+    let mut head = rlew_tag.to_le_bytes().to_vec();
+    let mut body = b"TED5v1.0".to_vec();
+    let mut offsets = [0i32; NUM_MAP_SLOTS];
+    for (slot, m) in maps.iter().enumerate().take(NUM_MAP_SLOTS) {
+        let Some(m) = m else { continue };
+        let mut planes = Vec::new();
+        for p in &m.planes {
+            let mut bytes = ((p.len() * 2) as u16).to_le_bytes().to_vec();
+            for w in rlew_compress(p, rlew_tag) {
+                bytes.extend_from_slice(&w.to_le_bytes());
+            }
+            planes.push(bytes);
+        }
+        let mut starts = [0i32; NUM_PLANES];
+        for (p, bytes) in planes.iter().enumerate() {
+            starts[p] = body.len() as i32;
+            body.extend_from_slice(bytes);
+        }
+        offsets[slot] = body.len() as i32;
+        for s in starts {
+            body.extend_from_slice(&s.to_le_bytes());
+        }
+        for bytes in &planes {
+            body.extend_from_slice(&(bytes.len() as u16).to_le_bytes());
+        }
+        body.extend_from_slice(&m.width.to_le_bytes());
+        body.extend_from_slice(&m.height.to_le_bytes());
+        let mut name = [0u8; 16];
+        for (d, s) in name.iter_mut().zip(m.name.bytes().take(15)) {
+            *d = s;
+        }
+        body.extend_from_slice(&name);
+    }
+    for o in offsets {
+        head.extend_from_slice(&o.to_le_bytes());
+    }
+    (head, body)
+}
+
+#[cfg(test)]
+mod writer_tests {
+    use super::*;
+
+    #[test]
+    fn writes_what_the_reader_reads() {
+        let n = 64 * 64;
+        let p0: Vec<u16> = (0..n).map(|i| if i % 7 == 0 { 1 } else { 144 }).collect();
+        let mut p1 = vec![18u16; n];
+        p1[100] = 0xABCD; // the tag itself must survive
+        let m =
+            Map { name: "TEST MAP".into(), width: 64, height: 64, planes: [p0, p1, vec![0; n]] };
+        let (head, body) = write_archive(&[None, Some(&m)], 0xABCD);
+        let a = MapArchive::parse(&head, body, Compression::Rlew).unwrap();
+        assert_eq!(a.used_slots().collect::<Vec<_>>(), [1]);
+        assert_eq!(a.map(1).unwrap().unwrap(), m);
+        assert!(a.map(0).unwrap().is_none());
+    }
+}

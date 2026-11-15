@@ -6,7 +6,9 @@ use obc_formats::maps::Map;
 use crate::actors;
 use crate::allies;
 use crate::player;
-use crate::world::{AMBUSHTILE, AREATILE, Door, DoorAction, MAPSIZE, NUMAREAS, Occ, World, ex};
+use crate::world::{
+    AMBUSHTILE, AREATILE, Door, DoorAction, MAPSIZE, MAXACTORS, NUMAREAS, Occ, World, ex,
+};
 
 /// Plane-0 door codes (130–137) and the per-lock door page (`DOORWALL` = 128).
 pub const DOOR_FIRST: u16 = 130;
@@ -442,5 +444,180 @@ impl LevelProfile {
 impl Default for LevelProfile {
     fn default() -> Self {
         Self::stock(0, false)
+    }
+}
+
+/// How bad a [`MapProblem`] is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Severity {
+    /// The original would `Quit` or misbehave; the map is refused.
+    Error,
+    /// Plays, but probably not as the author meant.
+    Warning,
+}
+
+/// Something wrong with a map, at a cell when it has one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MapProblem {
+    pub severity: Severity,
+    pub at: Option<(u8, u8)>,
+    pub message: String,
+}
+
+/// Checks a map against what `SetupGameLevel` and the engine accept
+/// (docs/MODS_AND_OBCEDIT.md §3.3): exactly one player start, the original's
+/// limits on doors, statics, animated walls and actors, plane-0 codes the area
+/// code can hold, and a closed outer wall.
+pub fn check_map(map: &obc_formats::maps::Map) -> Vec<MapProblem> {
+    use obc_formats::maps::Map;
+    let mut out = Vec::new();
+    let err = |at, message: String| MapProblem { severity: Severity::Error, at, message };
+    let warn = |at, message: String| MapProblem { severity: Severity::Warning, at, message };
+    if map.width as usize != MAPSIZE || map.height as usize != MAPSIZE {
+        out.push(err(None, format!("the map is {}x{}; it must be 64x64", map.width, map.height)));
+        return out;
+    }
+    let p0 = |m: &Map, x: usize, y: usize| m.planes[0][y * MAPSIZE + x];
+    let p1 = |m: &Map, x: usize, y: usize| m.planes[1][y * MAPSIZE + x];
+    let (mut starts, mut doors, mut statics, mut anims, mut actors) = (Vec::new(), 0, 0, 0, 0);
+    let mut first_bad0 = None;
+    for y in 0..MAPSIZE {
+        for x in 0..MAPSIZE {
+            let at = Some((x as u8, y as u8));
+            let t = p0(map, x, y);
+            if t == 0 || t >= AREATILE + NUMAREAS as u16 {
+                first_bad0.get_or_insert((at, t));
+            }
+            if (130..=137).contains(&t) {
+                doors += 1;
+                let vertical = t.is_multiple_of(2);
+                let (a, b) = if vertical { ((0, -1), (0, 1)) } else { ((-1, 0), (1, 0)) };
+                let side = |(dx, dy): (i32, i32)| {
+                    let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                    (0..MAPSIZE as i32).contains(&nx)
+                        && (0..MAPSIZE as i32).contains(&ny)
+                        && (1..AREATILE).contains(&p0(map, nx as usize, ny as usize))
+                };
+                if !side(a) || !side(b) {
+                    out.push(warn(
+                        at,
+                        format!(
+                            "door {t} needs walls on both {} sides",
+                            if vertical { "north and south" } else { "west and east" }
+                        ),
+                    ));
+                }
+            }
+            let edge = x == 0 || y == 0 || x == MAPSIZE - 1 || y == MAPSIZE - 1;
+            if edge && t >= AREATILE {
+                out.push(warn(
+                    at,
+                    "open floor on the map's edge: the outer ring should be walls".into(),
+                ));
+            }
+            let code = p1(map, x, y);
+            match classify_info(code).0 {
+                InfoCode::Player { .. } => starts.push(at),
+                InfoCode::Static { .. } => statics += 1,
+                InfoCode::AnimWall { .. } => anims += 1,
+                InfoCode::Stand { .. }
+                | InfoCode::Patrol { .. }
+                | InfoCode::Special { .. }
+                | InfoCode::Ally { .. }
+                | InfoCode::Fire => actors += 1,
+                InfoCode::Nothing => {
+                    let known = code <= 18 || matches!(code, 89..=97 | 104 | 105 | 125);
+                    if !known && code & 0x7FFF != 18 {
+                        out.push(warn(
+                            at,
+                            format!("plane-1 code {code} means nothing to the game"),
+                        ));
+                    }
+                }
+                InfoCode::PushWall => {
+                    if !(1..AREATILE).contains(&t) {
+                        out.push(warn(
+                            at,
+                            "a push wall marker on a cell that is not a wall".into(),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    if let Some((at, t)) = first_bad0 {
+        out.push(err(
+            at,
+            format!(
+                "plane-0 code {t}: floors are 140-{} (area numbers 0-{})",
+                AREATILE + NUMAREAS as u16 - 1,
+                NUMAREAS - 1
+            ),
+        ));
+    }
+    match starts.len() {
+        0 => out.push(err(None, "no player start (plane-1 codes 19-22)".into())),
+        1 => {}
+        n => out.push(err(starts[1], format!("{n} player starts; there must be exactly one"))),
+    }
+    let limits = [
+        (doors, crate::doors::MAXDOORS, "doors"),
+        (statics, 224, "objects (statics)"),
+        (anims, crate::animwalls::MAXANIMWALLS, "animated walls"),
+        (actors, MAXACTORS - 1, "actors at the hardest game type"),
+    ];
+    for (n, max, what) in limits {
+        if n > max {
+            out.push(err(None, format!("{n} {what}; the game allows {max}")));
+        }
+    }
+    if actors > MAXACTORS * 4 / 5 && actors < MAXACTORS {
+        out.push(warn(None, format!(
+            "{actors} actors: fires, explosions and projectiles share the same {MAXACTORS} slots"
+        )));
+    }
+    out
+}
+
+impl LevelProfile {
+    /// A mod floor's profile: original floor `like`'s (default 6, a UN floor),
+    /// then the manifest's overrides (docs/MODS_AND_OBCEDIT.md §3.2).
+    pub fn for_mod_level(l: &obc_formats::modpack::LevelEntry, cd: bool) -> Self {
+        use obc_formats::modpack::MusicSpec;
+        if let Some(slot) = l.stock {
+            return Self::stock(slot as i16, cd);
+        }
+        let mut p = Self::stock(l.like.unwrap_or(6) as i16, cd);
+        if let Some(d) = l.dark {
+            p.dark = d;
+        }
+        if let Some(s) = l.sewer {
+            p.sewer = s;
+        }
+        if let Some(c) = l.colors {
+            p.colors = c as i16;
+        }
+        match l.music {
+            Some(MusicSpec::Song(n)) => p.music = LevelMusic::Song(n),
+            Some(MusicSpec::Named(_)) => p.music = LevelMusic::Random,
+            None => {}
+        }
+        if let Some(m) = &l.message {
+            p.message = Some(m.clone());
+        }
+        match l.exit.as_deref() {
+            Some("none") => p.last = true,
+            Some(_) => p.last = false,
+            None => {}
+        }
+        match l.sequence.as_deref() {
+            Some("auto") => p.sequence = LevelSequence::Auto,
+            Some("none") => p.sequence = LevelSequence::None,
+            Some(name) => p.sequence = LevelSequence::Fixed(name.to_owned()),
+            None => {}
+        }
+        // A mod floor never shows the original's floor-24 greeting or its
+        // face apparition unless its profile says so; `like` keeps them.
+        p
     }
 }

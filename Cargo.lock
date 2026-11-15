@@ -564,10 +564,13 @@ dependencies = [
 name = "obc-formats"
 version = "1.0.0-beta.2"
 dependencies = [
+ "miniz_oxide 0.8.9",
  "obc-testdata",
  "proptest",
+ "serde",
  "sha2",
  "thiserror",
+ "toml",
 ]
 
 [[package]]

@@ -37,6 +37,19 @@ struct Cli {
     /// Exit code 0 when every required file matches, 2 when not.
     #[arg(long, value_name = "DIR|IMAGE")]
     check_data: Option<PathBuf>,
+    /// Play a mod: a mod folder, a .obcmod file, or an installed mod's id
+    /// (for this run; the MODS screen chooses one for good).
+    #[arg(long, value_name = "PATH|ID")]
+    r#mod: Option<String>,
+    /// Check a mod and exit (used by OBCEdit): prints `mod`, one `problem`
+    /// line per finding (severity, floor index, cell, message) and
+    /// `result ok|errors`, tab separated. Exit code 0 ok, 2 errors, 1 unreadable.
+    #[arg(long, value_name = "PATH")]
+    check_mod: Option<PathBuf>,
+    /// Developer and OBCEdit: with --play, start the player at tile X,Y facing
+    /// DIR (0 north, 1 east, 2 south, 3 west).
+    #[arg(long, value_name = "X,Y,DIR")]
+    start: Option<String>,
     /// Copy the game files OBCR needs from a folder or CD image into DIR,
     /// ripping the CD music, and exit (used by the installer).
     #[arg(long, num_args = 2, value_names = ["SOURCE", "DIR"])]
@@ -196,6 +209,9 @@ fn run() -> Result<()> {
     if let Some([from, to]) = cli.extract_data.as_deref() {
         std::process::exit(install::extract_data(from, to));
     }
+    if let Some(path) = &cli.check_mod {
+        std::process::exit(install::check_mod(path));
+    }
     let cfg_path = config_path(&cli);
     let saves = save_dir(&cli);
     let mut settings = Settings::load(&cfg_path);
@@ -257,6 +273,32 @@ fn run() -> Result<()> {
         Some("M") => Some(6),
         Some(other) => anyhow::bail!("--net wants N, T or M, not {other}"),
     };
+    if let Some(m) = &cli.r#mod {
+        let as_path = PathBuf::from(m);
+        let path = if as_path.exists() {
+            as_path
+        } else {
+            obc_ui::campaign::find_installed(&saves, m)
+                .with_context(|| format!("--mod {m}: no such file, folder or installed mod"))?
+        };
+        let (_, problems) = obc_ui::campaign::check(&path)
+            .map_err(|e| anyhow::anyhow!("--mod {}: {e}", path.display()))?;
+        if let Some(p) = problems.iter().find(|p| p.error) {
+            anyhow::bail!("--mod {}: {}", path.display(), p.message);
+        }
+        settings.game.mod_path = Some(path);
+    }
+    let start = match &cli.start {
+        None => None,
+        Some(t) => {
+            let v: Vec<u16> = t.split(',').filter_map(|s| s.trim().parse().ok()).collect();
+            let [x, y, d] = v[..] else { anyhow::bail!("--start wants X,Y,DIR") };
+            if x > 63 || y > 63 || d > 3 {
+                anyhow::bail!("--start: X and Y are 0-63, DIR 0-3");
+            }
+            Some((x as u8, y as u8, d))
+        }
+    };
     let first: Box<dyn Screen> = match (cli.viewer, cli.play) {
         _ if cli.sequence.is_some() => {
             let name = cli.sequence.as_deref().unwrap_or_default().to_ascii_uppercase();
@@ -282,7 +324,9 @@ fn run() -> Result<()> {
             },
         }),
         (Some(slot), _) => Box::new(obc_ui::viewer::Viewer::new(&assets, slot)),
-        (None, Some(mapon)) => Box::new(obc_ui::game::Boot { difficulty: cli.difficulty, mapon }),
+        (None, Some(mapon)) => {
+            Box::new(obc_ui::game::Boot { difficulty: cli.difficulty, mapon, start })
+        }
         (None, None) => obc_ui::start(&assets),
     };
     let mut stack: Vec<Box<dyn Screen>> = vec![first];
