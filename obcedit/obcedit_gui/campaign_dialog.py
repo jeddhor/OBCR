@@ -1,91 +1,135 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Jason Tripp
-"""The campaign editor: what a map pack is, said as a list of levels and routes.
+"""The campaign editor: a mod's identity and its floors, in order.
 
-A campaign is a graph, and the obvious thing to build is a node editor. This is
-a table instead, deliberately. The graph a pack can describe is tiny -- each
-level has one exit and at most one secret exit -- so a canvas would spend most
-of its code on arranging boxes and none of it on the questions an author
-actually has: which level starts, where each exit goes, and whether the whole
-thing can be finished. A table answers all three by reading down a column.
+A mod (docs/MODS_AND_OBCEDIT.md section 3) is a list of floors played one
+after another: each is one of this project's maps or an original floor by
+reference, takes the behaviour of an original floor (`like`: darkness, the
+sewer look, colours, music, the sequence after it) and may override any of
+those. Finishing the last floor wins the campaign.
 
-Everything shown is checked by `campaign.validate` as it is typed, and the
-result is the same list of diagnostics the CLI prints and the gate asserts on.
-There is no second opinion in here: the panel at the bottom is that function's
-output, and OK stays available while warnings stand because a warning is a
-thing an author may knowingly accept.
+A table: the questions an author has -- which floor comes
+first, what each one behaves like, whether the whole thing can be built --
+are answered by reading down a column. Everything is checked by
+`campaign.validate` as it is typed; the panel at the bottom is that
+function's output, and OK stays available while only warnings stand.
+
+"From like" in a column means the field is left out of `mod.toml`, so the
+floor keeps what its `like` floor does.
 """
 
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
-    QFormLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QPushButton,
-    QSpinBox, QTableWidget, QVBoxLayout, QWidget,
+    QAbstractItemView, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout,
+    QHeaderView, QLabel, QLineEdit, QPlainTextEdit, QPushButton, QSpinBox, QTableWidget,
+    QVBoxLayout,
 )
 
 from obcedit_core.campaign import (
-    Campaign, CampaignEntry, MAX_LEVEL_NAME, MAX_TITLE, Route, validate,
+    DEFAULT_LIKE, MAX_AUTHOR, MAX_ID, MAX_LEVEL_NAME, MAX_MESSAGE,
+    MAX_TITLE, MAX_VERSION, RELEASES, SEQUENCES, STOCK_FLOORS, Campaign, LevelEntry, validate,
 )
 from obcedit_core.errors import Severity
 
-#: The "this level finishes the campaign" choice, as a combo box value. Not a
-#: slot number, and never confusable with one.
-END = -1
+
+def original_floor_name(slot: int) -> str:
+    """What original floor `slot` (0-39) is, as the game's map names say."""
+    if slot < 5:
+        return f"Sewers {slot + 1}"
+    if slot == 5:
+        return "Maintenance level"
+    if slot == 6:
+        return "UN Bldg 1 lobby"
+    if slot < 22:
+        return f"UN Bldg 1 floor {slot - 5}"
+    if slot == 22:
+        return "UN Bldg 1 top"
+    if slot < 39:
+        return f"UN Bldg 2 floor {slot - 22}"
+    return "UN Bldg 2 top (Victor)"
+
+
+def _floor_label(slot: int) -> str:
+    return f"{slot + 1}: {original_floor_name(slot)}"
+
+
+#: Tri-state for booleans: (label, value).
+_BOOLS = (("from like", None), ("yes", True), ("no", False))
 
 
 class CampaignDialog(QDialog):
-    """Edit a project's campaign. Returns the new one through `campaign()`."""
+    """Edit a project's mod campaign. Returns the new one through `campaign()`."""
 
-    COLUMNS = ("Level", "Name in game", "Exit goes to", "Secret exit",
-               "Music", "Par", "Tally")
+    COLUMNS = ("Floor", "Name", "Like", "Music", "Dark", "Sewer", "Colours",
+               "Sequence", "Message", "Exit")
 
     def __init__(self, campaign: Campaign, documents, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Campaign")
         self.setObjectName("campaign-dialog")
-        self._documents = sorted(documents, key=lambda d: d.slot)
-        self._slots = [document.slot for document in self._documents]
+        self._documents = list(documents)
+        self._base = campaign
 
         layout = QVBoxLayout(self)
-
         form = QFormLayout()
+        self.mod_id = QLineEdit(campaign.mod_id)
+        self.mod_id.setMaxLength(MAX_ID)
+        self.mod_id.setObjectName("campaign-id")
+        self.mod_id.setPlaceholderText("lower-case letters, digits and '-'")
         self.title = QLineEdit(campaign.title)
         self.title.setMaxLength(MAX_TITLE)
         self.title.setObjectName("campaign-title")
-        self.key = QLineEdit(campaign.key)
-        self.key.setMaxLength(1)
-        self.key.setObjectName("campaign-key")
-        self.key.setFixedWidth(40)
-        form.addRow("Campaign name", self.title)
-        form.addRow("Menu key", self.key)
+        self.author = QLineEdit(campaign.author)
+        self.author.setMaxLength(MAX_AUTHOR)
+        self.author.setObjectName("campaign-author")
+        self.version = QLineEdit(campaign.version)
+        self.version.setMaxLength(MAX_VERSION)
+        self.version.setObjectName("campaign-version")
+        self.release = QComboBox()
+        self.release.setObjectName("campaign-release")
+        for value in RELEASES:
+            self.release.addItem({"any": "Either release", "OBC-A": "Floppy release only",
+                                  "OBC-CD": "CD release only"}[value], value)
+        self.release.setCurrentIndex(max(0, self.release.findData(campaign.release)))
+        self.description = QPlainTextEdit(campaign.description)
+        self.description.setObjectName("campaign-description")
+        self.description.setFixedHeight(54)
+        form.addRow("Mod id", self.mod_id)
+        form.addRow("Title", self.title)
+        form.addRow("Author", self.author)
+        form.addRow("Version", self.version)
+        form.addRow("Plays on", self.release)
+        form.addRow("Description", self.description)
         layout.addLayout(form)
 
         self.table = QTableWidget(0, len(self.COLUMNS), self)
         self.table.setObjectName("campaign-levels")
         self.table.setHorizontalHeaderLabels(self.COLUMNS)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.verticalHeader().setVisible(False)
-        self.table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.ResizeMode.Stretch)
+        self.table.verticalHeader().setVisible(True)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(8, QHeaderView.ResizeMode.Stretch)
+        for column, width in enumerate((230, 130, 190, 100, 90, 90, 90, 90, 150, 110)):
+            self.table.setColumnWidth(column, width)
         layout.addWidget(self.table, 1)
 
         buttons = QHBoxLayout()
-        self.add = QPushButton("Add level")
+        self.add = QPushButton("Add one of your maps")
         self.add.setObjectName("campaign-add")
+        self.add_stock = QPushButton("Add an original floor")
+        self.add_stock.setObjectName("campaign-add-stock")
         self.remove = QPushButton("Remove")
         self.remove.setObjectName("campaign-remove")
         self.up = QPushButton("Move up")
         self.up.setObjectName("campaign-up")
         self.down = QPushButton("Move down")
         self.down.setObjectName("campaign-down")
-        for widget in (self.add, self.remove, self.up, self.down):
+        for widget in (self.add, self.add_stock, self.remove, self.up, self.down):
             buttons.addWidget(widget)
         buttons.addStretch(1)
-        # The first row is where a new game starts, which is not something a
-        # table says on its own -- so it is said here, next to the buttons that
-        # change it.
         self.start = QLabel()
         self.start.setObjectName("campaign-start")
         buttons.addWidget(self.start)
@@ -97,115 +141,103 @@ class CampaignDialog(QDialog):
         self.problems.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self.problems)
 
-        box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
-                               QDialogButtonBox.StandardButton.Cancel)
+        box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
+                               | QDialogButtonBox.StandardButton.Cancel)
         box.accepted.connect(self.accept)
         box.rejected.connect(self.reject)
         self.ok = box.button(QDialogButtonBox.StandardButton.Ok)
         layout.addWidget(box)
 
-        self.add.clicked.connect(self._add_level)
-        self.remove.clicked.connect(self._remove_level)
-        self.up.clicked.connect(lambda: self._move(-1))
-        self.down.clicked.connect(lambda: self._move(1))
-        self.title.textChanged.connect(self._revalidate)
-        self.key.textChanged.connect(self._revalidate)
+        self.add.clicked.connect(lambda _checked=False: self._add_map())
+        self.add_stock.clicked.connect(lambda _checked=False: self._add_stock())
+        self.remove.clicked.connect(lambda _checked=False: self._remove_level())
+        self.up.clicked.connect(lambda _checked=False: self._move(-1))
+        self.down.clicked.connect(lambda _checked=False: self._move(1))
+        for field in (self.mod_id, self.title, self.author, self.version):
+            field.textChanged.connect(lambda _text="": self._revalidate())
+        self.description.textChanged.connect(self._revalidate)
+        self.release.currentIndexChanged.connect(lambda _i=0: self._revalidate())
 
-        for entry in campaign.entries:
-            self._append_row(entry)
-        if not campaign.entries:
+        for level in campaign.levels:
+            self._append_row(level)
+        if not campaign.levels:
             for document in self._documents:
-                self._append_row(self._default_entry(document.slot))
+                self._append_row(LevelEntry(map_uuid=document.uuid,
+                                            name=document.name[:MAX_LEVEL_NAME]))
         self._revalidate()
-        self.resize(760, 460)
+        self.resize(1360, 560)
 
     # -- rows ---------------------------------------------------------------
 
-    def _default_entry(self, slot: int) -> CampaignEntry:
-        """A new level, routed to the next map the project has, or to the end."""
-        later = [s for s in self._slots if s > slot]
-        return CampaignEntry(slot, f"Level {slot}",
-                             next=Route(later[0] if later else None))
-
-    def _route_box(self, route: Route | None) -> QComboBox:
+    def _combo(self, items, current) -> QComboBox:
         box = QComboBox()
-        box.addItem("End of campaign", END)
-        for slot in self._slots:
-            box.addItem(f"MAP{slot:02d}", slot)
-        if route is not None:
-            index = box.findData(END if route.ends else route.slot)
-            box.setCurrentIndex(max(0, index))
-        box.currentIndexChanged.connect(self._revalidate)
+        for label, value in items:
+            box.addItem(label, value)
+        index = next((i for i, (_, value) in enumerate(items) if value == current), 0)
+        box.setCurrentIndex(index)
+        box.currentIndexChanged.connect(lambda _i=0: self._revalidate())
         return box
 
-    def _append_row(self, entry: CampaignEntry) -> None:
+    def _source_items(self, level: LevelEntry):
+        items = [(f"Your map: {d.name or d.label}", f"map:{d.uuid}") for d in self._documents]
+        if level.map_uuid and not any(d.uuid == level.map_uuid for d in self._documents):
+            # A campaign can name a map the project no longer has. Keeping the row
+            # and letting the validator say so beats dropping a floor silently.
+            items.append(("(a map that is no longer in the project)", f"map:{level.map_uuid}"))
+        items += [(f"Original floor {_floor_label(s)}", f"stock:{s}") for s in range(STOCK_FLOORS)]
+        return items
+
+    def _append_row(self, level: LevelEntry) -> None:
         row = self.table.rowCount()
         self.table.insertRow(row)
+        current = f"map:{level.map_uuid}" if level.map_uuid else f"stock:{level.stock or 0}"
+        self.table.setCellWidget(row, 0, self._combo(self._source_items(level), current))
 
-        slots = QComboBox()
-        for document in self._documents:
-            slots.addItem(f"MAP{document.slot:02d}  {document.name}", document.slot)
-        index = slots.findData(entry.slot)
-        if index < 0:
-            # A campaign can name a slot the project no longer has. Keeping the
-            # row and letting the validator say so beats silently dropping a
-            # level the author wrote.
-            slots.addItem(f"MAP{entry.slot:02d}  (no map)", entry.slot)
-            index = slots.count() - 1
-        slots.setCurrentIndex(index)
-        slots.currentIndexChanged.connect(self._revalidate)
-        self.table.setCellWidget(row, 0, slots)
-
-        name = QLineEdit(entry.name)
+        name = QLineEdit(level.name)
         name.setMaxLength(MAX_LEVEL_NAME)
-        name.textChanged.connect(self._revalidate)
+        name.textChanged.connect(lambda _text="": self._revalidate())
         self.table.setCellWidget(row, 1, name)
 
-        self.table.setCellWidget(row, 2, self._route_box(entry.next))
+        like_items = [(f"(default: {_floor_label(DEFAULT_LIKE)})", None)]
+        like_items += [(_floor_label(s), s) for s in range(STOCK_FLOORS)]
+        self.table.setCellWidget(row, 2, self._combo(like_items, level.like))
 
-        secret = QWidget()
-        secret_layout = QHBoxLayout(secret)
-        secret_layout.setContentsMargins(0, 0, 0, 0)
-        enabled = QCheckBox()
-        enabled.setChecked(entry.secret is not None)
-        destination = self._route_box(entry.secret)
-        destination.setEnabled(entry.secret is not None)
-        # Both wrapped, for opposite reasons. setEnabled genuinely wants the
-        # checked bool, so the lambda says so rather than leaving a reader to
-        # work out whether the argument was intended. _revalidate does not want
-        # it at all, and would silently receive it as its first parameter.
-        enabled.toggled.connect(lambda on, box=destination: box.setEnabled(on))
-        enabled.toggled.connect(lambda _checked=False: self._revalidate())
-        secret_layout.addWidget(enabled)
-        secret_layout.addWidget(destination, 1)
-        secret.setProperty("enabled_box", enabled)
-        secret.setProperty("route_box", destination)
-        self.table.setCellWidget(row, 3, secret)
+        music = [("from like", None), ("random", "random")] + [(f"song {n}", n) for n in range(10)]
+        self.table.setCellWidget(row, 3, self._combo(music, level.music))
+        self.table.setCellWidget(row, 4, self._combo(_BOOLS, level.dark))
+        self.table.setCellWidget(row, 5, self._combo(_BOOLS, level.sewer))
 
-        music = QLineEdit(entry.music)
-        music.setPlaceholderText("stock")
-        music.setMaxLength(8)
-        music.textChanged.connect(self._revalidate)
-        self.table.setCellWidget(row, 4, music)
+        colors = QSpinBox()
+        colors.setRange(-1, 50)
+        colors.setSpecialValueText("from like")
+        colors.setValue(-1 if level.colors is None else level.colors)
+        colors.setToolTip("Which original floor's roof and floor colours to use (0-50)")
+        colors.valueChanged.connect(lambda _v=0: self._revalidate())
+        self.table.setCellWidget(row, 6, colors)
 
-        par = QSpinBox()
-        par.setRange(0, 24 * 60 * 60)
-        par.setValue(entry.par)
-        par.setSpecialValueText("none")
-        par.valueChanged.connect(self._revalidate)
-        self.table.setCellWidget(row, 5, par)
+        sequences = [("from like", None)] + [(s, s) for s in SEQUENCES]
+        self.table.setCellWidget(row, 7, self._combo(sequences, level.sequence))
 
-        tally = QCheckBox()
-        tally.setChecked(entry.intermission)
-        tally.toggled.connect(lambda _checked=False: self._revalidate())
-        self.table.setCellWidget(row, 6, tally)
+        message = QLineEdit(level.message or "")
+        message.setMaxLength(MAX_MESSAGE)
+        message.setPlaceholderText("from like")
+        message.textChanged.connect(lambda _text="": self._revalidate())
+        self.table.setCellWidget(row, 8, message)
 
-    def _add_level(self) -> None:
-        used = {self._row_slot(row) for row in range(self.table.rowCount())}
-        spare = [document.slot for document in self._documents if document.slot not in used]
-        if not spare and not self._documents:
+        exits = (("from like", None), ("normal", "normal"),
+                 ("none: only Victor ends it", "none"))
+        self.table.setCellWidget(row, 9, self._combo(exits, level.exit))
+
+    def _add_map(self) -> None:
+        used = {level.map_uuid for level in self._levels()}
+        spare = [d for d in self._documents if d.uuid not in used] or self._documents
+        if not spare:
             return
-        self._append_row(self._default_entry(spare[0] if spare else self._slots[0]))
+        self._append_row(LevelEntry(map_uuid=spare[0].uuid, name=spare[0].name[:MAX_LEVEL_NAME]))
+        self._revalidate()
+
+    def _add_stock(self) -> None:
+        self._append_row(LevelEntry(stock=0))
         self._revalidate()
 
     def _remove_level(self) -> None:
@@ -215,68 +247,65 @@ class CampaignDialog(QDialog):
             self._revalidate()
 
     def _move(self, delta: int) -> None:
-        """Reorder by rebuilding both rows: the first row is the campaign start.
-
-        Qt has no "move row" for a table of widgets, and swapping cell widgets
-        one at a time loses their signal connections. Reading the entries out
-        and writing them back is the only version that cannot half-work.
-        """
+        """Reorder by rebuilding the table: swapping cell widgets loses their
+        connections, and reading the rows out and back in cannot half-work."""
         row = self.table.currentRow()
         target = row + delta
         if row < 0 or not 0 <= target < self.table.rowCount():
             return
-        entries = list(self._entries())
-        entries[row], entries[target] = entries[target], entries[row]
+        levels = list(self._levels())
+        levels[row], levels[target] = levels[target], levels[row]
         self.table.setRowCount(0)
-        for entry in entries:
-            self._append_row(entry)
+        for level in levels:
+            self._append_row(level)
         self.table.setCurrentCell(target, 0)
         self._revalidate()
 
     # -- reading the table back --------------------------------------------
 
-    def _row_slot(self, row: int) -> int:
-        return self.table.cellWidget(row, 0).currentData()
-
-    def _entries(self):
+    def _levels(self):
         for row in range(self.table.rowCount()):
-            secret_cell = self.table.cellWidget(row, 3)
-            enabled = secret_cell.property("enabled_box")
-            destination = secret_cell.property("route_box")
-            secret = None
-            if enabled.isChecked():
-                value = destination.currentData()
-                secret = Route(None if value == END else value)
-            value = self.table.cellWidget(row, 2).currentData()
-            yield CampaignEntry(
-                slot=self._row_slot(row),
-                name=self.table.cellWidget(row, 1).text(),
-                next=Route(None if value == END else value),
-                secret=secret,
-                music=self.table.cellWidget(row, 4).text().strip(),
-                par=self.table.cellWidget(row, 5).value(),
-                intermission=self.table.cellWidget(row, 6).isChecked(),
+            cell = lambda column, r=row: self.table.cellWidget(r, column)  # noqa: E731
+            source = cell(0).currentData() or ""
+            kind, _, value = source.partition(":")
+            message = cell(8).text()
+            colors = cell(6).value()
+            yield LevelEntry(
+                map_uuid=value if kind == "map" else "",
+                stock=int(value) if kind == "stock" else None,
+                name=cell(1).text(),
+                like=cell(2).currentData(),
+                music=cell(3).currentData(),
+                dark=cell(4).currentData(),
+                sewer=cell(5).currentData(),
+                colors=None if colors < 0 else colors,
+                sequence=cell(7).currentData(),
+                message=message if message else None,
+                exit=cell(9).currentData(),
             )
 
     def campaign(self) -> Campaign:
-        return Campaign(title=self.title.text(), key=self.key.text(),
-                        entries=tuple(self._entries()))
+        from dataclasses import replace
+
+        return replace(
+            self._base,
+            mod_id=self.mod_id.text().strip(), title=self.title.text(),
+            author=self.author.text(), version=self.version.text().strip(),
+            description=" ".join(self.description.toPlainText().split()),
+            release=self.release.currentData(), levels=tuple(self._levels()),
+        )
 
     # -- the panel ----------------------------------------------------------
 
     def _revalidate(self) -> None:
         campaign = self.campaign()
-        self.start.setText(
-            f"Starts at MAP{campaign.start:02d}" if campaign.start is not None
-            else "No levels")
-
+        count = len(campaign.levels)
+        self.start.setText(f"{count} floor{'s' if count != 1 else ''}; the first row is floor 1"
+                           if count else "No floors")
         problems = validate(campaign, self._documents)
         errors = [p for p in problems if p.severity >= Severity.ERROR]
         warnings = [p for p in problems if p.severity == Severity.WARNING]
-
-        lines = [f"{p.severity.name.lower()}: {p.message}" for p in errors + warnings]
-        self.problems.setText("\n".join(lines[:6]) if lines
-                              else "This campaign is ready to build.")
-        # Errors block the build, so they block OK. Warnings do not: "this slot
-        # replaces a stock level" is a thing someone may mean to do.
+        lines = [f"{p.severity.name.lower()}: {p.message}" + (f" ({p.where})" if p.where else "")
+                 for p in errors + warnings]
+        self.problems.setText("\n".join(lines[:6]) if lines else "This mod is ready to build.")
         self.ok.setEnabled(not errors)

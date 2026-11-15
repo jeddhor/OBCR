@@ -21,10 +21,26 @@ from PySide6.QtCore import QByteArray, QSettings
 
 from obcedit_core.discovery import Profile
 
-ORGANIZATION = "EC7Wolf"
+ORGANIZATION = "OBCR"
 APPLICATION = "OBCEdit"
 
 _RECENT_LIMIT = 10
+
+
+def obcr_mods_dir() -> Path:
+    """OBCR's user mods folder (docs/MODS_AND_OBCEDIT.md section 3.4).
+
+    Windows: %APPDATA%\\OBCR\\data\\mods. Elsewhere: $XDG_DATA_HOME/obcr/mods,
+    or ~/.local/share/obcr/mods.
+    """
+    import os
+    import sys
+
+    if sys.platform == "win32":
+        base = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
+        return Path(base) / "OBCR" / "data" / "mods"
+    base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+    return Path(base) / "obcr" / "mods"
 
 
 class Settings:
@@ -44,11 +60,25 @@ class Settings:
         raw = self._settings.value("paths/recovery", "")
         if raw:
             return Path(raw)
-        return Path.home() / ".local" / "share" / "obcedit" / "recovery"
+        from PySide6.QtCore import QStandardPaths
+
+        base = QStandardPaths.writableLocation(QStandardPaths.AppLocalDataLocation)
+        return (Path(base) if base else Path.home() / ".local" / "share" / "obcedit") / "recovery"
 
     @recovery_dir.setter
     def recovery_dir(self, path: Path | str) -> None:
         self._settings.setValue("paths/recovery", str(path))
+
+    #: Where Install in OBCR puts mods: OBCR's own mods folder unless set
+    #: (which tests do, so they never write into the real one).
+    @property
+    def mods_dir(self) -> Path:
+        raw = self._settings.value("paths/mods", "")
+        return Path(raw) if raw else obcr_mods_dir()
+
+    @mods_dir.setter
+    def mods_dir(self, path: Path | str) -> None:
+        self._settings.setValue("paths/mods", str(path))
 
     # -- profiles ---------------------------------------------------------
 

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Jason Tripp
-"""E11: the campaign dialog, and the pack export behind it.
+"""The campaign dialog: a mod's identity and its floors, and the export behind it.
 
 Driven on the offscreen platform against real widgets. The dialog's whole job
 is to be a view over `campaign.validate` -- so what is tested is that the view
 and the validator cannot disagree: what the table says round-trips, OK follows
-the errors, and a build refuses exactly what the validator refuses.
+the errors, and the mod written from it says what the table said.
 
-Nothing here needs Corridor 7. Every map is drawn by the test.
+Nothing here needs Operation Body Count. Every map is drawn by the test.
 """
 
 from __future__ import annotations
@@ -27,39 +27,32 @@ sys.path.insert(0, str(EDITOR))
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 
-from obcedit_core.campaign import Campaign, CampaignEntry, Route, audit_pack
-from obcedit_core.document import MapDocument, ProjectDocument, SourceReference
-from obcedit_core.names import NativeName
-from obcedit_core.planes import MapPlanes
+from gui_support import obc_support
+
+from obcedit_core.campaign import Campaign, LevelEntry
+from obcedit_core.catalog import default_catalog
+from obcedit_core.document import ProjectDocument, SourceReference
+from obcedit_core.modexport import audit_mod
 
 from obcedit_gui.application import build_application
-from obcedit_gui.campaign_dialog import END, CampaignDialog
+from obcedit_gui.campaign_dialog import CampaignDialog, original_floor_name
 from obcedit_gui.main_window import MainWindow
 from obcedit_gui.settings import Settings
 
 _application = build_application([])
+CATALOG = default_catalog()
+
+ROOM = ["#######",
+        "#S...E#",
+        "#.....#",
+        "#######"]
 
 
-def a_map(slot: int, *, source=None) -> MapDocument:
-    width = height = 8
-    walls = [1] * (width * height)
-    objects = [0] * (width * height)
-    for y in range(1, height - 1):
-        for x in range(1, width - 1):
-            walls[y * width + x] = 256
-    objects[1 * width + 1] = 19
-    return MapDocument(
-        uuid=f"uuid-{slot}", slot=slot, native_name=NativeName.from_text(f"M{slot}"),
-        planes=MapPlanes(width, height,
-                         (tuple(walls), tuple(objects), tuple([0] * (width * height)))),
-        source=source,
-    )
-
-
-def a_project(slots=(61, 62)) -> ProjectDocument:
-    project = ProjectDocument.create("Pack")
-    for slot in slots:
-        project = project.added(a_map(slot))
+def a_project(count=2) -> ProjectDocument:
+    project = ProjectDocument.create("Tower Pack")
+    for slot in range(count):
+        document = obc_support.room(ROOM, name=f"FLOOR {slot + 1}", slot=slot)
+        project = project.added(document)
     return project
 
 
@@ -70,8 +63,8 @@ class Base(unittest.TestCase):
         backend = QSettings(str(self.root / "settings.ini"), QSettings.IniFormat)
         self.settings = Settings(backend)
         self.settings.recovery_dir = self.root / "recovery"
-        self.window = MainWindow(self.settings)
-        self.window.project = a_project()
+        self.window = MainWindow(self.settings, catalog=CATALOG)
+        self.window.set_project(a_project())
 
     def tearDown(self):
         self.window.project = self.window.project.marked_saved(
@@ -83,210 +76,219 @@ class Base(unittest.TestCase):
         QApplication.processEvents()
         self._tmp.cleanup()
 
+    @property
+    def maps(self):
+        return self.window.project.maps
+
 
 class Dialog(Base):
-    def open(self, campaign=None):
-        return CampaignDialog(campaign or Campaign(), self.window.project.maps)
+    def open(self, campaign=None) -> CampaignDialog:
+        campaign = campaign or Campaign.default_for(self.window.project)
+        dialog = CampaignDialog(campaign, self.maps)
+        self.addCleanup(dialog.deleteLater)
+        return dialog
 
-    def test_an_empty_campaign_is_offered_the_project_maps(self):
+    def cell(self, dialog, row, column):
+        return dialog.table.cellWidget(row, column)
+
+    def set_combo(self, dialog, row, column, value):
+        combo = self.cell(dialog, row, column)
+        index = combo.findData(value)
+        self.assertGreaterEqual(index, 0, (column, value))
+        combo.setCurrentIndex(index)
+
+    def test_the_default_is_every_map_in_order(self):
         dialog = self.open()
         self.assertEqual(dialog.table.rowCount(), 2)
-        self.assertEqual([e.slot for e in dialog.campaign().entries], [61, 62])
+        campaign = dialog.campaign()
+        self.assertEqual([level.map_uuid for level in campaign.levels],
+                         [d.uuid for d in self.maps])
+        self.assertEqual(campaign.mod_id, "tower-pack")
+        self.assertEqual(campaign.title, "Tower Pack")
+        self.assertTrue(dialog.ok.isEnabled(), dialog.problems.text())
+        self.assertEqual(dialog.problems.text(), "This mod is ready to build.")
 
-    def test_the_offered_default_can_be_finished(self):
-        # The rows a fresh dialog proposes must not themselves be an error, or
-        # the first thing an author sees is a red panel they did not cause.
+    def test_the_columns_are_the_mod_schema(self):
         dialog = self.open()
-        self.assertTrue(dialog.ok.isEnabled())
-        self.assertIn("ready", dialog.problems.text())
+        headers = [dialog.table.horizontalHeaderItem(i).text()
+                   for i in range(dialog.table.columnCount())]
+        self.assertEqual(headers, ["Floor", "Name", "Like", "Music", "Dark", "Sewer",
+                                   "Colours", "Sequence", "Message", "Exit"])
 
-    def test_the_table_round_trips(self):
-        campaign = Campaign(title="Trial", key="T", entries=(
-            CampaignEntry(61, "One", next=Route(62), secret=Route(None),
-                          music="C7MUS07", par=45, intermission=False),
-            CampaignEntry(62, "Two", next=Route(None)),
-        ))
-        self.assertEqual(self.open(campaign).campaign(), campaign)
-
-    def test_the_first_row_is_the_start_and_moving_changes_it(self):
+    def test_nothing_of_corridor_7_is_left(self):
         dialog = self.open()
-        self.assertIn("MAP61", dialog.start.text())
-        dialog.table.setCurrentCell(1, 0)
-        dialog._move(-1)
-        self.assertEqual(dialog.campaign().start, 62)
-        self.assertIn("MAP62", dialog.start.text())
+        text = " ".join(child.text() for child in dialog.findChildren(type(dialog.ok))
+                        if child.text())
+        for gone in ("MAP0", "MAPINFO", "WAD", "Route", "cinematic"):
+            self.assertNotIn(gone, text)
 
-    def test_moving_a_row_keeps_its_values(self):
-        # Reordering rebuilds both rows; a swap that lost a name or a route
-        # would be the kind of bug nobody notices until the pack is built.
-        campaign = Campaign(title="T", key="T", entries=(
-            CampaignEntry(61, "First", next=Route(62), music="C7MUS07"),
-            CampaignEntry(62, "Second", next=Route(None), par=30),
-        ))
-        dialog = self.open(campaign)
-        dialog.table.setCurrentCell(0, 0)
-        dialog._move(1)
-        moved = dialog.campaign().entries
-        self.assertEqual([e.name for e in moved], ["Second", "First"])
-        self.assertEqual(moved[0].par, 30)
-        self.assertEqual(moved[1].music, "C7MUS07")
+    def test_every_field_round_trips(self):
+        dialog = self.open()
+        dialog.mod_id.setText("tower")
+        dialog.title.setText("The Tower")
+        dialog.author.setText("Tester")
+        dialog.version.setText("2.1")
+        dialog.description.setPlainText("Two floors\nof office.")
+        dialog.release.setCurrentIndex(dialog.release.findData("OBC-CD"))
+        self.cell(dialog, 0, 1).setText("Lobby")
+        self.set_combo(dialog, 0, 2, 22)                 # like the top floor
+        self.set_combo(dialog, 0, 3, "random")
+        self.set_combo(dialog, 0, 4, True)
+        self.set_combo(dialog, 0, 5, False)
+        self.cell(dialog, 0, 6).setValue(12)
+        self.set_combo(dialog, 0, 7, "F3")
+        self.cell(dialog, 0, 8).setText("Get to the roof")
+        self.set_combo(dialog, 1, 9, "none")
+        self.set_combo(dialog, 1, 3, 4)
 
-    def test_ok_follows_the_errors(self):
-        broken = Campaign(title="T", key="T", entries=(
-            CampaignEntry(61, "One", next=Route(61)),   # a loop, never finishes
-        ))
-        dialog = self.open(broken)
+        campaign = dialog.campaign()
+        self.assertEqual((campaign.mod_id, campaign.title, campaign.author, campaign.version,
+                          campaign.release),
+                         ("tower", "The Tower", "Tester", "2.1", "OBC-CD"))
+        self.assertEqual(campaign.description, "Two floors of office.")
+        first, second = campaign.levels
+        self.assertEqual(first, LevelEntry(map_uuid=self.maps[0].uuid, name="Lobby", like=22,
+                                           music="random", dark=True, sewer=False, colors=12,
+                                           sequence="F3", message="Get to the roof"))
+        self.assertEqual(second.exit, "none")
+        self.assertEqual(second.music, 4)
+        self.assertTrue(dialog.ok.isEnabled(), dialog.problems.text())
+
+        # And back: a dialog opened on that campaign shows the same thing.
+        again = self.open(campaign)
+        self.assertEqual(again.campaign(), campaign)
+
+    def test_unset_fields_stay_out_of_the_manifest(self):
+        campaign = self.open().campaign()
+        level = campaign.levels[0]
+        self.assertEqual((level.like, level.music, level.dark, level.sewer, level.colors,
+                          level.sequence, level.message, level.exit),
+                         (None,) * 8)
+
+    def test_a_bad_id_disables_ok_and_says_why(self):
+        dialog = self.open()
+        dialog.mod_id.setText("Not Valid!")
         self.assertFalse(dialog.ok.isEnabled())
-        self.assertIn("error", dialog.problems.text())
-
-    def test_a_warning_does_not_block_ok(self):
-        # "This slot replaces a stock level" is a thing an author may mean.
-        self.window.project = a_project(slots=(1, 2))
-        dialog = CampaignDialog(Campaign(), self.window.project.maps)
+        self.assertIn("mod id", dialog.problems.text())
+        dialog.mod_id.setText("valid-id")
         self.assertTrue(dialog.ok.isEnabled())
-        self.assertIn("warning", dialog.problems.text())
 
-    def test_the_end_choice_is_not_a_slot(self):
+    def test_an_empty_title_is_an_error(self):
         dialog = self.open()
-        box = dialog.table.cellWidget(1, 2)
-        self.assertEqual(box.itemData(0), END)
-        self.assertNotIn(END, [e.slot for e in dialog.campaign().entries])
+        dialog.title.setText("")
+        self.assertFalse(dialog.ok.isEnabled())
+        self.assertIn("title", dialog.problems.text())
 
-    def test_a_removed_row_is_gone_from_the_campaign(self):
+    def test_no_floors_is_an_error(self):
         dialog = self.open()
+        dialog.table.setCurrentCell(0, 0)
+        dialog.remove.click()
+        dialog.table.setCurrentCell(0, 0)
+        dialog.remove.click()
+        self.assertEqual(dialog.table.rowCount(), 0)
+        self.assertFalse(dialog.ok.isEnabled())
+        self.assertIn("no floors", dialog.problems.text())
+
+    def test_an_original_floor_can_be_added(self):
+        dialog = self.open()
+        dialog.add_stock.click()
+        self.set_combo(dialog, 2, 0, "stock:39")
+        level = dialog.campaign().levels[2]
+        self.assertEqual((level.map_uuid, level.stock), ("", 39))
+        self.assertTrue(dialog.ok.isEnabled(), dialog.problems.text())
+
+    def test_original_floors_are_named(self):
+        self.assertEqual(original_floor_name(0), "Sewers 1")
+        self.assertEqual(original_floor_name(39), "UN Bldg 2 top (Victor)")
+        dialog = self.open()
+        combo = self.cell(dialog, 0, 0)
+        labels = [combo.itemText(i) for i in range(combo.count())]
+        self.assertIn("Original floor 40: UN Bldg 2 top (Victor)", labels)
+
+    def test_moving_a_floor_reorders_the_campaign(self):
+        dialog = self.open()
+        before = [level.map_uuid for level in dialog.campaign().levels]
         dialog.table.setCurrentCell(1, 0)
-        dialog._remove_level()
-        self.assertEqual([e.slot for e in dialog.campaign().entries], [61])
+        dialog.up.click()
+        after = [level.map_uuid for level in dialog.campaign().levels]
+        self.assertEqual(after, list(reversed(before)))
+        self.assertEqual(dialog.table.currentRow(), 0)
+
+    def test_a_too_long_message_is_cut_at_the_limit(self):
+        from obcedit_core.campaign import MAX_MESSAGE
+
+        dialog = self.open()
+        self.cell(dialog, 0, 8).setText("x" * 100)
+        self.assertEqual(len(dialog.campaign().levels[0].message), MAX_MESSAGE)
+
+    def test_an_imported_map_cannot_be_shared(self):
+        from dataclasses import replace
+
+        document = replace(self.maps[0], source=SourceReference(
+            display_path="MAPTEMP.BC", sha256="a" * 64, map_number=6))
+        self.window.project = self.window.project.with_map(document)
+        dialog = self.open()
+        self.assertFalse(dialog.ok.isEnabled())
+        self.assertIn("original game", dialog.problems.text())
+
+    def test_a_missing_map_is_kept_and_reported(self):
+        campaign = Campaign(mod_id="x", title="X",
+                            levels=(LevelEntry(map_uuid="gone-uuid"),))
+        dialog = self.open(campaign)
+        self.assertEqual(dialog.campaign().levels[0].map_uuid, "gone-uuid")
+        self.assertFalse(dialog.ok.isEnabled())
+        self.assertIn("not in the project", dialog.problems.text())
 
 
-class Export(Base):
-    def test_a_pack_needs_a_campaign(self):
-        errors = []
-        self.window._error = lambda title, detail: errors.append(title)
-        self.assertFalse(self.window.export_pack())
-        self.assertEqual(errors, ["There is no campaign yet"])
+class Window(Base):
+    """File > Campaign, through the window."""
 
-    def test_a_retail_map_is_refused_before_any_file_is_written(self):
-        source = SourceReference(display_path="MAPTEMP.CO7", sha256="b" * 64,
-                                 map_number=1, imported_at="2026-01-01T00:00:00Z")
-        project = ProjectDocument.create("Pack").added(a_map(61, source=source))
-        campaign = Campaign(title="T", key="T", entries=(
-            CampaignEntry(61, "One", next=Route(None)),))
-        self.window.project = project.with_campaign(campaign.to_json())
+    def run_dialog(self, edit):
+        from PySide6.QtWidgets import QDialog
 
-        shown = []
-        self.window._error = lambda title, detail: shown.append(detail)
-        self.assertFalse(self.window.export_pack())
-        self.assertTrue(any("C7E-PACK-009" in text for text in shown), shown)
-        self.assertEqual(list(self.root.glob("*.wad")), [])
+        from obcedit_gui import campaign_dialog
 
-    def test_a_written_pack_passes_its_own_audit(self):
-        campaign = Campaign(title="Trial", key="T", entries=(
-            CampaignEntry(61, "One", next=Route(62)),
-            CampaignEntry(62, "Two", next=Route(None)),
-        ))
-        self.window.project = self.window.project.with_campaign(campaign.to_json())
-        destination = self.root / "trial.wad"
+        original = campaign_dialog.CampaignDialog.exec
 
-        import obcedit_gui.main_window as module
-        original = module.QFileDialog.getSaveFileName
-        module.QFileDialog.getSaveFileName = staticmethod(
-            lambda *a, **k: (str(destination), ""))
+        def fake_exec(dialog):
+            edit(dialog)
+            return QDialog.DialogCode.Accepted
+
+        campaign_dialog.CampaignDialog.exec = fake_exec
         try:
-            self.assertTrue(self.window.export_pack())
+            return self.window.edit_campaign()
         finally:
-            module.QFileDialog.getSaveFileName = original
+            campaign_dialog.CampaignDialog.exec = original
 
-        report = audit_pack(destination.read_bytes())
-        self.assertTrue(report.clean)
-        self.assertEqual(report.markers, ("MAP61", "MAP62"))
-        # The manifest travels with it, asked for or not.
-        self.assertTrue((self.root / "trial.txt").is_file())
-        self.assertIn("Corridor 7", (self.root / "trial.txt").read_text())
-
-
-class ProjectState(Base):
-    def test_a_campaign_is_an_edit_and_survives_a_save(self):
-        from obcedit_core.project import load_project, save_project
-
-        campaign = Campaign(title="Trial", key="T", entries=(
-            CampaignEntry(61, "One", next=Route(None)),))
-        before = self.window.project.revision
-        self.window.project = self.window.project.with_campaign(campaign.to_json())
-        self.assertGreater(self.window.project.revision, before)
+    def test_accepting_stores_the_campaign_and_dirties_the_project(self):
+        self.window.project = self.window.project.marked_saved(self.window.project.revision)
+        self.assertTrue(self.run_dialog(lambda dialog: dialog.title.setText("Renamed")))
+        self.assertEqual(self.window.project.campaign["title"], "Renamed")
         self.assertTrue(self.window.project.dirty)
+        self.assertIn("•", self.window.windowTitle())
 
-        path = self.root / "p.ec7project"
-        save_project(self.window.project, path)
-        again = Campaign.from_json(load_project(path).campaign)
-        self.assertEqual(again, campaign)
+    def test_the_stored_campaign_is_what_the_mod_says(self):
+        def edit(dialog):
+            dialog.mod_id.setText("tower")
+            dialog.table.cellWidget(1, 4).setCurrentIndex(
+                dialog.table.cellWidget(1, 4).findData(True))
 
+        self.run_dialog(edit)
+        written = self.window.export_mod(str(self.root / "tower.obcmod"))
+        self.assertIsNotNone(written)
+        audit = audit_mod(written, catalog=CATALOG)
+        self.assertTrue(audit.ok, audit.problems)
+        self.assertEqual(audit.campaign.mod_id, "tower")
+        self.assertEqual([level.dark for level in audit.campaign.levels], [None, True])
 
-class SnapshotCamera(Base):
-    """One camera, on one floor, visible, and replaceable.
-
-    All of which was true of the model already and none of which was visible:
-    the canvas never drew it, so placing it looked like nothing had happened,
-    taking a snapshot looked like it had been forgotten, and placing a second
-    one looked like it had failed too.
-    """
-
-    def setUp(self):
-        super().setUp()
-        from obcedit_gui.tools import Tool
-        self.window.project = a_project(slots=(61, 62))
-        self.tab = self.window.open_map(self.window.project.maps[0].uuid)
-        self.window.tools.set_tool(Tool.CAMERA)
-        QApplication.processEvents()
-
-    def canvas_camera(self, tab=None):
-        return (tab or self.tab).canvas._camera
-
-    def test_placing_it_draws_it(self):
-        self.window.tools.press(3, 3, 1)
-        self.assertEqual(self.canvas_camera(), (3.5, 3.5, 0.0))
-
-    def test_placing_again_moves_it_rather_than_adding_one(self):
-        self.window.tools.press(3, 3, 1)
-        self.window.tools.press(4, 5, 1)
-        self.assertEqual(self.canvas_camera(), (4.5, 5.5, 0.0))
-        self.assertEqual(self.window.camera.x, 4.5)
-
-    def test_moving_it_keeps_the_angle_you_chose(self):
-        self.window.tools.press(3, 3, 1)
-        self.window.turn_camera()
-        self.window.tools.press(4, 5, 1)
-        self.assertEqual(self.canvas_camera(), (4.5, 5.5, 90.0))
-
-    def test_turning_it_redraws_it(self):
-        self.window.tools.press(3, 3, 1)
-        self.window.turn_camera()
-        self.assertEqual(self.canvas_camera(), (3.5, 3.5, 90.0))
-
-    def test_it_is_drawn_only_on_the_floor_it_is_on(self):
-        self.window.tools.press(3, 3, 1)
-        other = self.window.open_map(self.window.project.maps[1].uuid)
-        QApplication.processEvents()
-        self.assertIsNone(self.canvas_camera(other))
-        self.assertEqual(self.canvas_camera(self.tab), (3.5, 3.5, 0.0))
-
-    def test_a_snapshot_of_another_floor_is_refused_rather_than_drawn(self):
-        # Not "it happens not to work": the camera's coordinates would be
-        # judged against the wrong map, passing or failing for reasons to do
-        # with neither.
-        self.window.tools.press(3, 3, 1)
-        self.window.open_map(self.window.project.maps[1].uuid)
-        QApplication.processEvents()
-        self.assertFalse(self.window.take_snapshot())
-        self.assertIn("another floor", self.window.snapshot_status.text())
-
-    def test_the_status_keeps_saying_camera_after_a_snapshot(self):
-        # The words "Camera at" going missing is most of what "the camera
-        # disappears after taking a snapshot" was.
-        self.window.tools.press(3, 3, 1)
-        self.window._show_snapshot(self.root / "nothing.png", "k", cached=True)
-        self.assertIn("Camera at", self.window.snapshot_status.text())
+    def test_the_campaign_survives_save_and_open(self):
+        self.run_dialog(lambda dialog: dialog.author.setText("Saved Author"))
+        path = self.root / "pack.obcproject"
+        self.window.project_path = path
+        self.assertTrue(self.window.save_project())
+        self.window.open_project(str(path))
+        self.assertEqual(self.window.current_campaign().author, "Saved Author")
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(verbosity=1)

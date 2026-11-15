@@ -10,7 +10,9 @@ goes wrong in an editor is not that a tool computes the wrong cells -- it is
 that the cells go to the wrong map, or the wrong plane, or arrive after the
 document has already moved on.
 
-Offscreen, synthetic, no game data.
+Offscreen, synthetic, no game data. Every map is a real 64x64 Operation Body
+Count floor: a 10x10 room in the top-left corner (floor 144), walls everywhere
+else, and the explosion-proof marker (89) round the map edge.
 """
 
 from __future__ import annotations
@@ -29,7 +31,7 @@ sys.path.insert(0, str(EDITOR))
 from PySide6.QtCore import QSettings, Qt
 from PySide6.QtWidgets import QApplication
 
-from obcedit_core.catalog import load_catalog
+from obcedit_core.catalog import default_catalog
 from obcedit_core.document import MapDocument, ProjectDocument
 from obcedit_core.names import NativeName
 from obcedit_core.planes import MapPlanes, linear_index
@@ -42,30 +44,37 @@ from obcedit_gui.settings import Settings
 from obcedit_gui.inspector import PREVIEW_SIZE, SECONDARY_SIZE
 from obcedit_gui.tools import EMPTY_OBJECT, Tool
 
-CATALOG = load_catalog(EDITOR / "resources" / "editor_catalog.json")
+from gui_support import PYTHON, fake_engine, make_game_data
+
+CATALOG = default_catalog()
 _application = build_application([])
 
-WALL_ENTRY = "wall.002"
-RODEX_EAST = 216
-ALIOPROBE_EAST = 108
+WALL_ENTRY = "wall-2"
+#: A soldier standing facing east, on every difficulty; north is +1, west +2,
+#: south +3, patrolling +4.
+SOLDIER = "enemy-116"
+SOLDIER_EAST = 116
+START = "player-start"
+SIZE = 64
 
 
-def open_map(width=10, height=10) -> MapDocument:
-    """A room with a solid border, which is where editing usually starts.
+def open_map(room=10) -> MapDocument:
+    """A walled room in a 64x64 floor, which is where editing usually starts.
 
-    Floored with a sound area rather than word 0, because that is what a legal
-    map is: word 0 is walkable but carries no area, and nothing on such a map
-    can hear anything.
+    Floored with 144 (area 4, texture set 0) -- word 0 is not floor in
+    Operation Body Count -- and with 89 round the map edge, as the original
+    maps have it.
     """
-    plane0 = []
-    for y in range(height):
-        for x in range(width):
-            edge = x in (0, width - 1) or y in (0, height - 1)
-            plane0.append(1 if edge else MapDocument.DEFAULT_FLOOR)
-    return MapDocument("edit-uuid", 1, NativeName.from_text("ROOM"),
-                       MapPlanes(width, height,
-                                 (tuple(plane0), (EMPTY_OBJECT,) * (width * height),
-                                  (0,) * (width * height))))
+    plane0, plane1 = [], []
+    for y in range(SIZE):
+        for x in range(SIZE):
+            inside = 0 < x < room - 1 and 0 < y < room - 1
+            plane0.append(MapDocument.DEFAULT_FLOOR if inside else 1)
+            edge = x in (0, SIZE - 1) or y in (0, SIZE - 1)
+            plane1.append(89 if edge else EMPTY_OBJECT)
+    return MapDocument("edit-uuid", 0, NativeName.from_text("ROOM"),
+                       MapPlanes(SIZE, SIZE, (tuple(plane0), tuple(plane1),
+                                              (0,) * (SIZE * SIZE))))
 
 
 class Base(unittest.TestCase):
@@ -146,9 +155,9 @@ class Brush(Base):
         self.assertEqual(self.window.history.depth, 2)
 
     def test_painting_an_object_writes_plane_one(self):
-        self.choose("thing.c7rodex.stand.skill1")
+        self.choose(SOLDIER)
         self.stroke(Tool.BRUSH, [(4, 4)])
-        self.assertEqual(self.document.cell(1, 4, 4), RODEX_EAST)
+        self.assertEqual(self.document.cell(1, 4, 4), SOLDIER_EAST)
         self.assertEqual(self.document.cell(0, 4, 4), MapDocument.DEFAULT_FLOOR,
                          "plane 0 was disturbed")
 
@@ -156,7 +165,7 @@ class Brush(Base):
         # Same code path, different plane, because the entry says so.
         self.choose(WALL_ENTRY)
         self.stroke(Tool.BRUSH, [(3, 3)])
-        self.choose("thing.player1start")
+        self.choose(START)
         self.stroke(Tool.BRUSH, [(5, 5)])
         self.assertEqual(self.document.cell(0, 3, 3), 2)
         self.assertEqual(self.document.cell(1, 5, 5), 19)
@@ -174,7 +183,7 @@ class NewMap(Base):
 
     def test_it_adds_a_map_and_opens_it(self):
         before = len(self.window.project)
-        document = self.window.new_map(name="FRESH", slot=9, width=16, height=16)
+        document = self.window.new_map(name="FRESH", slot=9)
         self.assertIsNotNone(document)
         self.assertEqual(len(self.window.project), before + 1)
         self.assertEqual(self.window.current_tab.map_uuid, document.uuid)
@@ -182,38 +191,37 @@ class NewMap(Base):
     def test_it_comes_walled(self):
         # A blank map is all floor, so the first thing the validator would say
         # is that the player can walk out of the world.
-        document = self.window.new_map(name="WALLED", slot=9, width=12, height=12)
+        document = self.window.new_map(name="WALLED", slot=9)
         document = self.window.project.map_by_uuid(document.uuid)
-        for x in range(12):
+        for x in range(SIZE):
             self.assertNotEqual(document.cell(0, x, 0), MapDocument.DEFAULT_FLOOR)
-            self.assertNotEqual(document.cell(0, x, 11), MapDocument.DEFAULT_FLOOR)
+            self.assertNotEqual(document.cell(0, x, SIZE - 1), MapDocument.DEFAULT_FLOOR)
+            self.assertEqual(document.cell(1, x, 0), 89, "the edge is explosion-proof")
         self.assertEqual(document.cell(0, 5, 5), MapDocument.DEFAULT_FLOOR)
 
     def test_the_object_plane_starts_empty_not_zero(self):
-        # Corridor 7's empty marker is 18. A plane of zeros would place
-        # whatever word 0 means on every single cell. The one exception is the
-        # player start in the middle.
-        document = self.window.new_map(name="EMPTY", slot=9, width=8, height=8)
+        # The original editor's background is 18. The one exception is the
+        # player start in the middle, and the 89 round the edge.
+        document = self.window.new_map(name="EMPTY", slot=9)
         document = self.window.project.map_by_uuid(document.uuid)
         self.assertEqual(document.cell(1, 1, 1), EMPTY_OBJECT)
         self.assertEqual(document.cell(1, 6, 6), EMPTY_OBJECT)
 
     def test_a_new_map_can_be_tested_straight_away(self):
         # The whole point of the start: a fresh map has to pass validation, or
-        # pressing F5 launches an engine that prints "No player 1 start!" and
-        # exits, which looks like a crash.
-        document = self.window.new_map(name="TESTABLE", slot=9, width=16, height=16)
+        # pressing F5 gets a refusal from OBCR's --check-mod.
+        document = self.window.new_map(name="TESTABLE", slot=9)
         self.window.open_map(document.uuid)
         errors = [p for p in self.window.validate() if p.severity.name == "ERROR"]
         self.assertEqual(errors, [])
 
     def test_it_picks_a_free_slot(self):
-        # The project already holds slot 1 from setUp.
-        document = self.window.new_map(name="AUTO", width=8, height=8)
-        self.assertEqual(document.slot, 2)
+        # The project already holds slot 0 from setUp.
+        document = self.window.new_map(name="AUTO")
+        self.assertEqual(document.slot, 1)
 
     def test_you_can_paint_on_it_immediately(self):
-        document = self.window.new_map(name="PAINT", slot=9, width=10, height=10)
+        document = self.window.new_map(name="PAINT", slot=9)
         self.choose(WALL_ENTRY)
         self.stroke(Tool.BRUSH, [(3, 3), (6, 3)])
         painted = self.window.project.map_by_uuid(document.uuid)
@@ -221,12 +229,12 @@ class NewMap(Base):
             self.assertEqual(painted.cell(0, x, 3), 2)
 
     def test_a_new_map_validates_once_it_has_a_start(self):
-        document = self.window.new_map(name="VALID", slot=9, width=12, height=12)
-        self.choose("thing.player1start")
+        document = self.window.new_map(name="VALID", slot=9, width=SIZE, height=SIZE)
+        self.choose(START)
         self.stroke(Tool.BRUSH, [(5, 5)])
         codes = [p.code for p in self.window.validate()]
-        self.assertNotIn("C7E-BOUNDARY-001", codes)
-        self.assertNotIn("C7E-START-001", codes)
+        self.assertNotIn("OBC-BOUNDARY-001", codes)
+        self.assertNotIn("OBC-START-001", codes)
 
 
 class Shapes(Base):
@@ -260,7 +268,7 @@ class Shapes(Base):
     def test_a_fill_stops_at_the_wall(self):
         self.choose(WALL_ENTRY)
         self.stroke(Tool.FILL, [(5, 5)])
-        # The interior is 8x8; the border must be untouched.
+        # The room's interior is 8x8; its walls must be untouched.
         self.assertEqual(self.document.cell(0, 5, 5), 2)
         self.assertEqual(self.document.cell(0, 0, 0), 1)
 
@@ -274,24 +282,24 @@ class Shapes(Base):
 
 class Erasing(Base):
     def test_erasing_a_wall_leaves_floor(self):
-        # Floor, meaning a sound area -- not word 0, which is no area at all
-        # and leaves a hole nothing can hear through.
+        # Floor, meaning 144 -- not word 0, which is not floor at all.
         self.choose(WALL_ENTRY)
         self.stroke(Tool.BRUSH, [(3, 3)])
         self.stroke(Tool.ERASER, [(3, 3)])
         self.assertEqual(self.document.cell(0, 3, 3), MapDocument.DEFAULT_FLOOR)
 
-    def test_erasing_a_structure_leaves_a_sound_area_too(self):
+    def test_erasing_an_exit_leaves_floor_too(self):
         from obcedit_core.prefabs import by_key
 
-        self.window.tools.set_prefab(by_key("prefab.dispenser.ammo"))
-        self.stroke(Tool.PREFAB, [(4, 0)])
-        self.stroke(Tool.ERASER, [(4, 0)])
-        self.assertEqual(self.document.cell(0, 4, 0), MapDocument.DEFAULT_FLOOR)
+        self.window.tools.set_prefab(by_key("prefab.exit.elevator"))
+        self.stroke(Tool.PREFAB, [(9, 4)])
+        self.assertEqual(self.document.cell(0, 9, 4), 115)
+        self.stroke(Tool.ERASER, [(9, 4)])
+        self.assertEqual(self.document.cell(0, 9, 4), MapDocument.DEFAULT_FLOOR)
 
     def test_erasing_an_object_writes_the_empty_marker(self):
-        # Not zero: Corridor 7's empty object-plane word is 18.
-        self.choose("thing.c7rodex.stand.skill1")
+        # Not zero: the empty object-plane word is 18.
+        self.choose(SOLDIER)
         self.stroke(Tool.BRUSH, [(4, 4)])
         self.stroke(Tool.ERASER, [(4, 4)])
         self.assertEqual(self.document.cell(1, 4, 4), EMPTY_OBJECT)
@@ -299,11 +307,11 @@ class Erasing(Base):
 
 class Eyedropper(Base):
     def test_it_selects_what_it_finds(self):
-        self.choose("thing.c7rodex.stand.skill1")
+        self.choose(SOLDIER)
         self.stroke(Tool.BRUSH, [(4, 4)])
         self.choose(WALL_ENTRY)
         self.stroke(Tool.EYEDROPPER, [(4, 4)])
-        self.assertEqual(self.window.selected_entry.actor, "C7Rodex")
+        self.assertEqual(self.window.selected_entry.actor, "Soldier")
 
     def test_it_changes_nothing(self):
         self.choose(WALL_ENTRY)
@@ -335,7 +343,7 @@ class StubAssets:
     """An AssetSource-shaped stand-in: flat color pages, no game data.
 
     The preview path is decode -> QImage -> scale -> cache, and all of that is
-    the editor's own code. What it must not need is a copy of Corridor 7.
+    the editor's own code. What it must not need is a copy of the game.
     """
 
     fingerprint = "stub"
@@ -352,7 +360,6 @@ class ProblemsPanel(Base):
     can apply the repairs that have exactly one right answer."""
 
     def break_the_boundary(self):
-        self.choose("zone.256") if CATALOG.by_key("zone.256") else None
         document = self.document
         planes = list(document.planes.planes)
         words = list(planes[0])
@@ -370,15 +377,15 @@ class ProblemsPanel(Base):
         QApplication.processEvents()
         codes = [self.window.problems.item(i).toolTip().split("\n")[0]
                  for i in range(self.window.problems.count())]
-        self.assertIn("C7E-BOUNDARY-001", codes)
+        self.assertIn("OBC-BOUNDARY-001", codes)
         self.assertNotEqual(self.window.problems.count(), before)
 
     def legal_map(self, *, with_exit=False):
         """A start on the floor, so the reachability rules run at all."""
-        self.choose("thing.player1start")
+        self.choose(START)
         self.stroke(Tool.BRUSH, [(5, 5)])
         if with_exit:
-            self.choose("special.0.287")
+            self.choose("special-115")
             self.stroke(Tool.BRUSH, [(6, 5)])
 
     def test_the_filter_hides_warnings(self):
@@ -416,7 +423,7 @@ class ProblemsPanel(Base):
         self.assertEqual(self.window.problem_fix.text(), "Seal the map boundary")
         self.assertGreater(self.window.apply_fix(), 0)
         codes = [p.code for p in validate_map(self.document, CATALOG)]
-        self.assertNotIn("C7E-BOUNDARY-001", codes)
+        self.assertNotIn("OBC-BOUNDARY-001", codes)
 
     def test_a_fix_is_one_undo(self):
         self.stroke(Tool.ERASER, [(0, 5)])
@@ -429,6 +436,34 @@ class ProblemsPanel(Base):
         self.window.undo()
         self.assertEqual(self.document.planes.planes, before)
 
+    def test_the_summary_says_whether_the_floor_can_be_finished(self):
+        self.legal_map(with_exit=True)
+        self.window.validate()
+        self.assertIn("completable", self.window.problem_status.text())
+        self.assertNotIn("NOT completable", self.window.problem_status.text())
+
+    def test_an_unreachable_exit_is_not_completable(self):
+        self.legal_map()
+        self.window.validate()
+        self.assertIn("NOT completable", self.window.problem_status.text())
+
+    def test_a_door_on_the_wrong_axis_can_be_turned(self):
+        from obcedit_core.commands import write_words
+
+        self.legal_map()
+        # A door in the room's right-hand wall: walls above and below, so
+        # it needs the vertical code (even); 131 is the horizontal one.
+        self.window.run_command(write_words(self.document, [(0, 9, 4, 131), (0, 10, 4, 144)]))
+        self.window.validate()
+        row = next((i for i in range(self.window.problems.count())
+                    if self.window.problems.item(i).data(Qt.UserRole + 1) == "door-axis"), None)
+        self.assertIsNotNone(row, [self.window.problems.item(i).text()
+                                   for i in range(self.window.problems.count())])
+        self.window.problems.setCurrentRow(row)
+        self.assertEqual(self.window.problem_fix.text(), "Turn doors to match their walls")
+        self.window.apply_fix()
+        self.assertEqual(self.document.cell(0, 9, 4), 130)
+
     def test_a_problem_with_no_fix_offers_none(self):
         self.window.validate()
         self.window.problem_filter.setCurrentIndex(
@@ -440,90 +475,141 @@ class ProblemsPanel(Base):
 
 
 class ExportPreflight(Base):
-    def test_an_error_blocks_the_export(self):
+    """File > Export mod refuses a map OBCR would refuse, before asking where."""
+
+    def export_asking(self):
         from PySide6.QtWidgets import QFileDialog
 
-        self.stroke(Tool.ERASER, [(0, 5)])          # opens the boundary
         asked = []
-        errors = []
         original = QFileDialog.getSaveFileName
         QFileDialog.getSaveFileName = staticmethod(
             lambda *a, **k: (asked.append(True), ("", ""))[1])
-        self.window._error = lambda title, body: errors.append(title)
         try:
-            self.window.export_preview()
+            self.window.export_mod()
         finally:
             QFileDialog.getSaveFileName = original
+        return asked
+
+    def test_an_error_blocks_the_export(self):
+        self.choose(START)
+        self.stroke(Tool.BRUSH, [(5, 5)])
+        self.choose(WALL_ENTRY)
+        self.stroke(Tool.ERASER, [(0, 5)])          # opens the map edge
+        errors = []
+        self.window._error = lambda title, body: errors.append(title)
+        asked = self.export_asking()
         self.assertTrue(errors, "the export was not refused")
         self.assertFalse(asked, "it asked where to write a file it must not write")
 
     def test_a_warning_does_not(self):
-        from PySide6.QtWidgets import QFileDialog
-
         # A legal room with no exit: one warning, no errors. An unfinished map
         # is a normal thing to want to look at in the engine.
-        self.choose("thing.player1start")
+        self.choose(START)
         self.stroke(Tool.BRUSH, [(5, 5)])
         problems = validate_map(self.document, CATALOG)
         self.assertTrue(any(p.severity is Severity.WARNING for p in problems))
         self.assertFalse([p for p in problems if p.severity is Severity.ERROR],
                          [str(p) for p in problems])
-        asked = []
-        original = QFileDialog.getSaveFileName
-        QFileDialog.getSaveFileName = staticmethod(
-            lambda *a, **k: (asked.append(True), ("", ""))[1])
-        try:
-            self.window.export_preview()
-        finally:
-            QFileDialog.getSaveFileName = original
-        self.assertTrue(asked, "a warning should not block an export")
+        self.assertTrue(self.export_asking(), "a warning should not block an export")
 
 
-class SoundAreaRepair(Base):
-    def zero_the_floor(self):
-        """The floor every map drawn before 2026-08-31 has: walkable word 0,
-        which carries no sound area, so nothing on the map can hear."""
-        document = self.document
-        words = list(document.planes.planes[0])
-        for index, value in enumerate(words):
-            if value == MapDocument.DEFAULT_FLOOR:
-                words[index] = 0
-        planes = list(document.planes.planes)
-        planes[0] = tuple(words)
-        self.window.project = self.window.project.with_map(
-            document.with_planes(MapPlanes(document.width, document.height,
-                                           tuple(planes))))
+class ModExport(Base):
+    """Export mod and Install in OBCR, written for real and read back."""
 
-    def test_it_repairs_a_floor_with_no_areas(self):
-        self.zero_the_floor()
-        self.assertIn(0, self.document.planes.planes[0])
-        self.window.assign_sound_areas()
-        self.assertNotIn(0, self.document.planes.planes[0])
+    def setUp(self):
+        super().setUp()
+        self.choose(START)
+        self.stroke(Tool.BRUSH, [(5, 5)])
+        self.choose("special-115")
+        self.stroke(Tool.BRUSH, [(8, 5)])
 
-    def test_the_repair_is_one_undo(self):
-        self.zero_the_floor()
-        before = self.document.planes.planes
-        self.window.assign_sound_areas()
-        self.window.undo()
-        self.assertEqual(self.document.planes.planes, before)
+    def test_a_one_file_mod(self):
+        from obcedit_core.modexport import audit_mod
 
-    def test_a_clean_map_is_left_alone(self):
-        before = self.document.planes.planes
-        self.assertEqual(self.window.assign_sound_areas(), 0)
-        self.assertEqual(self.document.planes.planes, before)
+        written = self.window.export_mod(str(self.root / "out" / "room.obcmod"))
+        self.assertIsNotNone(written)
+        self.assertTrue(written.is_file())
+        audit = audit_mod(written, catalog=CATALOG)
+        self.assertTrue(audit.ok, audit.problems)
+        self.assertEqual(audit.campaign.mod_id, "untitled")
 
-    def test_the_validator_goes_quiet_afterwards(self):
-        self.zero_the_floor()
-        self.assertIn("C7E-ZONE-001",
-                      [p.code for p in validate_map(self.document, CATALOG)])
-        self.window.assign_sound_areas()
-        self.assertNotIn("C7E-ZONE-001",
-                         [p.code for p in validate_map(self.document, CATALOG)])
+    def test_a_folder_mod(self):
+        written = self.window.export_mod(str(self.root / "out" / "room"))
+        self.assertTrue((written / "mod.toml").is_file())
+        self.assertTrue((written / "MAPHEAD.BC").is_file())
+        self.assertTrue((written / "MAPTEMP.BC").is_file())
+        manifest = (written / "mod.toml").read_text(encoding="ascii")
+        self.assertIn('id = "untitled"', manifest)
+
+    def test_the_campaign_decides_what_is_written(self):
+        from obcedit_core.campaign import Campaign, LevelEntry
+
+        self.window.set_campaign(Campaign(
+            mod_id="tower", title="The Tower", author="Tester",
+            levels=(LevelEntry(map_uuid=self.uuid, name="Lobby", dark=True),
+                    LevelEntry(stock=39))))
+        self.assertTrue(self.window.project.dirty)
+        written = self.window.export_mod(str(self.root / "tower"))
+        manifest = (written / "mod.toml").read_text(encoding="ascii")
+        self.assertIn('id = "tower"', manifest)
+        self.assertIn("dark = true", manifest)
+        self.assertIn("stock = 39", manifest)
+
+    def test_an_imported_original_map_is_refused(self):
+        from dataclasses import replace
+
+        from obcedit_core.document import SourceReference
+
+        document = replace(self.document, source=SourceReference(
+            display_path="MAPTEMP.BC", sha256="0" * 64, map_number=6))
+        self.window.project = self.window.project.with_map(document)
+        errors = []
+        self.window._error = lambda title, body: errors.append(body)
+        self.assertIsNone(self.window.export_mod(str(self.root / "x.obcmod")))
+        self.assertTrue(any("original game" in e for e in errors), errors)
+
+    def test_install_writes_into_the_mods_folder(self):
+        self.settings.mods_dir = self.root / "obcr-mods"
+        written = self.window.install_mod()
+        self.assertEqual(written, self.root / "obcr-mods" / "untitled")
+        self.assertTrue((written / "mod.toml").is_file())
+        # Installing again replaces it in place.
+        self.assertEqual(self.window.install_mod(), written)
+
+    def test_the_default_mods_folder_is_obcrs(self):
+        from obcedit_gui.settings import obcr_mods_dir
+
+        folder = obcr_mods_dir()
+        if os.name == "nt":
+            self.assertEqual(folder.parts[-3:], ("OBCR", "data", "mods"))
+        else:
+            self.assertEqual(folder.parts[-2:], ("obcr", "mods"))
+
+    def test_obcr_is_the_gate(self):
+        # When an engine is configured, a mod --check-mod refuses is not
+        # reported as exported.
+        from obcedit_core.discovery import Profile
+
+        engine = fake_engine(self.root / "bin", """
+            out("mod\tuntitled\tUntitled\t1.0\t1",
+                "problem\terror\t0\t5,5\tno exit can be reached",
+                "result\terrors")
+            sys.exit(2)
+            """)
+        self.settings.profile = Profile(engine_path=str(engine),
+                                        workspace_dir=str(self.root / "ws"))
+        errors = []
+        self.window._error = lambda title, body: errors.append(body)
+        self.assertIsNone(self.window.export_mod(str(self.root / "gated.obcmod")))
+        self.assertIn("no exit can be reached", " ".join(errors))
+        shown = [self.window.problems.item(i).text()
+                 for i in range(self.window.problems.count())]
+        self.assertTrue(any("OBCR error" in line for line in shown), shown)
 
 
 class InspectorPreview(Base):
-    def place_alioprobe(self, x=4, y=4):
-        self.choose("thing.c7organiceye.stand.skill1")
+    def place_soldier(self, x=4, y=4):
+        self.choose(SOLDIER)
         self.stroke(Tool.BRUSH, [(x, y)])
         self.window.inspector.show_cell(self.document, x, y)
 
@@ -534,23 +620,23 @@ class InspectorPreview(Base):
     def test_without_game_data_it_says_so(self):
         # No copy of the game means no artwork, which is a thing to say rather
         # than an empty box or a traceback.
-        self.place_alioprobe()
+        self.place_soldier()
         self.assertTrue(self.window.inspector.preview.pixmap().isNull())
         self.assertEqual(self.window.inspector.preview.text(), "no artwork")
 
     def test_it_shows_the_artwork_larger_than_the_palette_does(self):
         self.with_assets()
-        self.place_alioprobe()
+        self.place_soldier()
         pixmap = self.window.inspector.preview.pixmap()
         self.assertFalse(pixmap.isNull())
         self.assertEqual(pixmap.width(), PREVIEW_SIZE)
 
-    def place_pushwall(self, x=4, y=4):
+    def place_pushwall(self, x=9, y=4):
         # A pushwall is a plane-1 marker over a plane-0 wall: one cell, two
         # things, and the heading can only name one of them.
         from obcedit_core.prefabs import by_key
 
-        self.window.tools.set_prefab(by_key("prefab.pushwall.secret"))
+        self.window.tools.set_prefab(by_key("prefab.pushwall"))
         self.stroke(Tool.PREFAB, [(x, y)])
         self.window.inspector.show_cell(self.document, x, y)
 
@@ -563,14 +649,14 @@ class InspectorPreview(Base):
         inspector = self.window.inspector
         self.assertEqual(inspector.preview.pixmap().width(), PREVIEW_SIZE)
         self.assertTrue(inspector.secondary.isHidden())
-        self.assertIn("pushwall", inspector.heading.text().lower())
+        self.assertIn("push wall", inspector.heading.text().lower())
 
     def test_a_thing_on_a_wall_keeps_both_tiles(self):
-        # An alien has its own sprite, so the wall under it stays the small one.
+        # An enemy has its own sprite, so the wall under it stays the small one.
         self.with_assets()
         self.choose(WALL_ENTRY)
         self.stroke(Tool.BRUSH, [(4, 4)])
-        self.choose("thing.c7organiceye.stand.skill1")
+        self.choose(SOLDIER)
         self.stroke(Tool.BRUSH, [(4, 4)])
         self.window.inspector.show_cell(self.document, 4, 4)
         self.assertEqual(self.window.inspector.preview.pixmap().width(), PREVIEW_SIZE)
@@ -586,7 +672,7 @@ class InspectorPreview(Base):
 
     def test_deselecting_clears_it(self):
         self.with_assets()
-        self.place_alioprobe()
+        self.place_soldier()
         self.window.inspector.show_cell(None, -1, -1)
         self.assertTrue(self.window.inspector.preview.pixmap().isNull())
         self.assertTrue(self.window.inspector.secondary.isHidden())
@@ -598,39 +684,39 @@ class InspectorPreview(Base):
 
 
 class InspectorPanel(Base):
-    def place_alioprobe(self, x=4, y=4):
-        self.choose("thing.c7organiceye.stand.skill1")
+    def place_soldier(self, x=4, y=4):
+        self.choose(SOLDIER)
         self.stroke(Tool.BRUSH, [(x, y)])
         self.window.inspector.show_cell(self.document, x, y)
 
     def test_it_names_what_is_there(self):
-        self.place_alioprobe()
-        self.assertIn("Alioprobe", self.window.inspector.heading.text())
+        self.place_soldier()
+        self.assertIn("Soldier", self.window.inspector.heading.text())
 
     def test_it_shows_the_raw_words(self):
-        self.place_alioprobe()
-        self.assertIn(str(ALIOPROBE_EAST), self.window.inspector.raw.text())
+        self.place_soldier()
+        self.assertIn(str(SOLDIER_EAST), self.window.inspector.raw.text())
 
     def test_changing_the_facing_writes_a_different_word(self):
-        self.place_alioprobe()
+        self.place_soldier()
         inspector = self.window.inspector
         index = inspector.direction.findText("North")
         self.assertGreaterEqual(index, 0)
         inspector.direction.setCurrentIndex(index)
         QApplication.processEvents()
-        self.assertEqual(self.document.cell(1, 4, 4), ALIOPROBE_EAST + 1)
+        self.assertEqual(self.document.cell(1, 4, 4), SOLDIER_EAST + 1)
 
     def test_a_facing_change_is_undoable(self):
-        self.place_alioprobe()
+        self.place_soldier()
         self.window.inspector.direction.setCurrentIndex(
             self.window.inspector.direction.findText("West")
         )
         QApplication.processEvents()
         self.window.undo()
-        self.assertEqual(self.document.cell(1, 4, 4), ALIOPROBE_EAST)
+        self.assertEqual(self.document.cell(1, 4, 4), SOLDIER_EAST)
 
     def test_switching_to_patrolling_writes_the_patrol_band(self):
-        self.place_alioprobe()
+        self.place_soldier()
         inspector = self.window.inspector
         self.assertTrue(inspector.movement.isEnabled())
         inspector.movement.setCurrentIndex(1)
@@ -638,49 +724,60 @@ class InspectorPanel(Base):
         value = self.document.cell(1, 4, 4)
         entry = CATALOG.for_value(1, value)
         self.assertEqual(entry.variant, "patrol")
-        self.assertEqual(entry.actor, "C7OrganicEye")
+        self.assertEqual(entry.actor, "Soldier")
 
     def test_the_difficulty_band_can_be_changed(self):
-        self.place_alioprobe()
+        self.place_soldier()
         inspector = self.window.inspector
         self.assertTrue(inspector.rank.isEnabled())
         inspector.rank.setCurrentIndex(inspector.rank.count() - 1)
         QApplication.processEvents()
         entry = CATALOG.for_value(1, self.document.cell(1, 4, 4))
-        self.assertEqual(entry.minskill, 3)
-        self.assertEqual(entry.actor, "C7OrganicEye")
+        self.assertEqual(entry.minskill, 2)
+        self.assertEqual(inspector.rank.currentText(), "Difficulty 3 only")
+        self.assertEqual(entry.actor, "Soldier")
 
     def test_a_thing_with_no_facing_disables_the_control(self):
-        self.choose("thing.c7static000")
+        self.choose("static-23")
         self.stroke(Tool.BRUSH, [(6, 6)])
         self.window.inspector.show_cell(self.document, 6, 6)
         self.assertFalse(self.window.inspector.direction.isEnabled())
 
     def test_an_actor_with_no_patrol_variant_disables_movement(self):
-        # There is no patrolling Eniram, so the control must not promise one.
-        self.choose("thing.c7eniram.skill1")
+        # There is no patrolling soldier on a stool, so the control must not
+        # promise one.
+        self.choose("enemy-126")
         self.stroke(Tool.BRUSH, [(6, 6)])
         self.window.inspector.show_cell(self.document, 6, 6)
         self.assertFalse(self.window.inspector.movement.isEnabled())
 
-    def test_plain_floor_names_its_sound_area(self):
-        # Floor is not nothing: the word is the cell's sound area, which is
-        # what decides whether an alien standing here can hear the player.
+    def test_plain_floor_names_its_area_and_texture_set(self):
+        # Floor is not nothing: the word is the cell's area (which rooms hear
+        # each other) and its floor texture set.
         self.window.inspector.show_cell(self.document, 5, 5)
-        self.assertIn("Area 256", self.window.inspector.heading.text())
+        heading = self.window.inspector.heading.text()
+        self.assertIn("area 4", heading)
+        self.assertIn("texture set 0", heading)
+
+    def test_victor_has_no_facing(self):
+        self.choose("enemy-214")
+        self.stroke(Tool.BRUSH, [(6, 6)])
+        self.window.inspector.show_cell(self.document, 6, 6)
+        self.assertIn("Victor", self.window.inspector.heading.text())
+        self.assertFalse(self.window.inspector.direction.isEnabled())
 
 
 class Validation(Base):
     def test_a_room_without_a_start_reports_it(self):
         problems = self.window.validate()
-        self.assertIn("C7E-START-001", [p.code for p in problems])
+        self.assertIn("OBC-START-001", [p.code for p in problems])
         self.assertGreater(self.window.problems.count(), 0)
 
     def test_placing_a_start_clears_it(self):
-        self.choose("thing.player1start")
+        self.choose(START)
         self.stroke(Tool.BRUSH, [(5, 5)])
         problems = self.window.validate()
-        self.assertNotIn("C7E-START-001", [p.code for p in problems])
+        self.assertNotIn("OBC-START-001", [p.code for p in problems])
 
     def test_a_problem_carries_its_cell(self):
         self.choose(WALL_ENTRY)
@@ -705,58 +802,65 @@ class Structures(Base):
         self.window._on_press(x, y, Qt.LeftButton.value)
         self.window.tools.release(x, y)
 
-    def test_a_pushwall_writes_both_planes_at_once(self):
-        self.choose_prefab("prefab.pushwall.secret")
-        self.place(4, 4)
-        self.assertEqual(self.document.cell(0, 4, 4), 1)
-        self.assertEqual(self.document.cell(1, 4, 4), 98)
+    def test_a_push_wall_marks_the_wall_it_is_put_on(self):
+        self.choose_prefab("prefab.pushwall")
+        self.place(9, 4)
+        self.assertEqual(self.document.cell(0, 9, 4), 1)
+        self.assertEqual(self.document.cell(1, 9, 4), 98)
 
     def test_it_is_a_single_undo(self):
-        self.choose_prefab("prefab.pushwall.secret")
+        self.choose_prefab("prefab.pushwall")
         before = self.document.planes.planes
-        self.place(4, 4)
+        self.place(9, 4)
         self.assertEqual(self.window.history.depth, 1)
         self.window.undo()
         self.assertEqual(self.document.planes.planes, before)
 
     def test_a_refused_placement_writes_nothing(self):
-        # A dispenser needs floor in front. In the middle of the top wall of
-        # the room from setUp, the cell below is floor, so aim at a corner.
-        self.choose_prefab("prefab.dispenser.health")
+        # An exit needs floor beside it; deep inside the walls there is none.
+        self.choose_prefab("prefab.exit.elevator")
         before = self.document.planes.planes
-        self.place(0, 9)          # bottom-left corner: no floor below it
+        self.place(30, 30)
         self.assertEqual(self.document.planes.planes, before)
         self.assertFalse(self.window.history.can_undo)
 
     def test_a_refusal_is_reported(self):
-        self.choose_prefab("prefab.dispenser.health")
-        self.place(0, 9)
+        self.choose_prefab("prefab.exit.elevator")
+        self.place(30, 30)
         self.assertGreater(self.window.problems.count(), 0)
 
-    def test_a_dispenser_goes_in_a_wall_with_floor_in_front(self):
-        self.choose_prefab("prefab.dispenser.health")
-        self.place(4, 0)          # top wall, floor at (4,1)
-        self.assertEqual(self.document.cell(0, 4, 0), 85)
+    def test_a_push_wall_needs_a_wall(self):
+        self.choose_prefab("prefab.pushwall")
+        self.place(5, 5)          # floor
+        self.assertEqual(self.document.cell(1, 5, 5), EMPTY_OBJECT)
 
-    def test_a_wall_unit_goes_in_any_wall_of_the_room(self):
-        # A wall unit has no facing: the tile paints the same texture on all
-        # four sides and its trigger names no side, so every wall of the room
-        # takes one. Requiring floor to the south made three walls in four
-        # refuse it, and there was no way to say which way it faced because
-        # there is no such thing to say.
-        for key, word, (x, y) in (("prefab.dispenser.ammo", 111, (0, 4)),
-                                  ("prefab.terminal.blue", 11, (9, 4)),
-                                  ("prefab.terminal.red", 9, (4, 9)),
-                                  ("prefab.elevator", 63, (4, 0))):
+    def test_exits_and_switches_go_in_any_wall_of_the_room(self):
+        for key, word, (x, y) in (("prefab.exit.ladder", 113, (0, 4)),
+                                  ("prefab.exit.stairs", 114, (9, 4)),
+                                  ("prefab.exit.elevator", 115, (4, 9)),
+                                  ("prefab.generator.off", 96, (4, 0))):
             with self.subTest(key=key):
                 self.choose_prefab(key)
                 self.place(x, y)
                 self.assertEqual(self.document.cell(0, x, y), word)
 
+    def test_a_door_takes_the_axis_its_walls_give_it(self):
+        # A door joins two floors. In the room's bottom wall the walls are
+        # left and right of the door, so it gets the horizontal code; in the
+        # right-hand wall, vertical.
+        from obcedit_core.commands import write_words
+
+        self.window.run_command(write_words(self.document, [(0, 4, 10, 144), (0, 10, 4, 144)]))
+        self.choose_prefab("prefab.door.1")
+        self.place(4, 9)
+        self.assertEqual(self.document.cell(0, 4, 9), 131)
+        self.place(9, 4)
+        self.assertEqual(self.document.cell(0, 9, 4), 130)
+
     def test_nothing_offers_a_turn(self):
         # The toolbar button hides itself while no structure has an
         # orientation, rather than sitting there doing nothing.
-        self.choose_prefab("prefab.dispenser.ammo")
+        self.choose_prefab("prefab.door.1")
         self.assertFalse(self.window.action_rotate.isVisible())
 
     def test_the_structures_tab_lists_them(self):
@@ -789,36 +893,21 @@ class PaletteHandover(Base):
         self.window.tools.release(x, y)
 
     def test_choosing_a_wall_after_a_structure_paints_the_wall(self):
-        self.choose_prefab("prefab.pushwall.secret")
+        self.choose_prefab("prefab.exit.elevator")
         self.choose(WALL_ENTRY)
         self.click(4, 4)
         self.assertEqual(self.document.cell(0, 4, 4), 2, "painted the wall")
-        self.assertEqual(self.document.cell(1, 4, 4), EMPTY_OBJECT,
-                         "the structure's marker was written anyway")
+        self.assertNotEqual(self.document.cell(0, 4, 4), 115,
+                            "the structure was placed anyway")
 
     def test_the_tool_goes_back_to_the_brush(self):
-        self.choose_prefab("prefab.pushwall.secret")
+        self.choose_prefab("prefab.pushwall")
         self.choose(WALL_ENTRY)
         self.assertEqual(self.window.tools.tool, Tool.BRUSH)
         self.assertIsNone(self.window.tools.prefab)
 
-    def test_choosing_a_wall_mid_transporter_cancels_the_pending_end(self):
-        self.window.select_tool(Tool.TRANSPORTER)
-        self.click(3, 3)
-        self.assertIsNotNone(self.window.tools.pending_transporter)
-        self.choose(WALL_ENTRY)
-        self.assertIsNone(self.window.tools.pending_transporter)
-        self.click(6, 6)
-        self.assertEqual(self.document.cell(0, 6, 6), 2)
-
-    def test_choosing_a_structure_cancels_a_pending_transporter(self):
-        self.window.select_tool(Tool.TRANSPORTER)
-        self.click(3, 3)
-        self.choose_prefab("prefab.pushwall.plain")
-        self.assertIsNone(self.window.tools.pending_transporter)
-
     def test_switching_tools_by_hand_drops_the_structure(self):
-        self.choose_prefab("prefab.pushwall.secret")
+        self.choose_prefab("prefab.pushwall")
         self.choose(WALL_ENTRY)
         self.window.select_tool(Tool.LINE)
         self.assertIsNone(self.window.tools.prefab)
@@ -829,9 +918,9 @@ class PaletteHandover(Base):
 
     def test_going_back_to_a_structure_still_works(self):
         self.choose(WALL_ENTRY)
-        self.choose_prefab("prefab.pushwall.secret")
-        self.click(4, 4)
-        self.assertEqual(self.document.cell(1, 4, 4), 98)
+        self.choose_prefab("prefab.pushwall")
+        self.click(9, 4)
+        self.assertEqual(self.document.cell(1, 9, 4), 98)
 
     def test_reclicking_the_current_structure_rearms_it(self):
         # Coming back from the Walls tab, the row you want is already the
@@ -850,80 +939,13 @@ class PaletteHandover(Base):
 
     def test_the_real_palette_signal_does_the_same(self):
         # Not the helper: the actual click handler the view is wired to.
-        self.choose_prefab("prefab.pushwall.secret")
+        self.choose_prefab("prefab.pushwall")
         entry = CATALOG.by_key(WALL_ENTRY)
         self.window._on_palette_clicked(type("I", (), {"data": lambda self, r: entry})())
         self.assertEqual(self.window.tools.tool, Tool.BRUSH)
         self.click(5, 5)
         self.assertEqual(self.document.cell(0, 5, 5), 2)
         self.assertEqual(self.document.cell(1, 5, 5), EMPTY_OBJECT)
-
-
-class Transporters(Base):
-    def arm(self):
-        self.window.select_tool(Tool.TRANSPORTER)
-
-    def click(self, x, y):
-        self.window._on_press(x, y, Qt.LeftButton.value)
-        self.window.tools.release(x, y)
-
-    def test_one_click_writes_nothing(self):
-        # A channel with one end is a broken map, not a half-built one.
-        self.arm()
-        before = self.document.planes.planes
-        self.click(3, 3)
-        self.assertEqual(self.document.planes.planes, before)
-        self.assertIsNotNone(self.window.tools.pending_transporter)
-
-    def test_two_clicks_make_a_pair(self):
-        self.arm()
-        self.click(3, 3)
-        self.click(6, 6)
-        self.assertEqual(self.document.cell(0, 3, 3), 279)
-        self.assertEqual(self.document.cell(0, 6, 6), 279)
-
-    def test_the_pair_is_one_undo(self):
-        self.arm()
-        before = self.document.planes.planes
-        self.click(3, 3)
-        self.click(6, 6)
-        self.assertEqual(self.window.history.depth, 1)
-        self.window.undo()
-        self.assertEqual(self.document.planes.planes, before)
-
-    def test_a_second_pair_takes_the_next_channel(self):
-        self.arm()
-        self.click(2, 2); self.click(3, 2)
-        self.click(2, 4); self.click(3, 4)
-        self.assertEqual(self.document.cell(0, 2, 2), 279)
-        self.assertEqual(self.document.cell(0, 2, 4), 280)
-
-    def test_clicking_the_same_cell_twice_does_not_pair_it_with_itself(self):
-        self.arm()
-        self.click(3, 3)
-        self.click(3, 3)
-        self.assertEqual(self.document.cell(0, 3, 3), MapDocument.DEFAULT_FLOOR)
-        self.assertIsNotNone(self.window.tools.pending_transporter)
-
-    def test_a_pad_needs_floor(self):
-        self.arm()
-        self.click(0, 0)          # a wall
-        self.assertIsNone(self.window.tools.pending_transporter)
-
-    def test_validation_reports_a_lone_endpoint(self):
-        from obcedit_core.commands import write_words
-
-        document = self.document
-        self.window.run_command(write_words(document, [(0, 4, 4, 279)]))
-        codes = [p.code for p in self.window.validate()]
-        self.assertIn("C7E-WARP-001", codes)
-
-    def test_validation_is_quiet_about_a_proper_pair(self):
-        self.arm()
-        self.click(3, 3)
-        self.click(6, 6)
-        codes = [p.code for p in self.window.validate()]
-        self.assertNotIn("C7E-WARP-001", codes)
 
 
 class Clipboard(Base):
@@ -961,16 +983,16 @@ class Clipboard(Base):
         self.assertEqual(self.document.planes.planes, before)
 
     def test_copy_takes_all_three_planes(self):
-        self.choose("thing.c7rodex.stand.skill1")
+        self.choose(SOLDIER)
         self.stroke(Tool.BRUSH, [(2, 2)])
         self.select(2, 2, 1, 1)
         self.window.copy_selection()
         self.select(6, 6, 1, 1)
         self.window.paste_clipboard()
-        self.assertEqual(self.document.cell(1, 6, 6), RODEX_EAST)
+        self.assertEqual(self.document.cell(1, 6, 6), SOLDIER_EAST)
 
     def test_rotating_the_clipboard_turns_a_facing(self):
-        self.choose("thing.c7rodex.stand.skill1")
+        self.choose(SOLDIER)
         self.stroke(Tool.BRUSH, [(2, 2)])
         self.select(2, 2, 1, 1)
         self.window.copy_selection()
@@ -978,11 +1000,11 @@ class Clipboard(Base):
         self.select(6, 6, 1, 1)
         self.window.paste_clipboard()
         entry = CATALOG.for_value(1, self.document.cell(1, 6, 6))
-        self.assertEqual(entry.actor, "C7Rodex")
+        self.assertEqual(entry.actor, "Soldier")
         self.assertEqual(dict(entry.directions).get("south"), self.document.cell(1, 6, 6))
 
     def test_flipping_the_clipboard(self):
-        self.choose("thing.c7rodex.stand.skill1")
+        self.choose(SOLDIER)
         self.stroke(Tool.BRUSH, [(2, 2)])
         self.select(2, 2, 1, 1)
         self.window.copy_selection()
@@ -1000,13 +1022,15 @@ class Clipboard(Base):
 class Statistics(Base):
     def test_it_counts_what_is_there(self):
         stats = self.window.map_statistics()
-        self.assertEqual(stats["cells"], 100)
+        self.assertEqual(stats["cells"], SIZE * SIZE)
+        self.assertEqual(stats["floor"], 64, "the 8x8 room")
+        self.assertEqual(stats["markers"], 4 * SIZE - 4, "89 round the edge")
         self.assertGreater(stats["walls"], 0)
         self.assertGreater(stats["floor"], 0)
 
     def test_placing_an_enemy_shows_up(self):
         before = self.window.map_statistics()["enemies"]
-        self.choose("thing.c7rodex.stand.skill1")
+        self.choose(SOLDIER)
         self.stroke(Tool.BRUSH, [(4, 4)])
         self.assertEqual(self.window.map_statistics()["enemies"], before + 1)
 
@@ -1022,7 +1046,7 @@ class Statistics(Base):
         self.assertLess(self.window.palette_models["enemies"].rowCount(), everything)
 
     def test_the_filter_shows_what_the_map_does_use(self):
-        self.choose("thing.c7rodex.stand.skill1")
+        self.choose(SOLDIER)
         self.stroke(Tool.BRUSH, [(4, 4)])
         from obcedit_gui.main_window import PALETTE_TABS
 
@@ -1032,14 +1056,14 @@ class Statistics(Base):
         QApplication.processEvents()
         model = self.window.palette_models["enemies"]
         names = [model.data(model.index(r, 0)) for r in range(model.rowCount())]
-        self.assertIn("Rodex", names)
+        self.assertIn("Soldier, standing", names)
 
 
 class MapsList(Base):
     """The right-click actions on the maps list."""
 
     def second_map(self):
-        return self.window.new_map(name="SECOND", slot=2, width=8, height=8)
+        return self.window.new_map(name="SECOND", slot=2)
 
     def test_rename(self):
         uuid = self.window.project.maps[0].uuid
@@ -1070,7 +1094,7 @@ class MapsList(Base):
         uuid = self.window.project.maps[0].uuid
         self.assertTrue(self.window.change_slot(uuid, 7))
         self.assertEqual(self.window.project.map_by_uuid(uuid).slot, 7)
-        self.assertEqual(self.window.project.map_by_uuid(uuid).lump_name, "MAP07")
+        self.assertEqual(self.window.project.map_by_uuid(uuid).label, "slot 07")
 
     def test_a_taken_slot_is_refused(self):
         from PySide6.QtWidgets import QMessageBox
@@ -1083,13 +1107,13 @@ class MapsList(Base):
             self.assertFalse(self.window.change_slot(first, 2))
         finally:
             QMessageBox.warning = original
-        self.assertEqual(self.window.project.map_by_uuid(first).slot, 1)
+        self.assertEqual(self.window.project.map_by_uuid(first).slot, 0)
 
     def test_slot_change_is_undoable(self):
         uuid = self.window.project.maps[0].uuid
         self.window.change_slot(uuid, 7)
         self.window.undo()
-        self.assertEqual(self.window.project.map_by_uuid(uuid).slot, 1)
+        self.assertEqual(self.window.project.map_by_uuid(uuid).slot, 0)
 
     def test_duplicate(self):
         uuid = self.window.project.maps[0].uuid
@@ -1154,7 +1178,7 @@ class MapsList(Base):
         self.assertIsNotNone(menu)
         names = [action.text() for action in menu.actions() if action.text()]
         for expected in ("&Open", "&Rename…", "Change &slot…", "D&uplicate",
-                         "&Check this map", "&Test in EC7Wolf", "&Delete"):
+                         "&Check this map", "&Test in OBCR", "&Delete"):
             self.assertIn(expected, names)
         menu.deleteLater()
 
@@ -1225,8 +1249,81 @@ class Playtest(Base):
                             for i in range(self.window.problems.count())))
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=1)
+class PlaytestWithOBCR(Base):
+    """F5 and Shift+F5 against a stand-in OBCR that records what it was asked."""
+
+    def setUp(self):
+        super().setUp()
+        from gui_support import OBCR_CONTRACT
+        from obcedit_core.discovery import Profile
+
+        self.bin = self.root / "bin"
+        self.engine = fake_engine(self.bin, OBCR_CONTRACT)
+        data = make_game_data(self.root / "game")
+        self.settings.profile = Profile(engine_path=str(self.engine), data_dir=str(data),
+                                        workspace_dir=str(self.root / "ws"))
+        self.window._error = lambda title, body: self.errors.append(f"{title}: {body}")
+        self.errors = []
+        self.choose(START)
+        self.stroke(Tool.BRUSH, [(5, 5)])
+
+    def wait(self):
+        from PySide6.QtCore import QProcess
+
+        if self.window.process is not None and \
+                self.window.process.state() != QProcess.ProcessState.NotRunning:
+            self.window.process.waitForFinished(15000)
+        QApplication.processEvents()
+
+    def launched(self) -> list[str]:
+        return (self.bin / "launched.txt").read_text(encoding="utf-8").strip().split("\t")
+
+    def test_f5_checks_the_preview_mod_then_plays_it(self):
+        self.assertTrue(self.window.playtest(), self.errors)
+        self.wait()
+        self.assertTrue((self.bin / "checked.txt").is_file(), "--check-mod was not run")
+        argv = self.launched()
+        self.assertIn("--mod", argv)
+        self.assertEqual(argv[argv.index("--play") + 1], "0")
+        self.assertNotIn("--start", argv)
+        mod = Path(argv[argv.index("--mod") + 1])
+        self.assertTrue((mod / "mod.toml").is_file())
+        self.assertTrue(mod.is_relative_to((self.root / "ws").resolve()),
+                        "the preview goes in the workspace")
+        self.assertIn("--config", argv, "a playtest never uses the player's own settings")
+
+    def test_shift_f5_starts_at_the_cursor_facing_east(self):
+        self.window._on_hover(3, 4)
+        self.assertTrue(self.window.playtest_here(), self.errors)
+        self.wait()
+        argv = self.launched()
+        self.assertEqual(argv[argv.index("--start") + 1], "3,4,1")
+
+    def test_shift_f5_in_a_wall_is_refused(self):
+        self.window._on_hover(20, 20)
+        self.assertFalse(self.window.playtest_here())
+        self.assertFalse((self.bin / "launched.txt").exists())
+
+    def test_a_refusal_from_check_mod_stops_the_launch(self):
+        refuse = fake_engine(self.bin, """
+            out("problem\terror\t0\t-\tthe floor has no exit", "result\terrors")
+            sys.exit(2)
+            """, name="refusing")
+        from obcedit_core.discovery import Profile
+
+        profile = self.settings.profile
+        self.settings.profile = Profile(engine_path=str(refuse), data_dir=profile.data_dir,
+                                        workspace_dir=profile.workspace_dir)
+        self.assertFalse(self.window.playtest())
+        self.assertTrue(any("the floor has no exit" in e for e in self.errors), self.errors)
+        self.assertIsNone(self.window.session)
+
+    def test_the_test_log_shows_the_output(self):
+        self.window.playtest()
+        self.wait()
+        shown = [self.window.test_log.item(i).text().rstrip("\r")
+                 for i in range(self.window.test_log.count())]
+        self.assertIn("OBCR 1.0.0-beta.2 playing", shown)
 
 
 class SnapshotDock(Base):
@@ -1275,3 +1372,49 @@ class SnapshotDock(Base):
         self.place_camera(5, 5)
         self.assertFalse(self.window.take_snapshot())
         self.assertIn("Setup", self.window.snapshot_status.text())
+
+    def test_a_snapshot_is_taken_at_the_camera(self):
+        # A stand-in OBCR that writes a PNG with enough colours to count as a
+        # world, so the whole path -- preview mod, arguments, cache -- runs.
+        from obcedit_core.discovery import Profile
+
+        bin_dir = self.root / "bin"
+        engine = fake_engine(bin_dir, r"""
+            import struct, zlib
+            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "shot.txt"),
+                      "w", encoding="utf-8") as log:
+                log.write("\t".join(argv))
+            out_path = argv[argv.index("--shot-out") + 1]
+            width, height = 32, 20
+            rows = b"".join(b"\0" + bytes(v for x in range(width)
+                                          for v in (x * 8 % 256, y * 12 % 256, (x + y) * 5 % 256))
+                            for y in range(height))
+            def chunk(kind, data):
+                return (struct.pack(">I", len(data)) + kind + data
+                        + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF))
+            png = (b"\x89PNG\r\n\x1a\n"
+                   + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+                   + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+            with open(out_path, "wb") as image:
+                image.write(png)
+            """)
+        data = make_game_data(self.root / "game")
+        self.settings.profile = Profile(engine_path=str(engine), data_dir=str(data),
+                                        workspace_dir=str(self.root / "ws"))
+        self.place_camera(5, 5)
+        self.window.turn_camera()
+        self.assertTrue(self.window.take_snapshot(), self.window.snapshot_status.text())
+        argv = (bin_dir / "shot.txt").read_text(encoding="utf-8").split("\t")
+        self.assertEqual(argv[argv.index("--shot") + 1], "30")
+        self.assertIn("--classic", argv)
+        self.assertEqual(argv[argv.index("--start") + 1], "5,5,0")
+        self.assertFalse(self.window.snapshot_view.pixmap().isNull())
+        # The second one comes from the cache, without running OBCR.
+        (bin_dir / "shot.txt").unlink()
+        self.assertTrue(self.window.take_snapshot())
+        self.assertIn("from the cache", self.window.snapshot_status.text())
+        self.assertFalse((bin_dir / "shot.txt").exists())
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=1)

@@ -2,9 +2,11 @@
 # Copyright (C) 2026 Jason Tripp
 """Turning a catalog entry into a picture, using the user's own game data.
 
-The catalog says *which* wall page or sprite page a thing is. This is where
-that becomes pixels — read from the copy of Corridor 7 the user pointed the
-editor at, decoded in memory, and cached in memory. Nothing is written to disk.
+The catalog says *which* wall page or sprite a thing is. This is where that
+becomes pixels — read from the copy of Operation Body Count the user pointed
+the editor at (`GFXTILES.BC`, and the palette inside `COUNT.EXE` or
+`BCCD.EXE`), decoded in memory, and cached in memory. Nothing is written to
+disk.
 
 That is the licensing boundary made concrete: the catalog is a file this
 project can ship, and the artwork is not, so the artwork is never in the
@@ -33,10 +35,8 @@ from obcedit_core.assets import (
     sprite_rgba,
     wall_rgb,
 )
-from obcedit_core.catalog import CatalogEntry
-
-#: Wall value 1 is page 0, and the catalog records the value.
-WALL_PAGE_OFFSET = 1
+from obcedit_core.catalog import Catalog, CatalogEntry
+from obcedit_core.discovery import find_file, game_executable
 
 
 @dataclass
@@ -52,8 +52,12 @@ class AssetSource:
     @classmethod
     def open(cls, data_dir: Path | str, *, fingerprint: str = "") -> "AssetSource":
         data_dir = Path(data_dir)
-        palette = load_palette((data_dir / "CORR7CD.EXE").read_bytes())
-        gfx = (data_dir / "GFXTILES.CO7").read_bytes()
+        executable = game_executable(data_dir)
+        gfx_path = find_file(data_dir, "GFXTILES.BC")
+        if executable is None or gfx_path is None:
+            raise AssetError(f"{data_dir} has no COUNT.EXE/BCCD.EXE and GFXTILES.BC")
+        palette = load_palette(executable.read_bytes(), executable.name.upper())
+        gfx = gfx_path.read_bytes()
         return cls(data_dir, palette, gfx, parse_gfx_header(gfx), fingerprint)
 
     def wall(self, page: int) -> bytes:
@@ -76,8 +80,11 @@ class ThumbnailFactory:
     a cache that ignored that would show the old pictures indefinitely.
     """
 
-    def __init__(self, source: AssetSource | None = None, *, budget_bytes: int = 32 << 20) -> None:
+    def __init__(self, source: AssetSource | None = None, *, budget_bytes: int = 32 << 20,
+                 catalog: Catalog | None = None) -> None:
         self.source = source
+        #: For floors: their picture is the floor-set page the catalog names.
+        self.catalog = catalog
         self._pixels = ImageCache(budget_bytes)
         self._pixmaps: dict[str, QPixmap] = {}
 
@@ -99,13 +106,26 @@ class ThumbnailFactory:
         if self.source is None:
             raise AssetError("no game data is open")
 
-        if entry.category in ("walls", "specials") and entry.texture:
-            page = entry.value - WALL_PAGE_OFFSET
+        page = self.page_for(entry)
+        if page is not None:
             return self._pixels.fetch(f"wall:{page}", lambda: self.source.wall(page)), 64, False
         if entry.sprite is not None:
             page = entry.sprite
             return self._pixels.fetch(f"sprite:{page}", lambda: self.source.sprite(page)), 64, True
         raise AssetError(f"{entry.key} has no artwork to draw")
+
+    def page_for(self, entry: CatalogEntry) -> int | None:
+        """The wall page that pictures a plane-0 entry: its own (walls, doors,
+        specials) or, for a floor, its texture set's floor page."""
+        if entry.plane != 0:
+            return None
+        if entry.page is not None:
+            return int(entry.page)
+        floor_set = entry.data.get("floor_set") if entry.data else None
+        if floor_set is not None and self.catalog is not None:
+            page = self.catalog.floor_set(int(floor_set)).get("floor_page")
+            return int(page) if page is not None else None
+        return None
 
     def image_from(self, pixels: bytes, edge: int, alpha: bool) -> QImage:
         """Wrap decoded bytes as a QImage. GUI thread only."""

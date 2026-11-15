@@ -99,8 +99,8 @@ class FirstRunDialog(QDialog):
         self.setObjectName("first-run")
         self._probe_engine = False
 
-        self.engine = PathRow("EC7Wolf executable", directory=False)
-        self.data = PathRow("Corridor 7 game data folder", directory=True)
+        self.engine = PathRow("OBCR executable (obcr)", directory=False)
+        self.data = PathRow("Operation Body Count game data folder", directory=True)
         self.workspace = PathRow("Where to keep your projects", directory=True)
 
         form = QFormLayout()
@@ -119,10 +119,10 @@ class FirstRunDialog(QDialog):
         self.summary.setWordWrap(True)
         self.summary.setAccessibleName("Setup summary")
 
-        self.probe_button = QPushButton("Check the engine…", self)
+        self.probe_button = QPushButton("Check with OBCR…", self)
         self.probe_button.setToolTip(
-            "Runs the executable once with --help to read its version. "
-            "Nothing is run until you ask."
+            "Runs obcr --version to confirm it is OBCR, and obcr --check-data to "
+            "identify your game data. Nothing is run until you ask."
         )
         self.probe_button.clicked.connect(self._run_probe)
 
@@ -134,7 +134,9 @@ class FirstRunDialog(QDialog):
 
         layout = QVBoxLayout(self)
         explain = QLabel(
-            "OBCEdit needs your own copy of Corridor 7. Nothing from the game is "
+            "OBCEdit needs OBCR and your own copy of Operation Body Count: the "
+            "data folder of an OBCR installation works, or the folder with "
+            "COUNT.EXE or BCCD.EXE and the .BC files. Nothing from the game is "
             "copied into the editor or into your projects — the editor reads it "
             "where it is and leaves it alone.",
             self,
@@ -167,6 +169,8 @@ class FirstRunDialog(QDialog):
 
     def _apply(self, profile: Profile) -> None:
         self._profile_id = profile.profile_id or new_uuid()
+        self._engine_version = profile.engine_version
+        self._release = profile.release
         self.engine.path = profile.engine_path
         self.data.path = profile.data_dir
         self.workspace.path = profile.workspace_dir
@@ -187,11 +191,13 @@ class FirstRunDialog(QDialog):
             workspace_dir=self.workspace.path,
             data_fingerprint=fingerprint,
             engine_version=self._engine_version,
+            release=self._release,
         )
 
     # -- validation -------------------------------------------------------
 
     _engine_version = ""
+    _release = ""
 
     def _run_probe(self) -> None:
         self._probe_engine = True
@@ -207,6 +213,9 @@ class FirstRunDialog(QDialog):
         report = check_profile(profile, probe=self._probe_engine)
         if self._probe_engine:
             self._engine_version = engine_version(report) or self._engine_version
+            for check in report:
+                if check.name == "Release" and check.detail:
+                    self._release = check.detail.split(":", 1)[0]
         self._probe_engine = False
 
         self.checklist.clear()

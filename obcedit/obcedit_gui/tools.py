@@ -13,7 +13,7 @@ Ctrl+Z takes back the line you drew, not the last cell of it.
 
 Which plane a tool writes is the *catalog's* decision, not the tool's. A wall
 brush and an enemy brush are the same code; the difference is that the entry
-says plane 0 or plane 1, which is why placing a door and placing an alien did
+says plane 0 or plane 1, which is why placing a door and placing an enemy did
 not need two implementations.
 """
 
@@ -29,7 +29,6 @@ from obcedit_core.catalog import CatalogEntry
 from obcedit_core.commands import Command, write_words
 from obcedit_core.document import MapDocument
 from obcedit_core.prefabs import Prefab
-from obcedit_core.rules import free_channel
 from obcedit_core.tools import (
     FILL_BUDGET,
     flood_cells,
@@ -39,10 +38,11 @@ from obcedit_core.tools import (
     rectangle_cells,
 )
 
-#: Corridor 7's empty object marker, which is what erasing plane 1 writes.
+#: The empty object marker (the original editor's background), which is what
+#: erasing plane 1 writes.
 EMPTY_OBJECT = 18
-#: What erasing plane 0 writes: open floor, which in Corridor 7 is a sound
-#: area. See MapDocument.DEFAULT_FLOOR for why it must not be zero.
+#: What erasing plane 0 writes: open floor, area 4 with texture set 0. See
+#: MapDocument.DEFAULT_FLOOR for why it must not be zero.
 DEFAULT_FLOOR = MapDocument.DEFAULT_FLOOR
 
 
@@ -55,7 +55,6 @@ class Tool(Enum):
     ERASER = "eraser"
     EYEDROPPER = "eyedropper"
     PREFAB = "prefab"
-    TRANSPORTER = "transporter"
     CAMERA = "camera"
 
     @property
@@ -69,7 +68,6 @@ class Tool(Enum):
             Tool.ERASER: "Erase",
             Tool.EYEDROPPER: "Pick",
             Tool.PREFAB: "Place",
-            Tool.TRANSPORTER: "Transporter",
             Tool.CAMERA: "Camera",
         }[self]
 
@@ -78,8 +76,7 @@ class Tool(Enum):
         return {
             Tool.POINTER: "S", Tool.BRUSH: "B", Tool.LINE: "L",
             Tool.RECTANGLE: "R", Tool.FILL: "F", Tool.ERASER: "E",
-            Tool.EYEDROPPER: "I", Tool.PREFAB: "P", Tool.TRANSPORTER: "T",
-            Tool.CAMERA: "K",
+            Tool.EYEDROPPER: "I", Tool.PREFAB: "P", Tool.CAMERA: "K",
         }[self]
 
 
@@ -126,8 +123,6 @@ class ToolController(QObject):
         self.prefab: Prefab | None = None
         #: Quarter turns applied to the selected prefab's footprint.
         self.prefab_rotation = 0
-        #: The first end of a transporter pair, waiting for its second click.
-        self.pending_transporter: tuple[int, int, int] | None = None
         self.document: MapDocument | None = None
         self.selection = Selection()
         self.filled_rectangle = False
@@ -169,9 +164,11 @@ class ToolController(QObject):
     def _place_prefab(self, x: int, y: int) -> None:
         """One click, one compound structure, one undo step -- or a refusal.
 
-        Refusing is the useful half. A dispenser with no floor in front of it
-        is a wall unit nobody can reach, and finding that out at playtest is
-        much worse than being told at the click.
+        Refusing is the useful half. An exit with no floor in front of it is a
+        wall nobody can use, and a door with no walls on its sides is a door
+        the game draws wrong; finding that out at playtest is much worse than
+        being told at the click. `placement_on` resolves what depends on the
+        map, which is a door's axis.
         """
         prefab = self.oriented_prefab
         if prefab is None or self.document is None:
@@ -181,55 +178,14 @@ class ToolController(QObject):
             self.refused.emit(problems)
             self.message.emit(problems[0].message)
             return
-        command = write_words(self.document, prefab.placement(x, y),
+        command = write_words(self.document, prefab.placement_on(self.document, x, y),
                               label=prefab.name, gesture=self._gesture)
         if command.changes_anything:
             self.command_ready.emit(command)
 
-    def _place_transporter(self, x: int, y: int) -> None:
-        """Two clicks make a channel; the first alone makes nothing.
-
-        A transporter with one end is not a half-built transporter, it is a
-        broken map, so the first click is remembered rather than written and
-        the pair is placed together as one undo step.
-        """
-        from obcedit_core.prefabs import is_floor
-
-        if self.document is None:
-            return
-        if not is_floor(self.document.cell(0, x, y)):
-            self.message.emit("A transporter pad needs floor to stand on")
-            return
-
-        if self.pending_transporter is None:
-            channel = free_channel(self.document)
-            if channel is None:
-                self.message.emit("All eight transporter channels are already paired")
-                return
-            self.pending_transporter = (channel, x, y)
-            self.message.emit(
-                f"Channel {channel}: first end at ({x}, {y}). Click its other end."
-            )
-            return
-
-        channel, first_x, first_y = self.pending_transporter
-        if (x, y) == (first_x, first_y):
-            self.message.emit("A channel needs two different cells")
-            return
-        self.pending_transporter = None
-        command = write_words(
-            self.document,
-            [(0, first_x, first_y, channel), (0, x, y, channel)],
-            label=f"Transporter channel {channel}",
-        )
-        if command.changes_anything:
-            self.command_ready.emit(command)
-        self.message.emit(f"Channel {channel} paired ({first_x}, {first_y}) to ({x}, {y})")
-
     def cancel_pending(self) -> None:
-        if self.pending_transporter is not None:
-            self.pending_transporter = None
-            self.message.emit("Transporter canceled")
+        """Nothing in Operation Body Count needs a second click; kept so the
+        window can call it whenever a tool changes."""
 
     def set_document(self, document: MapDocument | None) -> None:
         """Point at a map, or at a newer snapshot of the one already open.
@@ -258,9 +214,9 @@ class ToolController(QObject):
 
     def _value(self) -> int | None:
         if self.tool is Tool.ERASER:
-            # Erasing a wall leaves floor, and floor is a sound area -- word 0
-            # is not one, and a map floored with it is a map where nothing can
-            # hear the player. See MapDocument.DEFAULT_FLOOR.
+            # Erasing a wall leaves floor: 144, area 4 with texture set 0.
+            # Word 0 is not floor in Operation Body Count (floors are
+            # 140-161). See MapDocument.DEFAULT_FLOOR.
             return EMPTY_OBJECT if self.target_plane == 1 else DEFAULT_FLOOR
         if self.entry is None:
             return None
@@ -298,7 +254,7 @@ class ToolController(QObject):
             # would make the tool depend on invisible state.
             for plane in (1, 0):
                 value = pick(self.document, plane, x, y)
-                if value is None or (plane == 1 and value in (0, EMPTY_OBJECT)):
+                if value is None or (plane == 1 and value < 19):
                     continue
                 self.picked.emit(plane, value)
                 self.message.emit(f"Picked {value} from plane {plane}")
@@ -313,10 +269,6 @@ class ToolController(QObject):
 
         if self.tool is Tool.PREFAB:
             self._place_prefab(x, y)
-            return
-
-        if self.tool is Tool.TRANSPORTER:
-            self._place_transporter(x, y)
             return
 
         if self.tool is Tool.CAMERA:

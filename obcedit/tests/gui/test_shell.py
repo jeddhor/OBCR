@@ -8,8 +8,9 @@ These are not mocked. A real `QApplication`, real widgets, real signals -- on
 still exercise layout, painting and event delivery. A GUI test that stubs the
 toolkit tests the stub.
 
-Nothing here needs Corridor 7. Every project is synthetic and the palette runs
-without artwork, which is also the state a first-time user is in before setup.
+Nothing here needs Operation Body Count. Every project is synthetic, the
+palette runs without artwork (the state a first-time user is in before setup),
+and the engine is a stand-in script (gui_support.fake_engine).
 """
 
 from __future__ import annotations
@@ -27,15 +28,17 @@ sys.path.insert(0, str(EDITOR))
 
 from PySide6.QtCore import QPoint, QSettings, QSize, Qt
 from PySide6.QtGui import QImage
-from PySide6.QtWidgets import QApplication, QListView
+from PySide6.QtWidgets import QApplication, QLabel, QListView
 
 from obcedit_core.archive import MapRecord, encode_archive
-from obcedit_core.catalog import load_catalog
+from obcedit_core.catalog import default_catalog
 from obcedit_core.commands import paint_cells
 from obcedit_core.document import MapDocument, ProjectDocument
 from obcedit_core.names import NativeName
 from obcedit_core.planes import MapPlanes
 from obcedit_core.project import save_project
+
+from gui_support import PYTHON, fake_engine, fake_script, make_game_data
 
 from obcedit_gui.application import build_application, install_exception_hook
 from obcedit_gui.main_window import PALETTE_TABS, MainWindow
@@ -44,7 +47,7 @@ from obcedit_gui.palette_models import CatalogModel, EntryRole
 from obcedit_gui.settings import Settings
 from obcedit_gui.workers import WorkerPool
 
-CATALOG = load_catalog(EDITOR / "resources" / "editor_catalog.json")
+CATALOG = default_catalog()
 
 _application = build_application([])
 
@@ -62,7 +65,7 @@ def synthetic_map(slot=1, name="LAB", width=8, height=8) -> MapDocument:
 def synthetic_project(maps=2) -> ProjectDocument:
     project = ProjectDocument.create("Offscreen")
     for index in range(maps):
-        project = project.added(synthetic_map(index + 1, f"MAP{index}"))
+        project = project.added(synthetic_map(index + 1, f"FLOOR{index}"))
     return project
 
 
@@ -101,6 +104,44 @@ class WindowStructure(Base):
     def test_the_window_has_its_menus(self):
         titles = [action.text() for action in self.window.menuBar().actions()]
         self.assertEqual(titles, ["&File", "&Edit", "&View", "&Tools", "&Help"])
+
+    def test_the_menus_speak_obcr(self):
+        # Nothing of Corridor 7 / ECWolf is left: no WADs, no MAPINFO, no
+        # resource packs, no transporters.
+        texts = []
+        for menu_action in self.window.menuBar().actions():
+            texts += [a.text() for a in menu_action.menu().actions()]
+        joined = " ".join(texts).lower()
+        for gone in ("wad", "mapinfo", "resource", "pack", "transporter", "ec7wolf",
+                     "sound area"):
+            self.assertNotIn(gone, joined)
+        for wanted in ("Campai&gn…", "&Export mod…", "&Install in OBCR",
+                       "&Test in OBCR", "Test from the &cursor"):
+            self.assertIn(wanted, texts)
+
+    def test_f5_tests_and_shift_f5_tests_from_the_cursor(self):
+        self.assertEqual(self.window.action_test.shortcut().toString(), "F5")
+        self.assertEqual(self.window.action_test_here.shortcut().toString(), "Shift+F5")
+        self.assertNotEqual(self.window.action_stop_test.shortcut().toString(), "Shift+F5")
+
+    def test_the_palette_tabs_follow_the_catalog(self):
+        from obcedit_core.catalog import CATEGORIES
+
+        self.assertEqual([c for _, c in PALETTE_TABS], ["prefabs", *CATEGORIES])
+        self.assertEqual(PALETTE_TABS[0][0], "Doors and Specials")
+
+    def test_the_about_box_names_operation_body_count(self):
+        from PySide6.QtWidgets import QMessageBox
+
+        seen = []
+        original = QMessageBox.about
+        QMessageBox.about = staticmethod(lambda parent, title, text: seen.append(text))
+        try:
+            self.window.about()
+        finally:
+            QMessageBox.about = original
+        self.assertIn("Operation Body Count", seen[0])
+        self.assertNotIn("Corridor", seen[0])
 
     def test_the_docks_exist_and_are_named(self):
         for dock in (self.window.maps_dock, self.window.palette_dock, self.window.problems_dock):
@@ -142,7 +183,7 @@ class ProjectFlow(Base):
         self.window.set_project(synthetic_project(2))
         self.window.open_map(self.window.project.maps[0].uuid)
         self.assertEqual(self.window.tabs.count(), 1)
-        self.assertIn("MAP0", self.window.tabs.tabText(0))
+        self.assertIn("FLOOR0", self.window.tabs.tabText(0))
 
     def test_opening_the_same_map_twice_reuses_the_tab(self):
         self.window.set_project(synthetic_project(1))
@@ -159,7 +200,7 @@ class ProjectFlow(Base):
         self.assertEqual(self.window.current_tab.map_uuid, self.window.project.maps[1].uuid)
 
     def test_save_and_reopen(self):
-        path = self.root / "demo.ec7project"
+        path = self.root / "demo.obcproject"
         self.window.set_project(synthetic_project(2))
         self.window.project_path = path
         self.assertTrue(self.window.save_project())
@@ -204,7 +245,7 @@ class ProjectFlow(Base):
                                  "a checkable action would actually want the flag")
 
     def test_saving_records_the_project_as_recent(self):
-        path = self.root / "recent.ec7project"
+        path = self.root / "recent.obcproject"
         self.window.set_project(synthetic_project(1))
         self.window.project_path = path
         self.window.save_project()
@@ -213,7 +254,7 @@ class ProjectFlow(Base):
     def test_open_recent_lists_what_was_opened(self):
         paths = []
         for index in range(8):
-            path = self.root / f"p{index}.ec7project"
+            path = self.root / f"p{index}.obcproject"
             self.window.set_project(synthetic_project(1))
             self.window.project_path = path
             self.window.save_project()
@@ -234,7 +275,7 @@ class ProjectFlow(Base):
         self.assertFalse(actions[0].isEnabled())
 
     def test_a_recent_project_that_is_gone_is_forgotten(self):
-        path = self.root / "vanished.ec7project"
+        path = self.root / "vanished.obcproject"
         self.window.set_project(synthetic_project(1))
         self.window.project_path = path
         self.window.save_project()
@@ -246,7 +287,7 @@ class ProjectFlow(Base):
         self.assertNotIn(str(path.resolve()), self.settings.recent_projects)
 
     def test_choosing_a_recent_entry_opens_it(self):
-        path = self.root / "again.ec7project"
+        path = self.root / "again.obcproject"
         self.window.set_project(synthetic_project(2))
         self.window.project_path = path
         self.window.save_project()
@@ -265,8 +306,8 @@ class ProjectFlow(Base):
         # Ctrl+S overwrites.
         from PySide6.QtWidgets import QFileDialog
 
-        here = self.root / "here.ec7project"
-        there = self.root / "there.ec7project"
+        here = self.root / "here.obcproject"
+        there = self.root / "there.obcproject"
         self.window.set_project(synthetic_project(2))
         self.window.project_path = here
         self.window.save_project()
@@ -287,7 +328,7 @@ class ProjectFlow(Base):
     def test_a_copy_refuses_to_overwrite_this_project(self):
         from PySide6.QtWidgets import QFileDialog
 
-        here = self.root / "same.ec7project"
+        here = self.root / "same.obcproject"
         self.window.set_project(synthetic_project(1))
         self.window.project_path = here
         self.window.save_project()
@@ -304,7 +345,7 @@ class ProjectFlow(Base):
     def test_a_file_changed_underneath_is_never_silently_overwritten(self):
         from PySide6.QtWidgets import QMessageBox
 
-        path = self.root / "shared.ec7project"
+        path = self.root / "shared.obcproject"
         self.window.set_project(synthetic_project(1))
         self.window.project_path = path
         self.window.save_project()
@@ -327,7 +368,7 @@ class ProjectFlow(Base):
 
     def test_autosave_writes_only_when_there_is_something_to_recover(self):
         self.window.set_project(synthetic_project(1))
-        self.window.project_path = self.root / "auto.ec7project"
+        self.window.project_path = self.root / "auto.obcproject"
         self.window.save_project()
         self.assertFalse(self.window.autosave(), "a saved project has nothing to recover")
         self.window.project = self.window.project.touched()
@@ -335,7 +376,7 @@ class ProjectFlow(Base):
 
     def test_saving_clears_the_recovery_copy(self):
         self.window.set_project(synthetic_project(1))
-        self.window.project_path = self.root / "clear.ec7project"
+        self.window.project_path = self.root / "clear.obcproject"
         self.window.project = self.window.project.touched()
         self.window.autosave()
         self.assertTrue([r for r in self.window.recovery.list_recoveries()
@@ -392,32 +433,57 @@ class ProjectFlow(Base):
         self.window.run_command(paint_cells(document, 0, [(1, 1)], 99))
         self.assertIn("•", self.window.windowTitle())
 
+    def write_archive(self, records) -> Path:
+        directory = self.root / "archive"
+        directory.mkdir(exist_ok=True)
+        head, temp = encode_archive(records)
+        (directory / "MAPHEAD.BC").write_bytes(head)
+        (directory / "MAPTEMP.BC").write_bytes(temp)
+        return directory
+
     def test_importing_from_an_archive(self):
-        archive = self.root / "source.c7map"
-        records = [
+        directory = self.write_archive([
             MapRecord(1, NativeName.from_text("IMPORTED"),
                       MapPlanes(4, 4, ((7,) * 16, (18,) * 16, (0,) * 16)))
-        ]
-        archive.write_bytes(encode_archive(records))
-        before = archive.read_bytes()
+        ])
+        before = (directory / "MAPTEMP.BC").read_bytes()
 
         self.window.set_project(ProjectDocument.create())
-        self.window.import_map(str(archive), 1)
+        # Either file of the pair (or the folder) finds the archive.
+        self.window.import_map(str(directory / "MAPTEMP.BC"), 1)
         self.assertEqual(len(self.window.project), 1)
         self.assertEqual(self.window.project.maps[0].name, "IMPORTED")
+        self.assertEqual(self.window.project.maps[0].slot, 1)
         self.assertEqual(self.window.tabs.count(), 1)
-        self.assertEqual(archive.read_bytes(), before, "the archive was written to")
+        self.assertEqual((directory / "MAPTEMP.BC").read_bytes(), before,
+                         "the archive was written to")
 
     def test_an_import_records_where_it_came_from(self):
-        archive = self.root / "source.c7map"
-        archive.write_bytes(encode_archive([
+        directory = self.write_archive([
             MapRecord(1, NativeName.from_text("SRC"), MapPlanes.empty(4, 4))
-        ]))
+        ])
         self.window.set_project(ProjectDocument.create())
-        self.window.import_map(str(archive), 1)
+        self.window.import_map(str(directory), 1)
         source = self.window.project.maps[0].source
         self.assertEqual(len(source.sha256), 64)
         self.assertEqual(source.map_number, 1)
+
+    def test_new_maps_take_the_first_free_slot_from_zero(self):
+        self.window.set_project(ProjectDocument.create())
+        first = self.window.new_map("ONE")
+        second = self.window.new_map("TWO")
+        self.assertEqual((first.slot, second.slot), (0, 1))
+        self.assertEqual(first.cell(0, 5, 5), 144, "new rooms are floored with 144")
+
+    def test_a_slot_is_a_number_from_0_to_99(self):
+        self.window.set_project(synthetic_project(2))
+        errors = []
+        self.window._error = lambda title, body: errors.append(title)
+        uuid = self.window.project.maps[0].uuid
+        self.assertTrue(self.window.change_slot(uuid, 0))
+        self.assertEqual(self.window.project.maps[0].slot, 0)
+        self.assertFalse(self.window.change_slot(uuid, 2), "slot 2 is taken")
+        self.assertTrue(errors)
 
 
 class Editing(Base):
@@ -532,52 +598,15 @@ class Palette(Base):
             if category == "prefabs":
                 self.assertGreater(self.window.prefab_list.count(), 0, "Structures is empty")
                 continue
-            if category == "custom":
-                # Empty until a resource pack is attached, and correctly so:
-                # its entries come from the project, not from the game's
-                # tables. `test_the_custom_tab_fills_when_a_pack_is_attached`
-                # covers the other half.
-                self.show_tab(category)
-                self.assertEqual(self.window.palette_models[category].rowCount(), 0,
-                                 "Custom should be empty with no pack attached")
-                continue
             self.show_tab(category)
             model = self.window.palette_models[category]
             self.assertGreater(model.rowCount(), 0, f"{title} is empty")
-
-    def test_the_custom_tab_fills_when_a_pack_is_attached(self):
-        import zipfile
-
-        from obcedit_core.custom import allocate, store
-        from obcedit_core.resources import inspect as inspect_resource
-
-        pack = self.root / "bloom.pk3"
-        with zipfile.ZipFile(pack, "w") as archive:
-            archive.writestr("DECORATE", 'actor TestBloom : C7Rodex\n{\nstates\n{\nSpawn:\nTBLM A -1\nstop\n}\n}\n')
-            archive.writestr("sprites/TBLMA0.png", b'\x89PNG\r\n\x1a\n\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')
-
-        resource = inspect_resource(pack)
-        allocations, _ = allocate([], [resource], self.window.project.maps)
-        self.window.project = self.window.project.with_resources(
-            [resource.to_json()], store(allocations))
-        self.window._refresh_custom_palette()
-        self.show_tab("custom")
-        self.assertEqual(self.window.palette_models["custom"].rowCount(), 1)
-
-    def test_detaching_a_pack_takes_its_entries_away_again(self):
-        # An entry left behind would paint a word the engine can no longer
-        # translate -- a map that looks right and spawns nothing.
-        self.test_the_custom_tab_fills_when_a_pack_is_attached()
-        self.window.project = self.window.project.with_resources([], {})
-        self.window._refresh_custom_palette()
-        self.show_tab("custom")
-        self.assertEqual(self.window.palette_models["custom"].rowCount(), 0)
 
     def test_search_narrows_the_list(self):
         self.show_tab("enemies")
         model = self.window.palette_models["enemies"]
         everything = model.rowCount()
-        self.window.search.setText("Rodex")
+        self.window.search.setText("Rat")
         QApplication.processEvents()
         self.assertLess(model.rowCount(), everything)
         self.assertGreater(model.rowCount(), 0)
@@ -588,7 +617,7 @@ class Palette(Base):
         QApplication.processEvents()
         model = self.window.palette_models["enemies"]
         names = [model.data(model.index(row, 0)) for row in range(model.rowCount())]
-        self.assertIn("Alioprobe", names)
+        self.assertIn("Rat, standing", names)
 
     def test_entries_carry_their_catalog_object(self):
         model = self.window.palette_models["walls"]
@@ -609,6 +638,22 @@ class Palette(Base):
         model.set_entries(CATALOG.in_category("enemies")[:1])
         tooltip = model.data(model.index(0, 0), Qt.ToolTipRole)
         self.assertIn("raw", tooltip)
+
+    def test_enemy_tooltips_give_facings_and_difficulty(self):
+        model = self.window.palette_models["enemies"]
+        model.set_entries([CATALOG.for_value(1, 144)])
+        tooltip = model.data(model.index(0, 0), Qt.ToolTipRole)
+        self.assertIn("difficulty 2 and 3", tooltip)
+        self.assertIn("north (145)", tooltip)
+
+    def test_the_doors_and_specials_tab_offers_the_prefabs(self):
+        from obcedit_core.prefabs import PREFABS
+
+        self.assertEqual(self.window.prefab_list.count(), len(PREFABS))
+        names = [self.window.prefab_list.item(i).text()
+                 for i in range(self.window.prefab_list.count())]
+        self.assertTrue(any("door" in name.lower() for name in names))
+        self.assertTrue(any("push" in name.lower() for name in names))
 
     def test_accessible_text_is_provided(self):
         model = self.window.palette_models["objects"]
@@ -765,22 +810,7 @@ class FirstRun(unittest.TestCase):
 
     def make_data(self) -> None:
         """A synthetic game directory: right names, right shapes, no retail bytes."""
-        from obcedit_core.assets import PALETTE_OFFSET, PALETTE_SIZE
-
-        executable = bytearray(b"\x00" * PALETTE_OFFSET)
-        for index in range(256):
-            executable += bytes(((index // 4) & 63, (index // 8) & 63, (index // 16) & 63))
-        (self.data / "CORR7CD.EXE").write_bytes(bytes(executable))
-        (self.data / "MAPTEMP.CO7").write_bytes(encode_archive([
-            MapRecord(1, NativeName.from_text("SYNTH"), MapPlanes.empty(8, 8))
-        ]))
-        import struct
-
-        chunks = 2
-        header = struct.pack("<HHH", chunks, 1, 2)
-        header += struct.pack(f"<{chunks}I", 6 + chunks * 6, 6 + chunks * 6)
-        header += struct.pack(f"<{chunks}H", 0, 0)
-        (self.data / "GFXTILES.CO7").write_bytes(header)
+        make_game_data(self.data)
 
     def dialog(self, **paths):
         from obcedit_gui.first_run import FirstRunDialog
@@ -852,11 +882,15 @@ class FirstRun(unittest.TestCase):
         # real decision, and until then the checklist says it does not know.
         self.make_data()
         marker = self.root / "was-run"
-        script = self.root / "fake-engine"
-        script.write_text(f"#!/bin/sh\ntouch {marker}\necho EC7Wolf 1.0-beta1\n")
-        script.chmod(0o755)
+        engine = fake_engine(self.root / "bin", f"""
+            open({str(marker)!r}, "a").close()
+            if "--check-data" in argv:
+                out("release\tOBC-A\tsynthetic", "complete\tyes")
+            else:
+                out("obcr 1.0.0-beta.2")
+            """)
 
-        dialog = self.dialog(engine_path=str(script), data_dir=str(self.data),
+        dialog = self.dialog(engine_path=str(engine), data_dir=str(self.data),
                              workspace_dir=str(self.workspace))
         try:
             self.assertFalse(marker.exists(), "the engine was run without being asked")
@@ -868,21 +902,32 @@ class FirstRun(unittest.TestCase):
             dialog.probe_button.click()
             QApplication.processEvents()
             self.assertTrue(marker.exists(), "the probe did not run the engine")
-            self.assertIn("EC7Wolf", dialog.profile().engine_version)
+            self.assertIn("obcr", dialog.profile().engine_version)
+            self.assertEqual(dialog.profile().release, "OBC-A")
         finally:
             dialog.deleteLater()
 
-    def test_a_binary_that_is_not_ec7wolf_is_refused(self):
+    def test_a_binary_that_is_not_obcr_is_refused(self):
         self.make_data()
-        script = self.root / "upstream"
-        script.write_text("#!/bin/sh\necho ECWolf 1.4.2\n")
-        script.chmod(0o755)
-        dialog = self.dialog(engine_path=str(script), data_dir=str(self.data),
+        engine = fake_engine(self.root / "bin", 'out("ECWolf 1.4.2")', name="upstream")
+        dialog = self.dialog(engine_path=str(engine), data_dir=str(self.data),
                              workspace_dir=str(self.workspace))
         try:
             dialog.probe_button.click()
             QApplication.processEvents()
             self.assertFalse(dialog.usable)
+        finally:
+            dialog.deleteLater()
+
+    def test_the_checklist_speaks_obcr(self):
+        from obcedit_gui.first_run import FirstRunDialog
+
+        dialog = FirstRunDialog()
+        try:
+            self.assertIn("OBCR", dialog.probe_button.text())
+            labels = " ".join(label.text() for label in dialog.findChildren(QLabel))
+            self.assertIn("Operation Body Count", labels)
+            self.assertNotIn("Corridor", labels)
         finally:
             dialog.deleteLater()
 
@@ -897,23 +942,7 @@ class Setup(Base):
     """
 
     def make_data(self) -> Path:
-        from obcedit_core.assets import PALETTE_OFFSET
-
-        data = self.root / "game"
-        data.mkdir()
-        executable = bytearray(b"\x00" * PALETTE_OFFSET)
-        for index in range(256):
-            executable += bytes(((index // 4) & 63, (index // 8) & 63, (index // 16) & 63))
-        (data / "CORR7CD.EXE").write_bytes(bytes(executable))
-        (data / "MAPTEMP.CO7").write_bytes(encode_archive([
-            MapRecord(1, NativeName.from_text("SYNTH"), MapPlanes.empty(8, 8))
-        ]))
-        import struct
-
-        header = struct.pack("<HHH", 2, 1, 2)
-        header += struct.pack("<2I", 18, 18) + struct.pack("<2H", 0, 0)
-        (data / "GFXTILES.CO7").write_bytes(header)
-        return data
+        return make_game_data(self.root / "game")
 
     def run_setup_answering(self, answer):
         from PySide6.QtWidgets import QDialog
@@ -986,28 +1015,23 @@ class ExceptionReporting(unittest.TestCase):
             sys.excepthook = previous
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=1)
-
-
 class PlaytestSessions(Base):
-    """E9: the process controller, driven by a fake engine rather than the real
-    one, so the lifecycle is testable without a game or a display."""
+    """The process controller, driven by a stand-in script rather than OBCR,
+    so the lifecycle is testable without a game or a display.
 
-    def fake_engine(self, script: str) -> Path:
-        path = self.root / "fake-engine.sh"
-        path.write_text("#!/bin/sh\n" + script)
-        path.chmod(0o755)
-        return path
+    The script is started through the interpreter directly (not a launcher),
+    so stopping the process stops the script, on Windows too."""
 
-    def plan_for(self, engine: Path, session="s1"):
+    def fake_engine(self, body: str) -> Path:
+        return fake_script(self.root / "bin", body)
+
+    def plan_for(self, script: Path, session="s1"):
         from obcedit_core.engine_runner import LaunchPlan
 
-        return LaunchPlan(engine, [], self.root, session=session,
-                          session_dir=self.root / "sess",
-                          preview=self.root / "preview.wad")
+        return LaunchPlan(Path(PYTHON), ["-u", str(script)], self.root, session=session,
+                          session_dir=self.root / "sess", mod=self.root / "mod")
 
-    def run_to_end(self, engine, session="s1", timeout=8000):
+    def run_to_end(self, engine, session="s1", timeout=15000):
         from PySide6.QtCore import QProcess
 
         self.assertTrue(self.window.start_session(self.plan_for(engine, session), "TEST"))
@@ -1016,49 +1040,46 @@ class PlaytestSessions(Base):
         QApplication.processEvents()
         return self.window.session
 
-    def test_a_good_run_is_reported_as_reaching_the_map(self):
+    def test_a_good_run_finishes(self):
         from obcedit_core.engine_runner import SessionState
 
-        engine = self.fake_engine(
-            'echo "OBCEDIT s1 hello engine=Fake"\n'
-            'echo "adding ./AUDIOT.CO7"\n'
-            'echo "OBCEDIT s1 preview-load path=preview.wad loaded=yes lumps=9"\n'
-            'echo "OBCEDIT s1 map-entry marker=MAP01 name=Lab"\n'
-            'echo "OBCEDIT s1 session-result outcome=quit"\n'
-            'exit 0\n')
-        session = self.run_to_end(engine)
+        session = self.run_to_end(self.fake_engine(
+            'out("OBCR 1.0.0-beta.2", "mod: obcedit-preview")\nsys.exit(0)'))
         self.assertIs(session.state, SessionState.FINISHED)
         self.assertTrue(session.reached_the_map)
 
-    def test_a_silent_engine_is_reported_as_failed(self):
+    def test_an_obcr_error_is_the_reason_given(self):
+        from obcedit_core.engine_runner import SessionState
+
+        session = self.run_to_end(self.fake_engine(
+            'out("OBCR error: floor 1 has no player start")\nsys.exit(1)'))
+        self.assertIs(session.state, SessionState.FAILED)
+        self.assertIn("no player start", session.failure)
+        self.assertIn("no player start", self.window.test_log_status.text())
+
+    def test_a_silent_failure_is_reported_with_its_exit_code(self):
         # In the Test Log and the status bar, not a modal: this arrives on a
         # signal from a process ending, at any moment, including mid-gesture.
         from obcedit_core.engine_runner import SessionState
 
-        session = self.run_to_end(self.fake_engine("exit 1\n"))
+        session = self.run_to_end(self.fake_engine("sys.exit(1)"))
         self.assertIs(session.state, SessionState.FAILED)
-        self.assertIn("without answering",
-                      self.window.test_log_status.text())
+        self.assertIn("exited with code 1", self.window.test_log_status.text())
 
     def test_ordinary_output_reaches_the_test_log(self):
-        engine = self.fake_engine('echo "Could not stat something.wad"\nexit 0\n')
-        self.run_to_end(engine)
+        self.run_to_end(self.fake_engine('out("loading GFXTILES.BC")'))
         shown = [self.window.test_log.item(i).text()
                  for i in range(self.window.test_log.count())]
-        self.assertIn("Could not stat something.wad", shown)
+        self.assertIn("loading GFXTILES.BC", [line.rstrip("\r") for line in shown])
 
     def test_stderr_is_captured_too(self):
-        # "No player 1 start!" goes to stderr, and it is the failure an
-        # editor-exported map hits most.
-        engine = self.fake_engine('echo "No player 1 start!" >&2\nexit 1\n')
-        self.window._error = lambda title, body: None
+        engine = self.fake_engine(
+            'print("OBCR error: no data", file=sys.stderr, flush=True)\nsys.exit(1)')
         session = self.run_to_end(engine)
-        self.assertIn("No player 1 start!", session.log)
+        self.assertIn("OBCR error: no data", session.log)
 
     def test_a_log_is_written_beside_the_session(self):
-        engine = self.fake_engine('echo "OBCEDIT s1 hello x=1"\nexit 0\n')
-        self.window._error = lambda title, body: None
-        self.run_to_end(engine)
+        self.run_to_end(self.fake_engine('out("hello")'))
         log = self.root / "sess" / "playtest.log"
         self.assertTrue(log.exists())
         self.assertIn("# session s1", log.read_text())
@@ -1066,7 +1087,7 @@ class PlaytestSessions(Base):
     def test_two_playtests_at_once_are_refused(self):
         from PySide6.QtCore import QProcess
 
-        engine = self.fake_engine("sleep 5\n")
+        engine = self.fake_engine("time.sleep(10)")
         errors = []
         self.window._error = lambda title, body: errors.append(title)
         self.assertTrue(self.window.start_session(self.plan_for(engine), "A"))
@@ -1080,16 +1101,23 @@ class PlaytestSessions(Base):
     def test_stopping_ends_the_process(self):
         from PySide6.QtCore import QProcess
 
-        engine = self.fake_engine("sleep 30\n")
-        self.window.start_session(self.plan_for(engine), "LONG")
+        self.window.start_session(self.plan_for(self.fake_engine("time.sleep(30)")), "LONG")
         self.assertTrue(self.window.stop_session())
         self.assertEqual(self.window.process.state(), QProcess.ProcessState.NotRunning)
+
+    def test_stopping_on_purpose_is_not_reported_as_a_crash(self):
+        from obcedit_core.engine_runner import SessionState
+
+        self.window.start_session(self.plan_for(self.fake_engine("time.sleep(30)")), "LONG")
+        self.window.stop_session()
+        QApplication.processEvents()
+        self.assertIs(self.window.session.state, SessionState.FINISHED)
+        self.assertNotIn("exited with code", self.window.session.failure)
 
     def test_a_running_playtest_is_not_orphaned_when_the_editor_closes(self):
         from PySide6.QtCore import QProcess
 
-        engine = self.fake_engine("sleep 30\n")
-        self.window.start_session(self.plan_for(engine), "LONG")
+        self.window.start_session(self.plan_for(self.fake_engine("time.sleep(30)")), "LONG")
         self.assertTrue(self.window.reconcile_orphan())
         self.assertEqual(self.window.process.state(), QProcess.ProcessState.NotRunning)
 
@@ -1097,92 +1125,25 @@ class PlaytestSessions(Base):
         self.assertFalse(self.window.reconcile_orphan())
 
     def test_a_missing_engine_is_reported_rather_than_thrown(self):
+        from obcedit_core.engine_runner import LaunchPlan
+
         errors = []
         self.window._error = lambda title, body: errors.append(title)
-        plan = self.plan_for(self.root / "not-here")
+        plan = LaunchPlan(self.root / "not-here", [], self.root, session="s1")
         self.assertFalse(self.window.start_session(plan, "X"))
         self.assertTrue(errors)
 
     def test_each_playtest_gets_its_own_session(self):
-        # A stray counter reset made every launch after the first reuse
-        # obcedit-0001 -- the same nonce AND the same session directory, so two
-        # playtests shared a config, a savedir and a log.
         first = self.window._next_session_id()
-        engine = self.fake_engine('echo "OBCEDIT x hello y=1"\nexit 0\n')
+        engine = self.fake_engine('out("hello")')
         self.run_to_end(engine, session="s-a")
         self.run_to_end(engine, session="s-b")
         self.assertNotEqual(self.window._next_session_id(), first)
 
-    def test_stopping_on_purpose_is_not_reported_as_a_crash(self):
-        from obcedit_core.engine_runner import SessionState
-
-        engine = self.fake_engine("sleep 30\n")
-        self.window.start_session(self.plan_for(engine), "LONG")
-        self.window.stop_session()
-        QApplication.processEvents()
-        self.assertIsNot(self.window.session.state, SessionState.FINISHED)
-        self.assertNotIn("exited with code", self.window.session.failure)
-        self.assertIn("stopped", self.window.session.failure)
-
-    def test_an_orphan_is_stopped_after_the_engine_says_it_is_done(self):
-        # The engine says session-result on its way out and then keeps running
-        # for a while. Anything that took that as "the process is gone" would
-        # leave a live engine behind -- which is the orphan itself. Liveness is
-        # asked of the process, never of the session.
-        from PySide6.QtCore import QProcess
-
-        engine = self.fake_engine(
-            'echo "OBCEDIT s1 session-result outcome=quit"\nsleep 30\n')
-        self.window.start_session(self.plan_for(engine), "LATE")
-        for _ in range(50):
-            QApplication.processEvents()
-            if self.window.session.events:
-                break
-            self.window.process.waitForReadyRead(100)
-        self.assertTrue(self.window.session.events, "the engine never reported")
-        self.assertTrue(self.window.reconcile_orphan(), "a live engine was not stopped")
-        self.assertEqual(self.window.process.state(), QProcess.ProcessState.NotRunning)
-
-    def test_a_crash_after_session_result_is_not_a_success(self):
-        # The verdict waits for the process. Freezing it on session-result
-        # reported a crash on the way out as a clean finish.
-        from obcedit_core.engine_runner import SessionState
-
-        engine = self.fake_engine(
-            'echo "OBCEDIT s1 hello x=1"\n'
-            'echo "OBCEDIT s1 preview-load path=preview.wad loaded=yes lumps=9"\n'
-            'echo "OBCEDIT s1 map-entry marker=MAP01 name=Lab"\n'
-            'echo "OBCEDIT s1 session-result outcome=quit"\n'
-            'exit 3\n')
-        session = self.run_to_end(engine)
-        self.assertIs(session.state, SessionState.FAILED)
-        self.assertIn("exited with code 3", session.failure)
-
-    def test_a_second_playtest_cannot_start_over_a_live_one(self):
-        engine = self.fake_engine(
-            'echo "OBCEDIT s1 session-result outcome=quit"\nsleep 30\n')
-        errors = []
-        self.window._error = lambda title, body: errors.append(title)
-        self.window.start_session(self.plan_for(engine), "A")
-        for _ in range(50):
-            QApplication.processEvents()
-            if self.window.session.events:
-                break
-            self.window.process.waitForReadyRead(100)
-        try:
-            self.assertFalse(self.window.start_session(self.plan_for(engine, "s2"), "B"))
-            self.assertTrue(errors)
-        finally:
-            self.window.reconcile_orphan()
-
     def test_relaunching_after_one_finishes_works(self):
         from obcedit_core.engine_runner import SessionState
 
-        engine = self.fake_engine(
-            'echo "OBCEDIT s1 hello x=1"\n'
-            'echo "OBCEDIT s1 preview-load path=preview.wad loaded=yes lumps=9"\n'
-            'echo "OBCEDIT s1 map-entry marker=MAP01 name=Lab"\n'
-            'echo "OBCEDIT s1 session-result outcome=quit"\nexit 0\n')
+        engine = self.fake_engine('out("hello")')
         self.assertIs(self.run_to_end(engine).state, SessionState.FINISHED)
         self.assertIs(self.run_to_end(engine).state, SessionState.FINISHED)
 
@@ -1190,7 +1151,11 @@ class PlaytestSessions(Base):
         from obcedit_core.engine_runner import Session
 
         engine = self.fake_engine(
-            f'i=0; while [ $i -lt {Session.LOG_LIMIT + 200} ]; do echo "line $i"; '
-            'i=$((i+1)); done\nexit 0\n')
+            f"for i in range({Session.LOG_LIMIT + 200}):\n    print('line', i)\n"
+            "sys.stdout.flush()")
         self.run_to_end(engine, timeout=20000)
         self.assertLessEqual(len(self.window._session_lines), Session.LOG_LIMIT)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=1)

@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Jason Tripp
-"""Choosing which maps to bring in from a Corridor 7 archive.
+"""Choosing which maps to bring in from a map archive (MAPHEAD.BC + MAPTEMP.BC).
 
 Import used to take map 1 and nothing else, which is fine only if the map you
-want is map 1. An archive holds sixty; this lists them and lets the user take
+want is map 1. The original holds 61; this lists them and lets the user take
 one, several, or all of them in one command.
 
 Nothing here reads or shows map *content*. The list is what the archive's own
@@ -27,6 +27,17 @@ from PySide6.QtWidgets import (
 )
 
 
+def slot_meaning(slot: int) -> str:
+    """What an original map slot is: floors 1-40, credit rooms, network arenas."""
+    if slot < 40:
+        return f"floor {slot + 1}"
+    if slot < 50:
+        return "credits room"
+    if slot < 60:
+        return f"network {slot - 49}"
+    return "unused"
+
+
 class ImportDialog(QDialog):
     """Pick maps out of an archive. `chosen()` is the map numbers."""
 
@@ -47,8 +58,8 @@ class ImportDialog(QDialog):
         self.list.setSelectionMode(QAbstractItemView.ExtendedSelection)
         for record in archive.records:
             item = QListWidgetItem(
-                f"{record.lump_name}   {record.name.text or '(unnamed)'}"
-                f"   {record.width}x{record.height}")
+                f"{record.label}  {slot_meaning(record.number):18}"
+                f"{record.name.text or '(unnamed)'}   {record.width}x{record.height}")
             item.setData(Qt.UserRole, record.number)
             self.list.addItem(item)
         if self.list.count():

@@ -105,6 +105,13 @@ class CatalogModel(QAbstractListModel):
         lines = [f"<b>{entry.name}</b>", f"raw {entry.value} on plane {entry.plane}"]
         if entry.actor:
             lines.append(entry.actor)
+        if entry.category == "enemies" or entry.variant:
+            tier = {0: "every difficulty", 1: "difficulty 2 and 3",
+                    2: "difficulty 3 only"}.get(entry.minskill, f"tier {entry.minskill}")
+            lines.append(f"{entry.variant or 'stands'}, appears on {tier}")
+        if entry.directions:
+            lines.append("faces " + ", ".join(f"{name} ({value})"
+                                              for name, value in entry.directions))
         if entry.description:
             lines.append(entry.description)
         if not entry.safe_for_new_maps:

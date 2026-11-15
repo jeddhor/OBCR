@@ -2,20 +2,19 @@
 # Copyright (C) 2026 Jason Tripp
 """The inspector: what is in this cell, and how to change it.
 
-Corridor 7 encodes an alien's facing, its patrol state and its difficulty band
-in the raw word itself -- 108 is an Alioprobe standing still facing east on
-skill 1, and 184 is the same alien patrolling on skill 3. So "turn this one to
-face north" is not a property assignment; it is a different word.
+Operation Body Count encodes an actor's facing, whether it stands or patrols,
+and the lowest difficulty it appears on in the raw word itself: 116 is a
+soldier standing facing east on every difficulty, and 156 the same soldier
+patrolling, from difficulty 2. So "turn this one to face north" is not a
+property assignment; it is a different word.
 
 The inspector makes that visible rather than hiding it. Each control changes
 one axis and writes the word the catalog says corresponds to the result, and
 the raw value is shown throughout, because an editor for a game like this
 should never make its user guess what it is about to write.
 
-Where a combination does not exist -- there is no patrolling Eniram, because
-the translation has no entry for one -- the control is disabled rather than
-writing something approximate.
-"""
+Where a combination does not exist -- the disguised soldiers never patrol --
+the control is disabled rather than writing something approximate."""
 
 from __future__ import annotations
 
@@ -41,6 +40,8 @@ PREVIEW_SIZE = 128
 #: The other plane's artwork, shown beside it. A cell often holds both a wall
 #: and something standing on it, and the heading can only name one of them.
 SECONDARY_SIZE = 64
+#: The three difficulty tiers of actor codes.
+RANK_LABELS = {0: "Every difficulty", 1: "Difficulty 2 and 3", 2: "Difficulty 3 only"}
 
 
 class Inspector(QWidget):
@@ -84,7 +85,7 @@ class Inspector(QWidget):
         self.movement.currentIndexChanged.connect(self._on_variant)
 
         self.rank = QComboBox(self)
-        self.rank.setAccessibleName("Appears from skill")
+        self.rank.setAccessibleName("Appears from difficulty")
         self.rank.currentIndexChanged.connect(self._on_variant)
 
         form = QFormLayout()
@@ -112,9 +113,11 @@ class Inspector(QWidget):
     # -- artwork ----------------------------------------------------------
 
     def _has_artwork(self, entry: CatalogEntry) -> bool:
-        """Whether the entry names a page of its own, rather than borrowing one."""
-        return bool(entry.sprite is not None
-                    or (entry.category in ("walls", "specials") and entry.texture))
+        """Whether the entry names a picture of its own, rather than borrowing one."""
+        if entry.sprite is not None:
+            return True
+        page_for = getattr(self.thumbnails, "page_for", None)
+        return bool(page_for and page_for(entry) is not None)
 
     def _pixmap_for(self, entry: CatalogEntry | None, size: int):
         """The entry's artwork at `size`, or a labeled placeholder, or None.
@@ -194,12 +197,12 @@ class Inspector(QWidget):
         # A cell holds up to two things worth looking at: what is standing here
         # and what it is standing on. The heading can only name the one the
         # controls act on, so the other gets the small tile beside it.
-        under = self.catalog.for_value(0, words[0]) if (self.catalog and words[0]) else None
+        under = self.catalog.for_value(0, words[0]) if self.catalog else None
         if under is entry:
             under = None
 
         if entry is None:
-            self.heading.setText("Empty floor" if not words[0] else f"Unknown word {words[0]}")
+            self.heading.setText(f"Unknown words {words[0]} / {words[1]}")
             self._show_artwork(None, None)
             self._set_enabled(False)
             return
@@ -219,13 +222,11 @@ class Inspector(QWidget):
     def _entry_for(self, words) -> CatalogEntry | None:
         if self.catalog is None:
             return None
-        from .tools import EMPTY_OBJECT
-
-        if words[1] and words[1] != EMPTY_OBJECT:
+        if words[1] >= 19:
             found = self.catalog.for_value(1, words[1])
             if found is not None:
                 return found
-        return self.catalog.for_value(0, words[0]) if words[0] else None
+        return self.catalog.for_value(0, words[0])
 
     # -- the three axes ---------------------------------------------------
 
@@ -251,10 +252,12 @@ class Inspector(QWidget):
         siblings = self._siblings(entry)
         self.movement.setEnabled(any(s.variant == "patrol" for s in siblings)
                                  and any(s.variant == "stand" for s in siblings))
-        ranks = sorted({s.minskill for s in siblings if s.minskill})
+        # Tier 0 appears on every difficulty, tier 1 from difficulty 2, tier 2
+        # on difficulty 3 only (game types 3+ get everything).
+        ranks = sorted({s.minskill for s in siblings if s.variant == entry.variant})
         self.rank.setEnabled(len(ranks) > 1)
         for rank in ranks:
-            self.rank.addItem(f"Skill {rank}+", rank)
+            self.rank.addItem(RANK_LABELS.get(rank, f"Tier {rank}"), rank)
             if rank == entry.minskill:
                 self.rank.setCurrentIndex(self.rank.count() - 1)
 
@@ -285,10 +288,15 @@ class Inspector(QWidget):
             return
 
         wanted_variant = "patrol" if self.movement.currentIndex() == 1 else "stand"
-        wanted_rank = self.rank.currentData() or entry.minskill
+        wanted_rank = self.rank.currentData()
+        if wanted_rank is None:
+            wanted_rank = entry.minskill
+        siblings = self._siblings(entry)
+        if not any(s.variant == wanted_variant and s.minskill == wanted_rank for s in siblings):
+            wanted_rank = entry.minskill
         facing = self.direction.currentText().lower()
 
-        for sibling in self._siblings(entry):
+        for sibling in siblings:
             if sibling.variant != wanted_variant or sibling.minskill != wanted_rank:
                 continue
             directions = dict(sibling.directions)

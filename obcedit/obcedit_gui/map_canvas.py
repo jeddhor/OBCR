@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Jason Tripp
-"""The map canvas: draws a Corridor 7 floor and says which cell you are on.
+"""The map canvas: draws an Operation Body Count floor and says which cell you are on.
 
-Corridor 7 maps are 64x64, so the whole thing fits on screen at a readable zoom
+The game's maps are 64x64, so the whole thing fits on screen at a readable zoom
 and there is no need for tiling, level-of-detail, or a scene graph. The canvas
 paints cells directly, which keeps the code small enough to be obviously
 correct about the one thing that matters: that the cell under the pointer is
@@ -26,6 +26,7 @@ from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
+from obcedit_core import rules
 from obcedit_core.catalog import Catalog
 from obcedit_core.document import MapDocument
 
@@ -35,8 +36,12 @@ MIN_ZOOM = 4
 MAX_ZOOM = 40
 DEFAULT_ZOOM = 12
 
-#: Plane-1 word for "nothing here". Corridor 7 uses 18, not zero.
+#: Plane-1 words that put nothing in the cell: 18 is the original editor's
+#: background, and every code below 19 is ignored by the game.
 EMPTY_OBJECT = 18
+#: Plane-1 markers that describe the wall they sit on rather than a thing in
+#: the cell (explosion-proof, window, grille, door frame): not drawn as dots.
+WALL_MARKERS = frozenset({89, 104, 105, 125})
 
 _SCHEMATIC = {
     "wall": QColor(96, 100, 110),
@@ -190,24 +195,27 @@ class MapCanvas(QWidget):
     # -- painting ---------------------------------------------------------
 
     def _color_for(self, plane0: int, plane1: int) -> QColor:
-        if plane0 == 0:
-            return _SCHEMATIC["zone"] if plane1 and plane1 != EMPTY_OBJECT else _SCHEMATIC["floor"]
+        """Plane 0: floors are 140-161 (an area each), walls 1-129, doors
+        130-137, the ambush marker 138; anything else is not a valid word."""
         swatch = self._swatches.get(plane0)
         if swatch is not None:
             return swatch
+        if rules.is_floor(plane0):
+            return _SCHEMATIC["floor"]
+        if rules.is_door(plane0):
+            return _SCHEMATIC["door"]
+        if plane0 == rules.AMBUSH:
+            return _SCHEMATIC["zone"]
+        if not rules.is_wall(plane0):
+            return _SCHEMATIC["unknown"]
         if self._catalog is not None:
             entry = self._catalog.for_value(0, plane0)
-            if entry is None:
-                return _SCHEMATIC["unknown"]
-            if entry.category == "specials":
-                return _SCHEMATIC["door"] if entry.subcategory == "door" \
-                    else _SCHEMATIC["special"]
-            if entry.category == "zones":
-                return _SCHEMATIC["zone"]
+            if entry is not None and entry.category == "specials":
+                return _SCHEMATIC["special"]
         return _SCHEMATIC["wall"]
 
     def _object_color(self, value: int) -> QColor | None:
-        if not value or value == EMPTY_OBJECT:
+        if value < 19 or value in WALL_MARKERS:
             return None
         if self._catalog is None:
             return _SCHEMATIC["object"]
@@ -218,8 +226,7 @@ class MapCanvas(QWidget):
             "enemies": _SCHEMATIC["enemy"],
             "starts": _SCHEMATIC["start"],
             "objects": _SCHEMATIC["object"],
-            "specials": _SCHEMATIC["special"],
-            "zones": _SCHEMATIC["special"],
+            "markers": _SCHEMATIC["special"],
         }.get(entry.category, _SCHEMATIC["object"])
 
     def paintEvent(self, event) -> None:

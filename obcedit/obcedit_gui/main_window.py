@@ -15,6 +15,7 @@ off-screen from a previous monitor is otherwise unreachable.
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 from PySide6.QtCore import QProcess, QTimer, QSize, Qt, Signal
@@ -44,17 +45,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from obcedit_core.archive import read_archive
+from obcedit_core import reachability, rules
+from obcedit_core.archive import archive_paths, read_archive
 from obcedit_core.bundle import catalog_path
-from obcedit_core.catalog import Catalog, load_catalog
+from obcedit_core.catalog import CATEGORIES, Catalog, load_catalog
 from obcedit_core.commands import History, add_maps
-from obcedit_core.discovery import Profile, data_fingerprint
+from obcedit_core.discovery import Profile
 from obcedit_core.engine_runner import (
-    PROTOCOL_VERSION,
+    COMPASS,
     Session,
     SessionState,
     build_launch_plan,
+    check_mod,
 )
+from obcedit_core.modexport import MOD_SUFFIX, audit_mod, build_mod, preview_mod, write_mod
 from obcedit_core.snapshot import (
     Camera,
     check_camera,
@@ -62,15 +66,8 @@ from obcedit_core.snapshot import (
     snapshot_arguments,
     snapshot_key,
 )
-from obcedit_core.rules import (
-    assign_sound_areas as sound_area_writes,
-    check_door,
-    check_transporters,
-    door_cells,
-)
 from obcedit_core.transforms import copy_region, flip_clip, paste_writes, rotate_clip
 from obcedit_core.validation import (
-    Profile,
     fix_label,
     fix_writes,
     profile_for_slot,
@@ -79,8 +76,8 @@ from obcedit_core.validation import (
     validate_map,
 )
 from obcedit_core.document import MapDocument, ProjectDocument, SourceReference, utc_now
-from obcedit_core.errors import Ec7EditError, Severity
-from obcedit_core.paths import SourceIdentity
+from obcedit_core.errors import ObcEditError, Severity
+from obcedit_core.paths import OutputGuard, SourceIdentity
 from obcedit_core.prefabs import PREFABS, by_key as prefab_by_key
 from obcedit_core.project import (
     PROJECT_SUFFIX,
@@ -103,23 +100,24 @@ from .workers import WorkerPool
 
 CATALOG_PATH = catalog_path()
 
-#: Section 8.6's tabs. "Doors and Specials" holds the compound *tools* rather
-#: than the raw words behind them: offering both was offering two things that
-#: looked identical and were not, since painting a pushwall's marker straight
-#: on to floor leaves a moving wall with no wall in it.
-PALETTE_TABS = (
-    ("Doors and Specials", "prefabs"),
-    ("Walls", "walls"),
-    ("Objects", "objects"),
-    ("Enemies", "enemies"),
-    ("Starts and Paths", "starts"),
-    ("Zones", "zones"),
-    # Its own tab rather than mixed into Enemies and Walls: an author needs to
-    # see at a glance what came from a pack, because detaching one makes every
-    # entry here stop meaning anything.
-    ("Custom", "custom"),
-    ("Raw", "raw"),
-)
+#: What each catalog category is called on its palette tab.
+CATEGORY_TITLES = {
+    "walls": "Walls",
+    "specials": "Special walls",
+    "floors": "Floors",
+    "objects": "Objects",
+    "enemies": "Enemies",
+    "starts": "Starts and Paths",
+    "markers": "Markers",
+    "raw": "Raw",
+}
+
+#: The palette's tabs: the compound tools, then one per catalog category.
+#: "Doors and Specials" holds the *tools* rather than the raw words behind
+#: them: a door has to be on the axis its walls say, and painting a push
+#: wall's marker straight on to floor leaves a moving wall with no wall in it.
+PALETTE_TABS = (("Doors and Specials", "prefabs"),) + tuple(
+    (CATEGORY_TITLES.get(category, category.title()), category) for category in CATEGORIES)
 
 
 class MapTab(QWidget):
@@ -158,7 +156,7 @@ class MainWindow(QMainWindow):
         self._identity: tuple | None = None
 
         self.pool = WorkerPool(self)
-        self.thumbnails = ThumbnailFactory()
+        self.thumbnails = ThumbnailFactory(catalog=self.catalog)
         #: The last validation result, and the project revision it
         #: describes -- so the panel can say when it has gone stale
         #: instead of quietly showing an answer about an older map.
@@ -176,9 +174,6 @@ class MainWindow(QMainWindow):
         self._session_counter = 0
         #: Where the next snapshot is taken from, and what was last shown.
         self.camera = None
-        #: The catalogue without any resource pack's entries. Kept so
-        #: `_refresh_custom_palette` can rebuild rather than accumulate.
-        self._base_catalog = None
         #: Which map the camera is on. There is one camera, and it belongs to
         #: a floor -- without this it was a pair of coordinates with no map,
         #: so opening another floor left it apparently pointing into that one,
@@ -192,7 +187,7 @@ class MainWindow(QMainWindow):
         self._validate_timer.setSingleShot(True)
         self._validate_timer.setInterval(400)
         self._validate_timer.timeout.connect(lambda: self.validate())
-        self.recovery = RecoveryStore(settings.recovery_dir)
+        self.recovery = RecoveryStore(self.settings.recovery_dir)
         #: Autosave is a safety net, not a save: it writes a recovery copy into
         #: the application's own directory and never clears the dirty flag,
         #: because telling somebody their work is saved when it is somewhere
@@ -311,19 +306,15 @@ class MainWindow(QMainWindow):
         self.action_save_copy = self._action(
             "Save a &Copy…", self.save_copy,
             tip="Write a copy elsewhere and keep editing this one")
-        self.action_export = self._action("&Export preview WAD…", self.export_preview, "Ctrl+E")
-        self.action_export_archive = self._action(
-            "Export a full archive… (&private)", self.export_archive,
-            tip="A complete MAPTEMP.CO7 built on the game's own; not shareable")
-        self.action_resources = self._action(
-            "&Resource packs…", self.edit_resources,
-            tip="Sprites, textures and actors the game never had")
         self.action_campaign = self._action(
             "Campai&gn…", self.edit_campaign,
-            tip="Name the levels of a map pack and say where each exit goes")
-        self.action_export_pack = self._action(
-            "Export a map &pack…", self.export_pack, "Ctrl+Shift+E",
-            tip="Your maps plus generated MAPINFO, for someone else to play")
+            tip="The mod's name and its floors, in the order they are played")
+        self.action_export = self._action(
+            "&Export mod…", self.export_mod, "Ctrl+E",
+            tip="Write the mod as a folder or a single .obcmod file, for OBCR")
+        self.action_install = self._action(
+            "&Install in OBCR", self.install_mod, "Ctrl+Shift+E",
+            tip="Copy the mod into OBCR's mods folder, so the game's Mods menu lists it")
         self.action_quit = self._action("&Quit", self.close, QKeySequence.Quit)
         for action in (self.action_new, self.action_open):
             file_menu.addAction(action)
@@ -334,12 +325,10 @@ class MainWindow(QMainWindow):
         for action in (self.action_new_map, self.action_import):
             file_menu.addAction(action)
         file_menu.addSeparator()
-        for action in (self.action_save, self.action_save_as, self.action_save_copy,
-                       self.action_export, self.action_export_archive):
+        for action in (self.action_save, self.action_save_as, self.action_save_copy):
             file_menu.addAction(action)
         file_menu.addSeparator()
-        for action in (self.action_resources, self.action_campaign,
-                       self.action_export_pack):
+        for action in (self.action_campaign, self.action_export, self.action_install):
             file_menu.addAction(action)
         file_menu.addSeparator()
         file_menu.addAction(self.action_quit)
@@ -375,29 +364,29 @@ class MainWindow(QMainWindow):
 
         self.tools_menu = self.menuBar().addMenu("&Tools")
         self.action_test = self._action(
-            "&Test in EC7Wolf", self.playtest, "F5",
-            tip="Export the open map and launch the engine on it",
+            "&Test in OBCR", self.playtest, "F5",
+            tip="Build a one-floor preview mod of the open map and play it in OBCR",
+        )
+        self.action_test_here = self._action(
+            "Test from the &cursor", self.playtest_here, "Shift+F5",
+            tip="Play the open map starting on the cell under the mouse, facing east",
         )
         self.action_validate = self._action("&Check this map", self.validate, "F8")
         self.action_snapshot = self._action(
             "Take a &snapshot", self.take_snapshot, "F7",
-            tip="An exact EC7Wolf frame from the camera")
+            tip="An exact OBCR frame from the camera")
         self.action_stop_test = self._action(
-            "S&top the playtest", self.stop_session, "Shift+F5",
+            "S&top the playtest", self.stop_session, "Ctrl+F5",
             tip="Close the running engine")
         self.action_stop_test.setEnabled(False)
         self.action_statistics = self._action("Map &statistics", self.show_statistics)
-        self.action_sound_areas = self._action(
-            "Give the floor sound &areas", self.assign_sound_areas,
-            tip="Repair floor cells that have no sound area, so aliens can hear",
-        )
         self.action_setup = self._action("&Setup…", self.run_setup, tip="Engine, data, workspace")
         self.tools_menu.addAction(self.action_test)
+        self.tools_menu.addAction(self.action_test_here)
         self.tools_menu.addAction(self.action_stop_test)
         self.tools_menu.addAction(self.action_snapshot)
         self.tools_menu.addAction(self.action_validate)
         self.tools_menu.addAction(self.action_statistics)
-        self.tools_menu.addAction(self.action_sound_areas)
         self.tools_menu.addSeparator()
         self.tools_menu.addAction(self.action_setup)
 
@@ -453,8 +442,7 @@ class MainWindow(QMainWindow):
     def select_tool(self, tool: Tool) -> None:
         if tool is not Tool.PREFAB:
             self.tools.prefab = None
-        if tool is not Tool.TRANSPORTER:
-            self.tools.cancel_pending()
+        self.tools.cancel_pending()
         self.tools.set_tool(tool)
         action = self.tool_actions.get(tool)
         if action is not None and not action.isChecked():
@@ -539,7 +527,6 @@ class MainWindow(QMainWindow):
             view.clicked.connect(self._on_palette_clicked)
             self.palette_models[category] = model
             self.palette_tabs.addTab(view, title)
-        self._refresh_prefabs()
         self._refresh_prefabs()
         self.palette_tabs.currentChanged.connect(lambda _: self._refresh_palette())
         layout.addWidget(self.palette_tabs, 1)
@@ -677,7 +664,7 @@ class MainWindow(QMainWindow):
             self.thumbnails.source = AssetSource.open(
                 profile.data_dir, fingerprint=profile.data_fingerprint
             )
-        except (OSError, Ec7EditError, ValueError) as error:
+        except (OSError, ObcEditError, ValueError) as error:
             self.thumbnails.source = None
             self._note_problem(f"Game data unavailable: {error}")
             return False
@@ -685,12 +672,19 @@ class MainWindow(QMainWindow):
         return True
 
     def _apply_wall_colors(self) -> None:
-        """Average colors for the canvas's texture layer, computed once."""
+        """Average colors for the canvas's texture layer, computed once.
+
+        Walls and special walls from their page, floors from their floor
+        set's floor texture, so the map reads like the game at a glance."""
         if not self.thumbnails.available or self.catalog is None:
             return
         colors = {}
-        for entry in self.catalog.in_category("walls"):
-            colors[entry.value] = self.thumbnails.swatch(entry)
+        for category in ("walls", "specials", "floors"):
+            for entry in self.catalog.in_category(category):
+                if entry.plane == 0 and entry.value not in colors:
+                    swatch = self.thumbnails.swatch(entry)
+                    if swatch is not None:
+                        colors[entry.value] = swatch
         for index in range(self.tabs.count()):
             self.tabs.widget(index).canvas.set_wall_colors(colors)
 
@@ -722,43 +716,42 @@ class MainWindow(QMainWindow):
             return
         try:
             project = load_project(path)
-        except (OSError, Ec7EditError) as error:
+        except (OSError, ObcEditError) as error:
             self._error("Could not open that project", str(error))
             return
         self.set_project(project, Path(path))
         self.settings.remember_project(path)
-        self._refresh_custom_palette()
         self.statusBar().showMessage(f"Opened {Path(path).name}", 4000)
 
     def new_map(self, name: str | None = None, slot: int | None = None,
                 width: int = 64, height: int = 64) -> MapDocument | None:
         """Add an empty map to the project and open it.
 
-        Corridor 7's floors are 64x64 and the engine will not load anything
-        bigger than 181, so the size is offered but rarely changed. The slot
-        defaults to the first one this project is not already using -- two maps
-        exporting to MAP01 would silently shadow each other.
+        Operation Body Count's floors are always 64x64 (the engine's map
+        arrays are fixed), so the size is there for tests rather than people.
+        The slot -- the map's number in the project archive -- defaults to the
+        first one this project is not already using. A mod renumbers its maps
+        in campaign order, so the slot is bookkeeping, not the floor number.
         """
         used = {document.slot for document in self.project.maps}
         if slot is None:
-            slot = next((n for n in range(1, 101) if n not in used), None)
+            slot = next((n for n in range(100) if n not in used), None)
             if slot is None:
-                self._error("No free slot", "This project already fills MAP01 to MAP100.")
+                self._error("No free slot", "This project already has 100 maps.")
                 return None
 
         if name is None:
-            from PySide6.QtWidgets import QInputDialog
-
             name, accepted = QInputDialog.getText(
-                self, "New map", f"Name for {f'MAP{slot:02d}'}:", text=f"MAP {slot}"
+                self, "New map", f"Name for map {slot} (15 characters):",
+                text=f"FLOOR {slot + 1}"
             )
             if not accepted:
                 return None
 
         try:
-            document = MapDocument.new_room(slot=slot, name=name or f"MAP {slot}",
+            document = MapDocument.new_room(slot=slot, name=name or f"FLOOR {slot + 1}",
                                             width=width, height=height)
-        except Ec7EditError as error:
+        except ObcEditError as error:
             self._error("Could not create that map", str(error))
             return None
 
@@ -766,30 +759,33 @@ class MainWindow(QMainWindow):
         self._refresh()
         self.open_map(document.uuid)
         self.statusBar().showMessage(
-            f"Added {document.lump_name} ({width}x{height})", 4000
+            f"Added {document.name} ({width}x{height})", 4000
         )
         return document
 
     def import_map(self, archive_path: str | None = None, number: int | None = None) -> None:
         if archive_path is None:
             archive_path, _ = QFileDialog.getOpenFileName(
-                self, "Import from a Corridor 7 archive",
+                self, "Import from a map archive (MAPHEAD.BC + MAPTEMP.BC)",
                 self.settings.profile.data_dir or self._start_directory(),
-                "Corridor 7 archives (MAPTEMP.CO7 *.CO7 *.c7map);;All files (*)",
+                "Map archives (MAPHEAD.BC MAPTEMP.BC *.BC *.bc);;All files (*)",
             )
         if not archive_path:
             return
         try:
-            identity = SourceIdentity.probe(archive_path)
+            # The pair is found beside whichever file was chosen (or in the
+            # folder); MAPTEMP holds the maps, so it is what identity covers.
+            _head, temp = archive_paths(archive_path)
+            identity = SourceIdentity.probe(temp)
             archive = read_archive(archive_path)
-        except (OSError, Ec7EditError) as error:
+        except (OSError, ObcEditError) as error:
             self._error("Could not read that archive", str(error))
             return
 
         if number is not None:
             wanted = [number]
         else:
-            # Sixty maps in an archive and the old code took the first one.
+            # The original holds 61 maps; let the user pick.
             dialog = ImportDialog(archive, str(archive_path), self)
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 return
@@ -801,7 +797,7 @@ class MainWindow(QMainWindow):
         # sixty separate undo steps is one nobody can back out of.
         try:
             records = [archive.by_number(n) for n in wanted]
-        except Ec7EditError as error:
+        except ObcEditError as error:
             self._error("No such map", str(error))
             return
 
@@ -817,11 +813,11 @@ class MainWindow(QMainWindow):
         ]
         self.run_command(add_maps(documents, index=len(self.project.maps), label=(
             f"Import {len(documents)} maps" if len(documents) > 1
-            else f"Import {records[0].name.text or records[0].lump_name}")))
+            else f"Import {records[0].name.text or records[0].label}")))
         self.open_map(documents[0].uuid)
         identity.verify_unchanged()
         self.statusBar().showMessage(
-            f"Imported {len(documents)} map(s) from {Path(archive_path).name}", 4000)
+            f"Imported {len(documents)} map(s) from {Path(temp).parent.name or temp}", 4000)
 
     def save_project(self) -> bool:
         if self.project_path is None:
@@ -959,11 +955,11 @@ class MainWindow(QMainWindow):
     def preflight(self, maps) -> list:
         """Every error in the maps about to leave the editor.
 
-        The plan's rule is that an export-blocking invariant has a diagnostic
-        and the diagnostic blocks the export: a WAD the engine refuses to load,
-        or loads into an unplayable floor, is worse than a refusal here,
-        because it fails somewhere with no idea what is wrong. Warnings do not
-        block -- an unfinished map is a normal thing to want to look at.
+        An export-blocking invariant has a diagnostic and the diagnostic
+        blocks the export: a mod OBCR refuses to load, or loads into an
+        unplayable floor, is worse than a refusal here, because it fails
+        somewhere with no idea what is wrong. Warnings do not block -- an
+        unfinished map is a normal thing to want to look at.
         """
         if self.catalog is None:
             return []
@@ -979,7 +975,7 @@ class MainWindow(QMainWindow):
         """Report a refused export. True when the caller must stop."""
         if not blocking:
             return False
-        lines = [f"{document.lump_name} {document.name}: {problem.message}"
+        lines = [f"{document.name or document.label}: {problem.message}"
                  for document, problem in blocking[:6]]
         if len(blocking) > 6:
             lines.append(f"...and {len(blocking) - 6} more")
@@ -990,308 +986,181 @@ class MainWindow(QMainWindow):
                       "with one click.")
         return True
 
-    def export_preview(self, only: str | None = None) -> None:
-        if not self.project.maps:
-            self._error("Nothing to export", "This project has no maps yet.")
-            return
-        chosen = [d for d in self.project.maps if only is None or d.uuid == only]
-        if self._preflight_refused(self.preflight(chosen), "This export"):
-            return
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Export preview WAD", self._start_directory(), "WAD files (*.wad)"
-        )
-        if not path:
-            return
-        from obcedit_core.paths import OutputGuard, atomic_write
-        from obcedit_core.wad import build_preview_wad
+    # -- the mod ------------------------------------------------------------
 
-        try:
-            blob = build_preview_wad([(d.lump_name, d.to_record()) for d in chosen])
-            guard = OutputGuard()
-            if self.settings.profile.data_dir:
-                guard = OutputGuard(protected_roots=(Path(self.settings.profile.data_dir),))
-            written = atomic_write(path, blob, guard=guard)
-        except (OSError, Ec7EditError) as error:
-            self._error("Could not export", str(error))
-            return
-        self.statusBar().showMessage(f"Exported {written.name} ({len(blob)} bytes)", 6000)
+    def current_campaign(self):
+        """The project's campaign, or the default one (every map, in order)."""
+        from obcedit_core.campaign import Campaign
 
-    def edit_resources(self) -> bool:
-        """Attach and detach resource packs, and re-offer what they hold."""
-        from .resource_dialog import ResourceDialog
-
-        try:
-            dialog = ResourceDialog(self.project, self)
-        except Ec7EditError as error:
-            self._error("Those resource packs cannot be read", str(error))
-            return False
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return False
-
-        resources, allocations = dialog.resources(), dialog.allocations()
-        if (list(self.project.resources) == resources
-                and self.project.allocations == allocations):
-            return False
-        self.project = self.project.with_resources(resources, allocations)
-        self._refresh_custom_palette()
-        self._refresh_title()
-        self.statusBar().showMessage(
-            f"{len(resources)} resource pack(s) attached", 6000)
-        return True
-
-    def _refresh_custom_palette(self) -> None:
-        """Put the attached packs' placeable things in the palette.
-
-        Rebuilt from the project rather than accumulated, so detaching a pack
-        removes its entries in the same breath: an entry left behind would
-        paint a word the engine can no longer translate.
-        """
-        from obcedit_core.catalog import Catalog
-        from obcedit_core.custom import catalog_entries, load as load_allocations
-        from obcedit_core.resources import Resource
-
-        if self._base_catalog is None:
-            self._base_catalog = self.catalog
-        base = self._base_catalog
-        if base is None:
-            return
-        try:
-            resources = [Resource.from_json(raw) for raw in self.project.resources]
-            extra = catalog_entries(load_allocations(self.project.allocations),
-                                    resources)
-        except Ec7EditError:
-            extra = []
-        self.catalog = (base if not extra
-                        else Catalog(entries=base.entries + tuple(extra),
-                                     unresolved=base.unresolved, schema=base.schema))
-        for index in range(self.tabs.count()):
-            tab = self.tabs.widget(index)
-            if isinstance(tab, MapTab):
-                tab.canvas.set_catalog(self.catalog)
-        self._refresh_palette()
+        if self.project.campaign:
+            return Campaign.from_json(self.project.campaign)
+        return Campaign.default_for(self.project)
 
     def edit_campaign(self) -> bool:
-        """Name the levels of a pack and say where each exit goes.
+        """The mod's identity and its floors, in order.
 
         Kept out of the map editor entirely: a campaign is about the project,
         not about any one map, and nothing here can change a plane word.
         """
-        if not self.project.maps:
-            self._error("Nothing to arrange",
-                        "A campaign is a running order for the maps in a "
-                        "project, and this one has none yet.")
-            return False
-
-        from obcedit_core.campaign import Campaign
         from .campaign_dialog import CampaignDialog
 
         try:
-            current = Campaign.from_json(self.project.campaign or None)
-        except Ec7EditError as error:
+            current = self.current_campaign()
+        except (ObcEditError, ValueError, TypeError) as error:
             self._error("That campaign cannot be read", str(error))
             return False
 
         dialog = CampaignDialog(current, self.project.maps, self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return False
+        return self.set_campaign(dialog.campaign())
 
-        campaign = dialog.campaign()
-        if campaign == current:
+    def set_campaign(self, campaign) -> bool:
+        """Store a campaign in the project. Returns whether anything changed."""
+        if self.project.campaign and campaign.to_json() == self.project.campaign:
             return False
         # A campaign is part of the project, so changing it makes the project
         # dirty like any other edit. It is not a setting that quietly persists.
         self.project = self.project.with_campaign(campaign.to_json())
         self._refresh_title()
+        count = len(campaign.levels)
         self.statusBar().showMessage(
-            f"Campaign: {len(campaign.entries)} level(s), "
-            f"starting at MAP{campaign.start:02d}" if campaign.entries
-            else "Campaign: no levels", 6000)
+            f"Campaign: {campaign.title or campaign.mod_id}, {count} floor(s)", 6000)
         return True
 
-    def export_pack(self) -> bool:
-        """Write a map pack: the maps, the generated MAPINFO, and a manifest.
-
-        Unlike the private archive export, this one IS meant to be handed to
-        other people -- which is exactly why it refuses to include a map that
-        came out of the retail archive, and why it writes the manifest whether
-        or not anyone asked for it. A file that travels needs to say what it is
-        and what it needs.
-        """
-        from obcedit_core.campaign import Campaign, build_pack
+    def _checked_mod(self, what: str):
+        """The project's mod, built and validated, or None after saying why."""
         from obcedit_core.campaign import validate as validate_campaign
-        from obcedit_core.errors import export_error
-        from obcedit_core.paths import atomic_write
 
+        if not self.project.maps and not self.project.campaign:
+            self._error("Nothing to export", "This project has no maps yet.")
+            return None
         try:
-            campaign = Campaign.from_json(self.project.campaign or None)
-        except Ec7EditError as error:
+            campaign = self.current_campaign()
+        except (ObcEditError, ValueError, TypeError) as error:
             self._error("That campaign cannot be read", str(error))
-            return False
-
-        if not campaign.entries:
-            self._error("There is no campaign yet",
-                        "A pack needs a running order. Use File > Campaign to "
-                        "say which maps it holds and where each exit goes.")
-            return False
-
+            return None
         problems = validate_campaign(campaign, self.project.maps)
         blocking = [p for p in problems if p.severity >= Severity.ERROR]
         if blocking:
             self._error(
-                "This campaign cannot be built",
-                "\n".join(f"{p.code}: {p.message}" for p in blocking[:6]) +
-                "\n\nFile > Campaign shows these as you fix them.")
-            return False
-
-        warnings = [p for p in problems if p.severity == Severity.WARNING]
-        if warnings and QMessageBox.warning(
-            self, "Build this pack anyway?",
-            "\n".join(f"{p.message}" for p in warnings[:6]) +
-            "\n\nNone of these stop the pack being built.",
-            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
-        ) != QMessageBox.StandardButton.Ok:
-            return False
-
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Write the map pack", self._start_directory(),
-            "Map packs (*.wad);;All files (*)")
-        if not path:
-            return False
-        if not path.lower().endswith(".wad"):
-            path += ".wad"
-
+                f"{what}: the campaign has errors",
+                "\n".join(f"{p.message}" + (f" ({p.where})" if p.where else "")
+                          for p in blocking[:6])
+                + "\n\nFile > Campaign shows these as you fix them.")
+            return None
+        used = set(campaign.map_order())
+        maps = [d for d in self.project.maps if d.uuid in used]
+        if self._preflight_refused(self.preflight(maps), what):
+            return None
         try:
-            pack = build_pack(campaign, self.project.maps,
-                              project_name=self.project.name,
-                              author=self.project.author)
-            if not pack.audit.clean:
-                # The audit reads the built file back. If it does not recognize
-                # something in there, that file does not leave this machine.
-                raise export_error(
-                    "C7E-PACK-010",
-                    "the built pack holds lumps this editor did not expect: "
-                    + ", ".join(pack.audit.unexpected))
-            manifest = Path(path).with_suffix(".txt")
-            atomic_write(Path(path), pack.wad)
-            atomic_write(manifest, pack.manifest.encode("ascii"))
-        except (OSError, Ec7EditError) as error:
-            self._error("Could not write the pack", str(error))
-            return False
+            return build_mod(self.project, campaign)
+        except ObcEditError as error:
+            self._error(f"{what}: could not build the mod", str(error))
+            return None
 
-        self.statusBar().showMessage(
-            f"{Path(path).name}: {pack.audit.describe()}; manifest in "
-            f"{manifest.name}", 8000)
+    def _engine_check(self, mod: Path) -> bool:
+        """`obcr --check-mod`, when an engine is configured. OBCR is the gate:
+        a mod it would refuse is never reported as written successfully."""
+        profile = self.settings.profile
+        if not profile.engine_path or not Path(profile.engine_path).is_file():
+            return True
+        result = check_mod(profile.engine_path, mod, data_dir=profile.data_dir or None)
+        self._show_mod_check(result)
+        if result.unreadable:
+            self._note_problem("OBCR could not check the mod: "
+                               + (result.output.strip()[-200:] or "no output"))
+            return True
+        if not result.ok:
+            first = result.errors[0].message if result.errors else result.output.strip()[-200:]
+            self._error("OBCR refuses this mod", first)
+            return False
         return True
 
-    def export_archive(self) -> bool:
-        """Write a complete MAPTEMP.CO7: your maps in their slots, the rest
-        of the game's untouched.
-
-        Explicitly private, and the editor says so before it writes anything.
-        The output is a copy of a retail archive with some floors swapped, so
-        it is the user's own game data and it is not shareable -- unlike a
-        preview WAD, which holds only what they made. Nothing about this is
-        automatic: it is a separate command, it names its output, and it
-        refuses to write anywhere near the data it read.
-        """
-        if not self.project.maps:
-            self._error("Nothing to export", "This project has no maps yet.")
-            return False
-        if self._preflight_refused(self.preflight(self.project.maps),
-                                   "This archive"):
-            return False
-
-        source, _ = QFileDialog.getOpenFileName(
-            self, "The archive to build on",
-            self.settings.profile.data_dir or self._start_directory(),
-            "Corridor 7 archives (MAPTEMP.CO7 *.CO7);;All files (*)")
-        if not source:
-            return False
-
-        if QMessageBox.warning(
-            self, "This output contains the game's own maps",
-            f"The file this writes is a copy of {Path(source).name} with "
-            f"{len(self.project.maps)} map(s) replaced. Every floor you did not "
-            "edit is copied from it unchanged.\n\n"
-            "That makes the result your own game data: keep it to yourself. "
-            "To share a map, export a preview WAD instead -- that holds only "
-            "what you made.",
-            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
-        ) != QMessageBox.StandardButton.Ok:
-            return False
-
-        try:
-            identity = SourceIdentity.probe(source)
-            archive = read_archive(source)
-        except (OSError, Ec7EditError) as error:
-            self._error("Could not read that archive", str(error))
-            return False
-
-        # A map imported from a different copy of the game is a map whose slot
-        # may mean something else here. Worth saying; not worth refusing.
-        strangers = {d.lump_name for d in self.project.maps
-                     if d.source is not None and d.source.sha256
-                     and d.source.sha256 != identity.digest}
-        if strangers and QMessageBox.question(
-            self, "These maps came from a different archive",
-            f"{', '.join(sorted(strangers))} were imported from an archive with "
-            "different contents. Their slots may not mean the same thing "
-            "here.\n\nGo ahead anyway?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        ) != QMessageBox.StandardButton.Yes:
-            return False
-
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Write the archive", self._start_directory(),
-            "Corridor 7 archives (*.CO7);;All files (*)")
-        if not path:
-            return False
-
-        from obcedit_core.archive import replace_records
-        from obcedit_core.paths import OutputGuard, atomic_write
-
-        try:
-            replacements = {d.slot: d.to_record() for d in self.project.maps}
-            blob = replace_records(archive, replacements)
-            guard = OutputGuard.for_source(source)
-            written = atomic_write(path, blob, guard=guard)
-            identity.verify_unchanged()
-            # Read it back before claiming it worked: an archive that does not
-            # parse is worse than no archive, because it is discovered by the
-            # engine hours later.
-            check = read_archive(written)
-        except (OSError, Ec7EditError) as error:
-            self._error("Could not write the archive", str(error))
-            return False
-
-        self._export_report(written, len(blob), archive, check, replacements)
-        return True
-
-    def _export_report(self, written, size, before, after, replacements) -> None:
-        """What the export changed, said once, in the panel and the status bar.
-
-        The plan calls this the minimal diff summary: not a byte report, just
-        enough to answer "did that do what I meant" without opening the file.
-        """
-        replaced = sorted(replacements)
-        untouched = len(before.records) - len(replaced)
-        lines = [
-            f"Wrote {written.name} — {size:,} bytes, {len(after.records)} maps.",
-            f"Replaced: {', '.join(f'MAP{n:02d}' for n in replaced)}.",
-            f"Copied unchanged: {untouched} map(s).",
-        ]
-        self.problems.clear()
-        for line in lines:
-            item = QListWidgetItem(line)
-            item.setToolTip("Export report")
+    def _show_mod_check(self, result) -> None:
+        """Put `--check-mod`'s findings in the Problems panel."""
+        for problem in result.problems:
+            where = []
+            if problem.level is not None:
+                where.append(f"floor {problem.level + 1}")
+            if problem.cell is not None:
+                where.append(f"cell {problem.cell[0]},{problem.cell[1]}")
+            item = QListWidgetItem(f"OBCR {problem.severity}: {problem.message}"
+                                   + (f"  [{', '.join(where)}]" if where else ""))
+            item.setToolTip("obcr --check-mod")
+            item.setData(Qt.UserRole, problem.cell)
             self.problems.addItem(item)
-        self._problems = []
-        self._problems_revision = self.project.revision
-        self.problem_status.setText(lines[0])
-        self.statusBar().showMessage(lines[0], 8000)
+
+    def export_mod(self, path: str | None = None) -> Path | None:
+        """Write the mod: a folder, or one `.obcmod` file.
+
+        This is the file that is handed to other people, which is why it
+        refuses maps imported from the original game (their words are the
+        game's, not the author's), audits what it wrote by reading it back,
+        and asks OBCR to check it before calling it done.
+        """
+        build = self._checked_mod("This mod")
+        if build is None:
+            return None
+        if path is None:
+            suggested = str(Path(self._start_directory()) / f"{build.campaign.mod_id}{MOD_SUFFIX}")
+            path, chosen = QFileDialog.getSaveFileName(
+                self, "Export mod", suggested,
+                f"One file (*{MOD_SUFFIX});;A folder (*)")
+            if not path:
+                return None
+            if chosen.startswith("One file") and not path.lower().endswith(MOD_SUFFIX):
+                path += MOD_SUFFIX
+        return self._write_and_check(build, Path(path))
+
+    def _write_and_check(self, build, destination: Path) -> Path | None:
+        profile = self.settings.profile
+        roots = (Path(profile.data_dir),) if profile.data_dir else ()
+        try:
+            written = write_mod(build, destination, guard=OutputGuard(protected_roots=roots))
+            audit = audit_mod(written, catalog=self.catalog)
+        except (OSError, ObcEditError) as error:
+            self._error("Could not write the mod", str(error))
+            return None
+        if not audit.ok:
+            self._error("The written mod does not read back",
+                        "\n".join(str(p) for p in audit.problems[:6]))
+            return None
+        if not self._engine_check(written):
+            return None
+        self.statusBar().showMessage(
+            f"Wrote {written.name}: {build.campaign.title}, "
+            f"{len(build.campaign.levels)} floor(s)", 8000)
+        return written
+
+    def install_mod(self) -> Path | None:
+        """Export the mod into OBCR's own mods folder, as a folder named by
+        its id, so the game's Mods menu lists it."""
+        build = self._checked_mod("This mod")
+        if build is None:
+            return None
+        target = Path(self.settings.mods_dir) / build.campaign.mod_id
+        stale = target.with_suffix(MOD_SUFFIX)
+        if stale.is_file():
+            # Two copies of one id: OBCR would list the folder and the file.
+            answer = QMessageBox.question(
+                self, "Replace the installed mod?",
+                f"{stale.name} is already installed. Replace it with this version?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes)
+            if answer != QMessageBox.StandardButton.Yes:
+                return None
+            try:
+                stale.unlink()
+            except OSError as error:
+                self._error("Could not replace the installed mod", str(error))
+                return None
+        written = self._write_and_check(build, target)
+        if written is not None:
+            self.statusBar().showMessage(
+                f"Installed {build.campaign.title} in {written}. "
+                "Choose it from Mods in OBCR's main menu.", 10000)
+        return written
 
     # -- maps -------------------------------------------------------------
 
@@ -1306,7 +1175,7 @@ class MainWindow(QMainWindow):
         tab.canvas.pressed.connect(self._on_press)
         tab.canvas.dragged.connect(self.tools.drag)
         tab.canvas.released.connect(self.tools.release)
-        index = self.tabs.addTab(tab, f"{document.lump_name} {document.name}")
+        index = self.tabs.addTab(tab, document.name or document.label)
         self.tabs.setCurrentIndex(index)
         self._apply_wall_colors()
         self._show_camera()
@@ -1409,8 +1278,7 @@ class MainWindow(QMainWindow):
             ("D&uplicate", lambda: self.duplicate_map(document.uuid)),
             (None, None),
             ("&Check this map", lambda: (self.open_map(document.uuid), self.validate())),
-            ("&Test in EC7Wolf", lambda: (self.open_map(document.uuid), self.playtest())),
-            ("&Export this map…", lambda: self.export_preview(only=document.uuid)),
+            ("&Test in OBCR", lambda: (self.open_map(document.uuid), self.playtest())),
             (None, None),
             ("&Delete", lambda: self.delete_map(document.uuid)),
         ]
@@ -1438,7 +1306,7 @@ class MainWindow(QMainWindow):
 
         try:
             command = rename_command(document, name)
-        except Ec7EditError as error:
+        except ObcEditError as error:
             self._error("That name will not fit", str(error))
             return False
         self.run_command(command)
@@ -1446,19 +1314,23 @@ class MainWindow(QMainWindow):
         return True
 
     def change_slot(self, uuid: str, slot: int | None = None) -> bool:
-        """Change which MAPxx a map exports as."""
+        """Change a map's number in the project (0-99).
+
+        Only bookkeeping: a mod numbers its maps in campaign order. It decides
+        which validation profile applies (slots 50-59 are network arenas in
+        the original), and it is what Import keeps.
+        """
         document = self.project.map_by_uuid(uuid)
         if slot is None:
             slot, accepted = QInputDialog.getInt(
-                self, "Change slot", "Export as MAP:", document.slot, 1, 100)
+                self, "Change slot", "Map number (0-99):", document.slot, 0, 99)
             if not accepted:
                 return False
         taken = {other.slot: other for other in self.project.maps if other.uuid != uuid}
         if slot in taken:
             self._error(
                 "That slot is taken",
-                f"MAP{slot:02d} is already {taken[slot].name!r}. Two maps in one slot "
-                "would shadow each other in the export.",
+                f"Slot {slot} is already {taken[slot].name!r}.",
             )
             return False
         from obcedit_core.commands import set_slot
@@ -1476,9 +1348,9 @@ class MainWindow(QMainWindow):
 
         document = self.project.map_by_uuid(uuid)
         used = {other.slot for other in self.project.maps}
-        slot = next((n for n in range(1, 101) if n not in used), None)
+        slot = next((n for n in range(100) if n not in used), None)
         if slot is None:
-            self._error("No free slot", "This project already fills MAP01 to MAP100.")
+            self._error("No free slot", "This project already has 100 maps.")
             return False
 
         copy = _replace(document, uuid=new_uuid(), slot=slot, source=document.source)
@@ -1494,7 +1366,7 @@ class MainWindow(QMainWindow):
         if confirm:
             answer = QMessageBox.question(
                 self, "Delete map",
-                f"Delete {document.lump_name} {document.name!r} from this project?\n\n"
+                f"Delete {document.name!r} ({document.label}) from this project?\n\n"
                 "Undo will bring it back.",
                 QMessageBox.Yes | QMessageBox.No,
             )
@@ -1505,7 +1377,7 @@ class MainWindow(QMainWindow):
 
         self.run_command(remove_map(self.project, uuid))
         self._refresh()
-        self.statusBar().showMessage(f"Deleted {document.lump_name}", 4000)
+        self.statusBar().showMessage(f"Deleted {document.name}", 4000)
         return True
 
     def _on_map_selected(self, row: int) -> None:
@@ -1518,8 +1390,18 @@ class MainWindow(QMainWindow):
             self._cell_label.setText("")
             return
         document = self.project.map_by_uuid(tab.map_uuid)
+        self._hover_cell = (x, y)
         words = [document.cell(plane, x, y) for plane in range(3)]
-        self._cell_label.setText(f"({x}, {y})  {words[0]} / {words[1]} / {words[2]}")
+        names = []
+        if self.catalog is not None:
+            for plane in (0, 1):
+                if plane == 1 and words[1] < 19:
+                    continue
+                entry = self.catalog.for_value(plane, words[plane])
+                if entry is not None:
+                    names.append(entry.name)
+        self._cell_label.setText(f"({x}, {y})  {words[0]} / {words[1]} / {words[2]}"
+                                 + (f"  {' · '.join(names)}" if names else ""))
 
     # -- palette ----------------------------------------------------------
 
@@ -1582,7 +1464,7 @@ class MainWindow(QMainWindow):
     #: Tools that act on whatever is armed rather than on the palette entry.
     #: Picking something from a palette has to take you out of these, or the
     #: next click still does the old thing.
-    _ARMED_TOOLS = (Tool.POINTER, Tool.EYEDROPPER, Tool.PREFAB, Tool.TRANSPORTER)
+    _ARMED_TOOLS = (Tool.POINTER, Tool.EYEDROPPER, Tool.PREFAB)
 
     def _on_palette_clicked(self, index) -> None:
         entry = index.data(EntryRole)
@@ -1591,10 +1473,9 @@ class MainWindow(QMainWindow):
         self.selected_entry = entry
         self.tools.set_entry(entry)
 
-        # Choosing a wall means you want to paint a wall. A structure left
-        # armed from the Structures tab, or half a transporter waiting for its
-        # second click, would otherwise swallow the click and place the old
-        # thing -- with the palette showing the new one as selected.
+        # Choosing a wall means you want to paint a wall. A door or special
+        # left armed from its tab would otherwise swallow the click and place
+        # the old thing -- with the palette showing the new one as selected.
         self.tools.set_prefab(None)
         self.tools.cancel_pending()
         self.action_rotate.setVisible(False)
@@ -1773,16 +1654,17 @@ class MainWindow(QMainWindow):
         document = self.project.map_by_uuid(tab.map_uuid)
         from collections import Counter
 
-        from .tools import EMPTY_OBJECT
-
         counts = Counter()
         for plane in (0, 1):
             for value in document.planes.planes[plane]:
-                if plane == 1 and value in (0, EMPTY_OBJECT):
+                if plane == 1 and value < 19:
+                    continue
+                if plane == 0 and rules.is_floor(value):
                     continue
                 entry = self.catalog.for_value(plane, value)
                 counts[entry.category if entry else "unknown"] += 1
-        floor = sum(1 for v in document.planes.planes[0] if v == 0 or 256 <= v <= 300)
+        floor = sum(1 for v in document.planes.planes[0] if rules.is_floor(v))
+        reach = reachability.analyze(document, self.catalog)
         return {
             "cells": document.planes.cell_count,
             "floor": floor,
@@ -1791,7 +1673,9 @@ class MainWindow(QMainWindow):
             "objects": counts.get("objects", 0),
             "enemies": counts.get("enemies", 0),
             "starts": counts.get("starts", 0),
+            "markers": counts.get("markers", 0),
             "unknown": counts.get("unknown", 0),
+            "quota": reach.quota,
         }
 
     def show_statistics(self) -> None:
@@ -1816,36 +1700,6 @@ class MainWindow(QMainWindow):
         return used
 
     # -- validation and playtest -------------------------------------------
-
-    def assign_sound_areas(self) -> int:
-        """Repair a floor whose cells carry no sound area.
-
-        Offered as a command because there is no other reasonable way to do it
-        by hand: the fill tool reaches one connected region per click, and a
-        map with rooms behind doors has as many regions as it has rooms. It is
-        also a repair nobody should have to make -- the editor floored new maps
-        with word 0 until 2026-08-31, and every map made before that has this.
-        """
-        tab = self.current_tab
-        if tab is None:
-            return 0
-        from obcedit_core.commands import write_words
-
-        document = self.project.map_by_uuid(tab.map_uuid)
-        writes = sound_area_writes(document)
-        if not writes:
-            self.statusBar().showMessage(
-                "Every floor cell already has a sound area", 4000)
-            return 0
-        areas = sorted({value for *_, value in writes})
-        self.run_command(write_words(document, writes,
-                                     label="Give the floor sound areas"))
-        self.statusBar().showMessage(
-            f"Gave {len(writes)} floor cell(s) "
-            f"{'an area' if len(areas) == 1 else f'{len(areas)} areas'} "
-            f"({', '.join(str(a) for a in areas)})", 6000)
-        self.validate()
-        return len(writes)
 
     def _next_session_id(self) -> str:
         """A short id, unique within this run of the editor.
@@ -1935,7 +1789,7 @@ class MainWindow(QMainWindow):
         document = self.project.map_by_uuid(tab.map_uuid)
         try:
             check_camera(document, self.camera)
-        except Ec7EditError as error:
+        except ObcEditError as error:
             # Checked first, because it needs no engine and it is the thing the
             # user just did. Refused here rather than launched: the engine
             # would draw the inside of a wall without complaining, and the
@@ -1949,20 +1803,13 @@ class MainWindow(QMainWindow):
                                          "your game data")
             return False
 
-        import hashlib
-
-        from obcedit_core.paths import OutputGuard, atomic_write
-        from obcedit_core.wad import build_preview_wad
-
         cache = self._snapshot_cache_dir()
         try:
-            blob = build_preview_wad([(document.lump_name, document.to_record())])
-            export_digest = hashlib.sha256(blob).hexdigest()
+            build = preview_mod(self.project, document.uuid)
             key = snapshot_key(
                 engine=profile.engine_path,
-                pk3=Path(profile.engine_path).parent / "ec7wolf.pk3",
                 data_fingerprint=profile.data_fingerprint,
-                export_digest=export_digest,
+                export_digest=build.digest,
                 camera=self.camera,
             )
             image = cache / f"{key}.png"
@@ -1970,20 +1817,21 @@ class MainWindow(QMainWindow):
                 self._show_snapshot(image, key, cached=True)
                 return True
 
-            wad = cache / f"{key}.wad"
             guard = OutputGuard(protected_roots=(Path(profile.data_dir),))
-            atomic_write(wad, blob, guard=guard)
+            mod = write_mod(build, cache / key / "mod", guard=guard)
+            # `snapshot_arguments` carries the camera as --start, so no start
+            # is passed here.
             plan = build_launch_plan(
                 executable=profile.engine_path,
                 data_dir=profile.data_dir,
-                preview_wad=wad,
-                marker=document.lump_name,
+                mod=mod,
+                floor=0,
                 session_dir=cache / key,
                 extra=snapshot_arguments(self.camera, image),
-                export_digest=export_digest,
+                export_digest=build.digest,
                 revision=self.project.revision,
             )
-        except (OSError, Ec7EditError) as error:
+        except (OSError, ObcEditError) as error:
             self.snapshot_status.setText(f"Could not prepare a snapshot: {error}")
             return False
 
@@ -1999,19 +1847,18 @@ class MainWindow(QMainWindow):
             self.snapshot_status.setText(f"The engine did not run: {error}")
             return False
 
-        line = next((l for l in done.stdout.splitlines()
-                     if l.startswith("Capture: snapshot ")), "")
+        output = (done.stdout or "") + (done.stderr or "")
+        line = next((l for l in output.splitlines() if "shot" in l.lower()), "")
         if not image.is_file() or not looks_like_a_world(image):
             # Nothing is cached on failure. A blank frame kept under this key
             # would be handed back for ever, and it is the exact failure this
             # project has shipped before -- a gate that passed while comparing
             # a black frame nobody had looked at.
             image.unlink(missing_ok=True)
-            refused = next((l for l in done.stdout.splitlines()
-                            if "camera tile" in l or "--capture-warp" in l), "")
+            refused = next((l for l in output.splitlines() if l.startswith("OBCR error")), "")
             self.snapshot_status.setText(
-                "The engine drew no world. " + (refused or "See the Test Log."))
-            self._note_problem(f"Snapshot failed: {refused or done.stdout[-200:]}")
+                "OBCR drew no world. " + (refused or "See the Problems panel."))
+            self._note_problem(f"Snapshot failed: {refused or output[-200:]}")
             return False
 
         self._show_snapshot(image, key, cached=False, detail=line)
@@ -2077,15 +1924,29 @@ class MainWindow(QMainWindow):
             problems = validate_local(document, self.catalog, profile=profile,
                                       previous=self._problems)
         else:
-            problems = validate_map(document, self.catalog, profile=profile)
-            problems.extend(check_transporters(document))
-            for x, y in door_cells(document, self.catalog):
-                problems.extend(check_door(document, x, y))
+            problems = list(validate_map(document, self.catalog, profile=profile))
+            self._reach = reachability.analyze(document, self.catalog)
         self._problems = problems
         self._problems_revision = self.project.revision
         self._repaint_problems()
         self.statusBar().showMessage(summarize(problems), 6000)
         return problems
+
+    _reach = None
+
+    def _reach_summary(self) -> str:
+        """Whether the floor can be finished, as reachability sees it."""
+        reach = self._reach
+        if reach is None:
+            return ""
+        if not reach.started:
+            return "no player start"
+        enemies = len(reach.enemies)
+        text = (f"exit needs {reach.quota} of {enemies} kills; "
+                f"{len(reach.enemies_reached)} reachable")
+        if reach.victor_reached:
+            text = "Victor is reachable; " + text
+        return ("completable: " if reach.completable else "NOT completable: ") + text
 
     def _repaint_problems(self) -> None:
         """Refill the list from the last result, honoring the severity floor."""
@@ -2105,6 +1966,9 @@ class MainWindow(QMainWindow):
         hidden = len(self._problems) - shown
         stale = self._problems_revision != self.project.revision
         parts = [summarize(self._problems)]
+        reach = self._reach_summary()
+        if reach:
+            parts.append(reach)
         if hidden:
             parts.append(f"{hidden} hidden by the filter")
         if stale:
@@ -2139,12 +2003,13 @@ class MainWindow(QMainWindow):
         self.validate()
         return len(writes)
 
-    def playtest(self) -> bool:
-        """Export the open map and start the engine on it.
+    def playtest(self, start: tuple[int, int, int] | None = None) -> bool:
+        """Build a one-floor preview mod of the open map and play it in OBCR.
 
-        Exports to the workspace, never beside the game data: the export is a
-        file this editor wrote, and it has no business landing among files it
-        must not touch.
+        The preview goes in a session directory in the workspace, never beside
+        the game data, and OBCR checks it (`--check-mod`) before it is
+        launched: a mod the engine would refuse is reported here, with the
+        reason, instead of a window that appears and vanishes.
         """
         tab = self.current_tab
         if tab is None:
@@ -2153,16 +2018,10 @@ class MainWindow(QMainWindow):
         profile = self.settings.profile
         if not profile.engine_path or not profile.data_dir:
             self._error("No engine configured",
-                        "Tools -> Setup, and choose an EC7Wolf executable and your game data.")
+                        "Tools -> Setup, and choose OBCR and your game data.")
             return False
 
         document = self.project.map_by_uuid(tab.map_uuid)
-
-        # Check before launching. The engine's answer to a map with no player
-        # start is to print "No player 1 start!" and exit, which from the
-        # outside is indistinguishable from a crash -- the window appears and
-        # vanishes. Better to say what is wrong while the editor still has the
-        # user's attention.
         blocking = [problem for problem in self.validate()
                     if problem.severity is Severity.ERROR]
         if blocking:
@@ -2175,57 +2034,69 @@ class MainWindow(QMainWindow):
             )
             return False
 
-        # One directory per session, holding the export, the engine's config,
-        # its saves and the log. Never the player's own: a playtest that wrote
-        # into those would change the game somebody else plays here.
+        # One directory per session, holding the preview mod, the engine's
+        # config, its saves and the log. Never the player's own: a playtest
+        # that wrote into those would change the game somebody else plays here.
         workspace = Path(profile.workspace_dir or Path.home()) / ".obcedit-playtest"
         session = self._next_session_id()
         session_dir = workspace / session
-        target = session_dir / f"{document.lump_name.lower()}-preview.wad"
+        try:
+            build = preview_mod(self.project, document.uuid)
+            guard = OutputGuard(protected_roots=(Path(profile.data_dir),))
+            mod = write_mod(build, session_dir / "mod", guard=guard)
+        except (OSError, ObcEditError) as error:
+            self._error("Could not build the preview mod", str(error))
+            return False
 
-        import hashlib
-
-        from obcedit_core.engine_runner import probe_capabilities, protocol_supported
-        from obcedit_core.paths import OutputGuard, atomic_write
-        from obcedit_core.wad import build_preview_wad
-
-        # Ask before telling. The probe needs no game data and exits, so it is
-        # cheap and safe; an engine that does not speak the protocol is still
-        # perfectly good to play the map, it just cannot report what happened,
-        # and launching it with options it will treat as filenames would be
-        # worse than launching it without them.
-        capabilities = probe_capabilities(profile.engine_path)
-        speaks = protocol_supported(capabilities)
-        if not speaks:
-            self._note_problem(
-                "Playtest: this engine does not report what it is doing"
-                + (f" (it speaks protocol {capabilities['editor-protocol']}, "
-                   f"this editor speaks {PROTOCOL_VERSION})" if capabilities
-                   else "; it may be an older build")
-                + ". The map will still be launched.")
+        self.statusBar().showMessage("OBCR is checking the preview mod…", 4000)
+        QApplication.processEvents()
+        result = check_mod(profile.engine_path, mod, data_dir=profile.data_dir)
+        self._show_mod_check(result)
+        if not result.ok:
+            detail = (result.errors[0].message if result.errors
+                      else result.output.strip()[-300:] or f"exit code {result.exit_code}")
+            self._error("OBCR refuses this map", detail)
+            return False
 
         try:
-            blob = build_preview_wad([(document.lump_name, document.to_record())])
-            guard = OutputGuard(protected_roots=(Path(profile.data_dir),))
-            atomic_write(target, blob, guard=guard)
             plan = build_launch_plan(
                 executable=profile.engine_path,
                 data_dir=profile.data_dir,
-                preview_wad=target,
-                marker=document.lump_name,
-                session=session if speaks else "",
+                mod=mod,
+                floor=0,
+                start=start,
                 session_dir=session_dir,
-                # What was tested, so the log can be matched back to it. A log
-                # that does not say which version of the map it describes is a
-                # log you cannot trust a week later.
-                export_digest=hashlib.sha256(blob).hexdigest(),
+                # What was tested, so the log can be matched back to it.
+                export_digest=build.digest,
                 revision=self.project.revision,
             )
-        except (OSError, Ec7EditError) as error:
+        except (OSError, ObcEditError) as error:
             self._error("Could not start a playtest", str(error))
             return False
+        plan = dataclasses.replace(plan, session=session)
+        where = (f" from {start[0]},{start[1]} facing {COMPASS[start[2]]}" if start else "")
+        return self.start_session(plan, f"{document.name or document.label}{where}")
 
-        return self.start_session(plan, document.lump_name)
+    _hover_cell: tuple[int, int] | None = None
+
+    def playtest_here(self) -> bool:
+        """Play the open map from the cell under the mouse, facing east."""
+        tab = self.current_tab
+        if tab is None:
+            self._error("Nothing to test", "Open a map first.")
+            return False
+        cell = self._hover_cell
+        if cell is None:
+            self.statusBar().showMessage(
+                "Point at a floor cell on the map, then press Shift+F5", 6000)
+            return False
+        document = self.project.map_by_uuid(tab.map_uuid)
+        if not rules.is_floor(document.cell(0, *cell)):
+            self._error("That is not floor",
+                        f"The player cannot start inside cell {cell[0]},{cell[1]}: "
+                        "point at a floor cell.")
+            return False
+        return self.playtest(start=(cell[0], cell[1], 1))
 
     # -- the playtest session ---------------------------------------------
 
@@ -2287,7 +2158,7 @@ class MainWindow(QMainWindow):
                         f"{plan.executable}\n\n{process.errorString()}")
             self._refresh_session_ui()
             return False
-        self.statusBar().showMessage(f"Testing {label} in EC7Wolf", 6000)
+        self.statusBar().showMessage(f"Testing {label} in OBCR", 6000)
         return True
 
     def _on_session_output(self) -> None:
@@ -2416,7 +2287,7 @@ class MainWindow(QMainWindow):
             tab = self.tabs.widget(index)
             try:
                 tab.canvas.set_document(self.project.map_by_uuid(tab.map_uuid))
-            except Ec7EditError:
+            except ObcEditError:
                 pass  # the map was removed; the tab closes on the next refresh
 
     # -- setup ------------------------------------------------------------
@@ -2449,8 +2320,8 @@ class MainWindow(QMainWindow):
     def _refresh(self) -> None:
         self.map_list.clear()
         for document in self.project.maps:
-            item = QListWidgetItem(f"{document.lump_name}  {document.name}")
-            item.setToolTip(f"{document.width}x{document.height}")
+            item = QListWidgetItem(f"{document.name or '(unnamed)'}")
+            item.setToolTip(f"{document.label}, {document.width}x{document.height}")
             self.map_list.addItem(item)
         self._refresh_palette()
         self._refresh_title()
@@ -2514,7 +2385,10 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self, "About OBCEdit",
             f"<b>OBCEdit {__version__}</b><br>"
-            "A level editor for Corridor 7: Alien Invasion.<br><br>"
-            "Corridor 7 and its data belong to their rights holders and are not "
-            "included here. The editor reads your own copy and leaves it alone.",
+            "The level editor that ships with OBCR, for making Operation Body "
+            "Count mods.<br><br>"
+            "Licensed under the GNU GPL, version 3 or later.<br><br>"
+            "Operation Body Count and its data belong to their rights holders and "
+            "are not included here. The editor reads your own copy and leaves it "
+            "alone.",
         )
