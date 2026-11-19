@@ -2,6 +2,8 @@
 
 A Qt 6 installer and uninstaller for OBCR on Windows and Linux (ADR-021). It installs for the current user only (no administrator rights), checks the user's own copy of Operation Body Count, and copies the game plus the game files it uses into one folder.
 
+Supported systems: Windows 10 and 11 (64-bit), and Linux x86-64 with glibc 2.35 or newer. Windows 7 and 8 cannot run it: Qt 6, PySide6 and the Rust standard library OBCR is built with all require Windows 10.
+
 ## What it does
 
 1. **Game files**: the user points it at their Operation Body Count folder, or at the CD image Steam and GOG ship (`.cue`, `.bin` or `.iso`; ADR-022). Setup runs the bundled game with `obcr --check-data <dir|image>`, which identifies the files by SHA-256 against the known releases (`obc-formats::release`), and only continues when every required file matches. `.cue` files and game folders under the Steam and GOG default locations are suggested when present.
