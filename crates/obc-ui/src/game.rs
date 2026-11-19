@@ -183,6 +183,9 @@ impl Game {
             .map_or(0, |d| d.subsec_millis() / 10);
         world.rng = obc_core::rng::Rng::seeded(hundredths as u8);
         world.gamestate.mapon = mapon;
+        // A new game starts with the chosen fixes; a loaded one replaces the
+        // world with its own (`from_world`).
+        world.fixes = ctx.settings.game.fixes.known();
         Self {
             world,
             sound: {

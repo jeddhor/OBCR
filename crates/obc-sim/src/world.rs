@@ -311,6 +311,10 @@ pub struct World {
     /// from the world (crate::save), so it is skipped here.
     #[serde(skip)]
     pub level: crate::level::LevelProfile,
+    /// Opt-in fixes of original bugs in force (crate::fixes); saved in the
+    /// save's extra block, so skipped here.
+    #[serde(skip)]
+    pub fixes: crate::fixes::Fixes,
     #[serde(skip, default = "empty_tables")]
     pub trig: Arc<Tables>,
     pub rng: Rng,
@@ -409,6 +413,7 @@ impl World {
     pub fn new(data: Arc<GameData>, trig: Arc<Tables>) -> Self {
         let mut w = Self {
             level: crate::level::LevelProfile::stock(0, data.cd),
+            fixes: crate::fixes::Fixes::ORIGINAL,
             data,
             trig,
             rng: Rng::new(),

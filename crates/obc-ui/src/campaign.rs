@@ -298,6 +298,15 @@ pub fn active(ctx: &Ctx) -> (Arc<Campaign>, Option<String>) {
 /// and content hash; with the arenas' title for the setup screen. A mod
 /// without arenas does not change what peers simulate, so it is left out.
 pub fn net_identity(ctx: &Ctx) -> (String, Option<String>) {
+    let (id, title) = net_identity_data(ctx);
+    // The opt-in fixes change the rules: peers must have the same ones.
+    match ctx.settings.game.fixes.known() {
+        f if f == obc_sim::fixes::Fixes::ORIGINAL => (id, title),
+        f => (format!("{id}+fixes:{:x}", f.0), title),
+    }
+}
+
+fn net_identity_data(ctx: &Ctx) -> (String, Option<String>) {
     let release = ctx.assets.release.release.id.to_owned();
     let g = &ctx.settings.game;
     let path = match (&g.mod_path, g.active_mod.as_str()) {

@@ -62,6 +62,9 @@ pub struct GameSettings {
     /// `--mod PATH`: a mod for this run only (not saved).
     #[serde(skip)]
     pub mod_path: Option<std::path::PathBuf>,
+    /// OPTIONS > GAMEPLAY FIXES: the opt-in fixes of original bugs a new
+    /// game starts with (obc_sim::fixes; a loaded game keeps its own).
+    pub fixes: obc_sim::fixes::Fixes,
 }
 
 impl GameSettings {
@@ -95,6 +98,7 @@ impl Default for GameSettings {
             active_mod: String::new(),
             mod_scores: Default::default(),
             mod_path: None,
+            fixes: obc_sim::fixes::Fixes::ORIGINAL,
         }
     }
 }

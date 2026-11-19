@@ -1029,9 +1029,10 @@ enum Opt {
     CdTrackEnd,
     Channels,
     Effects,
+    Fixes,
 }
 
-const OPTS: [Opt; 24] = [
+const OPTS: [Opt; 25] = [
     Opt::Display,
     Opt::Scale,
     Opt::Aspect,
@@ -1056,6 +1057,7 @@ const OPTS: [Opt; 24] = [
     Opt::CdTrackEnd,
     Opt::Channels,
     Opt::Effects,
+    Opt::Fixes,
 ];
 
 /// The port's settings: Classic or Enhanced display, resolution, aspect,
@@ -1097,6 +1099,7 @@ impl Options {
             Opt::CdTrackEnd => "CD TRACK END",
             Opt::Channels => "SOUND VOICES",
             Opt::Effects => "SOUND EFFECTS",
+            Opt::Fixes => "GAMEPLAY FIXES",
         }
     }
 
@@ -1145,6 +1148,10 @@ impl Options {
                 "pc" => "PC SPEAKER".into(),
                 _ => "DIGITIZED".into(),
             },
+            Opt::Fixes => {
+                let on = obc_sim::fixes::ALL.iter().filter(|f| s.game.fixes.on(f)).count();
+                if on == 0 { "ORIGINAL".into() } else { format!("{on} ON") }
+            }
         }
     }
 
@@ -1194,7 +1201,7 @@ impl Options {
                 // A scheme comes with its own default bindings.
                 s.input.bindings = crate::bindings::Bindings::defaults(&s.input.profile);
             }
-            Opt::KeyBindings => {}
+            Opt::KeyBindings | Opt::Fixes => {}
             Opt::AlwaysRun => s.input.always_run = !s.input.always_run,
             Opt::Mouse => step(&mut s.input.mouse_sensitivity, 0.25, 4.0, 0.25),
             Opt::PadTurn => step(&mut s.input.gamepad_turn_speed, 0.25, 3.0, 0.25),
@@ -1267,6 +1274,9 @@ impl Screen for Options {
         if OPTS[self.cur] == Opt::KeyBindings && d != 0 {
             return Transition::Push(Box::new(crate::rebind::Rebind::new()));
         }
+        if OPTS[self.cur] == Opt::Fixes && d != 0 {
+            return Transition::Push(Box::new(GameplayFixes::default()));
+        }
         if d != 0 {
             Self::change(OPTS[self.cur], d, ctx);
         }
@@ -1304,6 +1314,88 @@ impl Screen for Options {
             draw_text(out.layer, font, v.as_bytes(), 180, y, if i == self.cur { hi } else { dim });
         }
         out.palette = pal;
+    }
+}
+
+// ---------------------------------------------------------------- fixes
+
+/// OPTIONS > GAMEPLAY FIXES: the opt-in fixes of original bugs
+/// (obc_sim::fixes, ADR-008). They apply to new games; a loaded game keeps
+/// the fixes it was played with.
+#[derive(Default)]
+pub struct GameplayFixes {
+    cur: usize,
+    shown: obc_sim::fixes::Fixes,
+}
+
+impl Screen for GameplayFixes {
+    fn name(&self) -> &'static str {
+        "gameplay-fixes"
+    }
+
+    fn tick(&mut self, ctx: &mut Ctx) -> Transition {
+        let input = ctx.input;
+        ctx.requests.relative_mouse = Some(false);
+        if back(input) {
+            return Transition::Pop;
+        }
+        let all = obc_sim::fixes::ALL;
+        if !all.is_empty() {
+            if input.pressed(sc::UP) || input.pad_pressed(pad::DPAD_UP) {
+                self.cur = (self.cur + all.len() - 1) % all.len();
+                play_digi(ctx, MOVE_SOUND);
+            }
+            if input.pressed(sc::DOWN) || input.pad_pressed(pad::DPAD_DOWN) {
+                self.cur = (self.cur + 1) % all.len();
+                play_digi(ctx, MOVE_SOUND);
+            }
+            let toggle = input.pressed(sc::LEFT)
+                || input.pressed(sc::RIGHT)
+                || input.pressed(sc::ENTER)
+                || input.pad_pressed(pad::DPAD_LEFT | pad::DPAD_RIGHT | pad::SOUTH);
+            if toggle {
+                let f = all[self.cur];
+                let fixes = &mut ctx.settings.game.fixes;
+                let on = fixes.on(f);
+                fixes.set(f, !on);
+            }
+        }
+        self.shown = ctx.settings.game.fixes;
+        Transition::None
+    }
+
+    fn draw(&mut self, a: &Assets, out: &mut Frame) {
+        out.frame.clear(0);
+        out.layer.clear(0);
+        out.layer_key = None;
+        let pal = a.gamepal;
+        let (fg, hi, dim) = (
+            nearest(&pal, [255, 255, 255]),
+            nearest(&pal, [255, 220, 0]),
+            nearest(&pal, [150, 150, 150]),
+        );
+        out.layer.bar(8, 4, 304, 192, nearest(&pal, [16, 16, 56]));
+        out.palette = pal;
+        let Some(font) = a.fonts.first() else { return };
+        draw_text(out.layer, font, b"GAMEPLAY FIXES", 110, 7, hi);
+        let all = obc_sim::fixes::ALL;
+        if all.is_empty() {
+            draw_text(out.layer, font, b"NONE YET", 132, 90, dim);
+            return;
+        }
+        // Six fixes fit, two lines each; the list scrolls with the cursor.
+        const ROWS: usize = 6;
+        let first = self.cur.saturating_sub(ROWS - 1).min(all.len().saturating_sub(ROWS));
+        for (i, f) in all.iter().enumerate().skip(first).take(ROWS) {
+            let y = 24 + (i - first) as i32 * 24;
+            let sel = i == self.cur;
+            let label = format!("{}  {}", f.id(), f.label);
+            draw_text(out.layer, font, label.as_bytes(), 20, y, if sel { hi } else { fg });
+            let v = if self.shown.on(f) { "FIXED" } else { "ORIGINAL" };
+            draw_text(out.layer, font, v.as_bytes(), 236, y, if sel { hi } else { dim });
+            draw_text(out.layer, font, f.about.as_bytes(), 32, y + 10, dim);
+        }
+        draw_text(out.layer, font, b"NEW GAMES USE THESE; SAVES KEEP THEIR OWN", 20, 180, dim);
     }
 }
 
