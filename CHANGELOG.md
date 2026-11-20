@@ -2,6 +2,27 @@
 
 All notable changes to OBCR. Versions follow [Semantic Versioning](https://semver.org).
 
+## 1.0.0-beta.6 — 2026-11-20 (pre-release)
+
+A small update to beta 5: a push-wall drawing fix and a readable GAMEPLAY FIXES menu. The findings: [docs/ISSUES_M20.md](docs/ISSUES_M20.md).
+
+### Installers
+
+- **Windows** (Windows 10 or 11): `OBCR-Setup-1.0.0-beta.6-windows-x64.exe`. **Linux** (x86-64, glibc 2.35 or newer, such as Ubuntu 22.04+): `OBCR-Setup-1.0.0-beta.6-linux-x86_64` (make it executable and run it).
+- Running Setup over an earlier beta updates the installation; settings, saved games and high scores are kept.
+- Built by GitHub Actions from the tagged source. `SHA256SUMS.txt` lists the files' checksums. They are not code-signed: Windows SmartScreen warns on first run (*More info* > *Run anyway*).
+
+### Changes
+
+- **Push walls** (#17): a push wall seen on its east or west face no longer flips its texture when it starts to move (the original mirrors it the other way round; north and south faces were already right).
+- **GAMEPLAY FIXES menu** (#16): readable. Each fix takes two lines, and the selected fix's description is at the bottom, wrapped to the box.
+
+### Known limitations
+
+- Behaviour follows the disassembly of the original; it has not yet been checked frame by frame against the original running in DOSBox-X.
+- Saved games are tied to the release they were made with: floppy saves do not load with CD files, and the other way round.
+- Multiplayer has been tested on one machine (several game processes), not yet across a real network.
+
 ## 1.0.0-beta.5 — 2026-11-19 (pre-release)
 
 The fifth beta: fixes for the issues reported on beta 4 (#5–#15), opt-in fixes for bugs of the original game, and new FRAME RATE and SENSOR: DEAD options. The investigation behind each change: [docs/ISSUES_M19.md](docs/ISSUES_M19.md).

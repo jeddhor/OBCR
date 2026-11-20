@@ -22,7 +22,7 @@ import re
 from pathlib import Path
 
 #: Used when there is neither a stamp nor a Cargo.toml. Bumped with releases.
-FALLBACK = "1.0.0-beta.5"
+FALLBACK = "1.0.0-beta.6"
 
 _VERSION = re.compile(r'^\s*version\s*=\s*"([^"]+)"', re.MULTILINE)
 

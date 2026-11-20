@@ -1460,26 +1460,67 @@ impl Screen for GameplayFixes {
         out.layer.bar(8, 4, 304, 192, nearest(&pal, [16, 16, 56]));
         out.palette = pal;
         let Some(font) = a.fonts.first() else { return };
-        draw_text(out.layer, font, b"GAMEPLAY FIXES", 110, 7, hi);
+        let title = b"GAMEPLAY FIXES";
+        draw_text(out.layer, font, title, 160 - text_width(font, title) / 2, 7, hi);
         let all = obc_sim::fixes::ALL;
         if all.is_empty() {
             draw_text(out.layer, font, b"NONE YET", 132, 90, dim);
             return;
         }
-        // Six fixes fit, two lines each; the list scrolls with the cursor.
-        const ROWS: usize = 6;
-        let first = self.cur.saturating_sub(ROWS - 1).min(all.len().saturating_sub(ROWS));
-        for (i, f) in all.iter().enumerate().skip(first).take(ROWS) {
-            let y = 24 + (i - first) as i32 * 24;
-            let sel = i == self.cur;
-            let label = format!("{}  {}", f.id(), f.label);
-            draw_text(out.layer, font, label.as_bytes(), 20, y, if sel { hi } else { fg });
-            let v = if self.shown.on(f) { "FIXED" } else { "ORIGINAL" };
-            draw_text(out.layer, font, v.as_bytes(), 236, y, if sel { hi } else { dim });
-            draw_text(out.layer, font, f.about.as_bytes(), 32, y + 10, dim);
+        // Each fix takes two lines: its name, then its quirk number and
+        // state. The selected fix's description is at the bottom (issue #16:
+        // everything on one line overflowed the box).
+        let line = i32::from(font.height).max(8) + 1;
+        let first = self.cur.saturating_sub(FIX_ROWS - 1).min(all.len().saturating_sub(FIX_ROWS));
+        if first > 0 {
+            draw_text(out.layer, font, b"^", 300, 24, dim);
         }
-        draw_text(out.layer, font, b"NEW GAMES USE THESE; SAVES KEEP THEIR OWN", 20, 180, dim);
+        if first + FIX_ROWS < all.len() {
+            draw_text(out.layer, font, b"v", 300, 24 + FIX_ROWS as i32 * 2 * line - line, dim);
+        }
+        for (i, f) in all.iter().enumerate().skip(first).take(FIX_ROWS) {
+            let y = 24 + (i - first) as i32 * 2 * line;
+            let sel = i == self.cur;
+            let label = fit(font, f.label, FIX_TEXT_WIDTH);
+            draw_text(out.layer, font, label.as_bytes(), 20, y, if sel { hi } else { fg });
+            let on = self.shown.on(f);
+            let state = fix_state(f, on);
+            draw_text(out.layer, font, state.as_bytes(), 32, y + line, if on { hi } else { dim });
+        }
+        let help_y = 196 - 3 * line - 2;
+        for (k, text) in fix_help(font, all[self.cur]).iter().enumerate() {
+            draw_text(out.layer, font, text.as_bytes(), 20, help_y + k as i32 * line, dim);
+        }
     }
+}
+
+/// Fixes shown at once on GAMEPLAY FIXES.
+const FIX_ROWS: usize = 5;
+/// The width text may use inside the box (x 20 to 300).
+const FIX_TEXT_WIDTH: i32 = 280;
+
+/// "K-001  FIXED" or "K-001  ORIGINAL".
+fn fix_state(f: &obc_sim::fixes::Fix, on: bool) -> String {
+    format!("{}  {}", f.id(), if on { "FIXED" } else { "ORIGINAL" })
+}
+
+/// The help lines under the list: the fix's description, wrapped to the
+/// box by the font's real widths (two lines at most), then when fixes apply.
+fn fix_help(font: &obc_formats::vgagraph::Font, f: &obc_sim::fixes::Fix) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    for word in f.about.split_whitespace() {
+        match lines.last_mut() {
+            Some(l) if text_width(font, format!("{l} {word}").as_bytes()) <= FIX_TEXT_WIDTH => {
+                l.push(' ');
+                l.push_str(word);
+            }
+            _ => lines.push(word.to_owned()),
+        }
+    }
+    lines.truncate(2);
+    lines.resize(2, String::new());
+    lines.push("APPLIES TO NEW GAMES".into());
+    lines
 }
 
 // ---------------------------------------------------------------- mods
@@ -1721,6 +1762,78 @@ mod tests {
 
     /// Every label, value and help line can be drawn in the game's font and
     /// fits the OPTIONS box.
+    /// Issue #16: everything on GAMEPLAY FIXES fits its box in the game's
+    /// font, and drawing it leaves nothing outside the box.
+    #[test]
+    fn gameplay_fixes_text_fits_the_box() {
+        let Some(dir) = obc_testdata::data_dir() else {
+            eprintln!("SKIPPED: original game data not found (set OBC_DATA_DIR)");
+            return;
+        };
+        let a = Assets::load(obc_formats::DataDir::open(dir).unwrap()).unwrap();
+        let font = &a.fonts[0];
+        let fits = |t: &str, max: i32| {
+            for b in t.bytes() {
+                assert!(
+                    b == b' ' || font.widths[usize::from(b)] > 0,
+                    "no glyph {:?} in {t:?}",
+                    b as char
+                );
+            }
+            assert!(text_width(font, t.as_bytes()) <= max, "{t:?} is wider than {max}");
+        };
+        assert!(!obc_sim::fixes::ALL.is_empty());
+        for f in obc_sim::fixes::ALL {
+            fits(f.label, FIX_TEXT_WIDTH);
+            fits(&fix_state(f, true), FIX_TEXT_WIDTH - 12);
+            fits(&fix_state(f, false), FIX_TEXT_WIDTH - 12);
+            let help = fix_help(font, f);
+            for l in &help {
+                fits(l, FIX_TEXT_WIDTH);
+            }
+            let shown = help[..2].join(" ");
+            assert_eq!(
+                shown.split_whitespace().collect::<Vec<_>>(),
+                f.about.split_whitespace().collect::<Vec<_>>(),
+                "{}: the description is cut",
+                f.id()
+            );
+        }
+        // Drawn: no pixel outside the box (x 8-311, y 4-195), with each fix
+        // selected and both states.
+        for cur in 0..obc_sim::fixes::ALL.len() {
+            for on in [false, true] {
+                let mut screen = GameplayFixes {
+                    cur,
+                    shown: obc_sim::fixes::Fixes(if on { u64::MAX } else { 0 }),
+                };
+                let mut frame = Framebuffer::new(320, 200);
+                let mut layer = Framebuffer::new(320, 200);
+                let mut out = Frame {
+                    presentation: crate::present::Presentation::CLASSIC,
+                    frame: &mut frame,
+                    layer: &mut layer,
+                    layer_key: None,
+                    layer_hud: false,
+                    palette: a.gamepal,
+                    scroll: 0,
+                    alpha: 0.0,
+                    smooth_floors: false,
+                };
+                screen.draw(&a, &mut out);
+                for y in 0..200 {
+                    for x in 0..320 {
+                        let inside = (8..312).contains(&x) && (4..196).contains(&y);
+                        assert!(
+                            inside || layer.get(x, y) == 0,
+                            "pixel drawn outside the box at ({x}, {y})"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn options_text_fits_the_game_font() {
         let Some(dir) = obc_testdata::data_dir() else {
