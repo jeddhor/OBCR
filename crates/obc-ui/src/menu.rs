@@ -1041,7 +1041,7 @@ enum Opt {
     Fixes,
 }
 
-const OPTS: [Opt; 26] = [
+const OPTS: [Opt; 27] = [
     Opt::Display,
     Opt::Scale,
     Opt::Aspect,
