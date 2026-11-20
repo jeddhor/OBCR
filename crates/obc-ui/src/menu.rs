@@ -46,6 +46,13 @@ pub fn nearest(pal: &Palette, rgb: [u8; 3]) -> u8 {
     (0..256).min_by_key(|&i| d(&pal[i])).unwrap_or(0) as u8
 }
 
+/// Nearest palette entry to an 8-bit colour other than `not`.
+pub fn nearest_except(pal: &Palette, rgb: [u8; 3], not: u8) -> u8 {
+    let d =
+        |c: &[u8; 3]| -> i32 { (0..3).map(|i| (i32::from(c[i]) - i32::from(rgb[i])).pow(2)).sum() };
+    (0..256).filter(|&i| i != usize::from(not)).min_by_key(|&i| d(&pal[i])).unwrap_or(0) as u8
+}
+
 pub(crate) fn play_digi(ctx: &Ctx, id: u16) {
     if let Some(d) = ctx.assets.digi.get(usize::from(id)).filter(|d| !d.is_empty()) {
         ctx.audio.send(AudioCommand::PlayDigi {
@@ -1030,6 +1037,7 @@ enum Opt {
     CdTrackEnd,
     Channels,
     Effects,
+    Sensor,
     Fixes,
 }
 
@@ -1059,8 +1067,43 @@ const OPTS: [Opt; 26] = [
     Opt::CdTrackEnd,
     Opt::Channels,
     Opt::Effects,
+    Opt::Sensor,
     Opt::Fixes,
 ];
+
+impl Opt {
+    /// Options that act only in the Enhanced display (issue #6: in Classic
+    /// they are kept but have no effect, so the menu says so).
+    fn enhanced_only(self) -> bool {
+        matches!(
+            self,
+            Opt::Scale
+                | Opt::Aspect
+                | Opt::Interpolate
+                | Opt::Textures
+                | Opt::Floors
+                | Opt::XbrzMenus
+                | Opt::XbrzHud
+        )
+    }
+
+    /// One line on what the option does, under the list.
+    fn help(self) -> &'static str {
+        match self {
+            Opt::Display => "CLASSIC: THE ORIGINAL PICTURE",
+            Opt::Smooth => "BLURS THE STRETCHED PICTURE",
+            Opt::IntegerScale => "WHOLE-NUMBER SCALING ONLY",
+            Opt::Interpolate => "MOVEMENT DRAWN SMOOTHLY",
+            Opt::Textures => "XBRZ ROUNDS OFF TEXTURES",
+            Opt::Floors => "STEADY FLOORS AND CEILINGS",
+            Opt::XbrzMenus => "XBRZ FOR MENUS AND PICTURES",
+            Opt::XbrzHud => "XBRZ SMOOTHS THE STATUS BAR",
+            Opt::Sensor => "DEAD ENEMIES ON THE MAP",
+            Opt::Fixes => "FIXES FOR ORIGINAL BUGS",
+            _ => "",
+        }
+    }
+}
 
 /// The port's settings: Classic or Enhanced display, resolution, aspect,
 /// controls and audio. Left/Right change a value; Esc returns.
@@ -1102,6 +1145,7 @@ impl Options {
             Opt::CdTrackEnd => "CD TRACK END",
             Opt::Channels => "SOUND VOICES",
             Opt::Effects => "SOUND EFFECTS",
+            Opt::Sensor => "SENSOR: DEAD",
             Opt::Fixes => "GAMEPLAY FIXES",
         }
     }
@@ -1111,7 +1155,7 @@ impl Options {
         let pct = |v: f32| format!("{}", (v * 100.0).round() as i32);
         let p = s.video.presentation();
         match o {
-            Opt::Display => if p.is_classic() { "CLASSIC 320X200" } else { "ENHANCED" }.into(),
+            Opt::Display => if p.is_classic() { "CLASSIC" } else { "ENHANCED" }.into(),
             Opt::Scale => format!("{}X  {}", s.video.scale, 200 * s.video.scale),
             Opt::Aspect => s.video.aspect.clone(),
             Opt::Fullscreen => on(s.video.fullscreen),
@@ -1125,7 +1169,7 @@ impl Options {
             },
             Opt::Textures => match s.video.xbrz {
                 n @ 2..=6 => format!("XBRZ {n}X"),
-                _ => "ORIGINAL".into(),
+                _ => "SHARP PIXELS".into(),
             },
             Opt::Floors => if s.video.smooth_floors { "SMOOTH" } else { "ORIGINAL" }.into(),
             Opt::XbrzMenus => on(s.video.xbrz_menus),
@@ -1156,6 +1200,7 @@ impl Options {
                 "pc" => "PC SPEAKER".into(),
                 _ => "DIGITIZED".into(),
             },
+            Opt::Sensor => s.video.sensor_dead.to_uppercase(),
             Opt::Fixes => {
                 let on = obc_sim::fixes::ALL.iter().filter(|f| s.game.fixes.on(f)).count();
                 if on == 0 { "ORIGINAL".into() } else { format!("{on} ON") }
@@ -1214,6 +1259,11 @@ impl Options {
                 s.input.bindings = crate::bindings::Bindings::defaults(&s.input.profile);
             }
             Opt::KeyBindings | Opt::Fixes => {}
+            Opt::Sensor => {
+                let all = ["original", "dimmed", "grey", "hidden"];
+                let cur = all.iter().position(|e| *e == s.video.sensor_dead).unwrap_or(0) as i32;
+                s.video.sensor_dead = all[(cur + d).rem_euclid(4) as usize].into();
+            }
             Opt::AlwaysRun => s.input.always_run = !s.input.always_run,
             Opt::Mouse => step(&mut s.input.mouse_sensitivity, 0.25, 4.0, 0.25),
             Opt::PadTurn => step(&mut s.input.gamepad_turn_speed, 0.25, 3.0, 0.25),
@@ -1309,21 +1359,42 @@ impl Screen for Options {
         out.layer.bar(8, 4, 304, 192, nearest(&pal, [16, 16, 56]));
         let Some(font) = a.fonts.first() else { return };
         draw_text(out.layer, font, b"OPTIONS", 136, 7, hi);
-        // Twelve rows fit; the list scrolls with the cursor.
-        const ROWS: usize = 12;
+        // Eleven rows fit above the help line; the list scrolls with the cursor.
+        const ROWS: usize = 11;
         let first = self.cur.saturating_sub(ROWS - 1).min(OPTS.len() - ROWS);
         if first > 0 {
             draw_text(out.layer, font, b"^", 304, 24, dim);
         }
         if first + ROWS < OPTS.len() {
-            draw_text(out.layer, font, b"v", 304, 180, dim);
+            draw_text(out.layer, font, b"v", 304, 166, dim);
         }
+        // In Classic the Enhanced-only options are greyed out (issue #6).
+        let classic = self.shown.video.presentation().is_classic();
+        let off = nearest(&pal, [90, 90, 110]);
         for (i, &o) in OPTS.iter().enumerate().skip(first).take(ROWS) {
             let y = 24 + (i - first) as i32 * 14;
-            let c = if i == self.cur { hi } else { fg };
+            let inert = classic && o.enhanced_only();
+            let c = match (i == self.cur, inert) {
+                (true, _) => hi,
+                (false, true) => off,
+                (false, false) => fg,
+            };
             draw_text(out.layer, font, Self::label(o).as_bytes(), 20, y, c);
             let v = Self::value(o, &self.shown, a.has_cd_audio());
-            draw_text(out.layer, font, v.as_bytes(), 180, y, if i == self.cur { hi } else { dim });
+            let vc = if i == self.cur {
+                hi
+            } else if inert {
+                off
+            } else {
+                dim
+            };
+            draw_text(out.layer, font, v.as_bytes(), 180, y, vc);
+        }
+        let o = OPTS[self.cur];
+        let help = if classic && o.enhanced_only() { "ENHANCED DISPLAY ONLY" } else { o.help() };
+        if !help.is_empty() {
+            let w = text_width(font, help.as_bytes());
+            draw_text(out.layer, font, help.as_bytes(), 160 - w / 2, 182, dim);
         }
         out.palette = pal;
     }
@@ -1623,5 +1694,65 @@ impl Screen for Mods {
             }
         }
         draw_text(out.layer, font, b"ENTER  PLAY THIS    ESC  BACK", 16, 182, fg);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Issue #6: the xBRZ options act only in Enhanced, and the menu says so.
+    #[test]
+    fn enhanced_only_options_are_marked() {
+        for o in [Opt::Textures, Opt::XbrzMenus, Opt::XbrzHud, Opt::Floors, Opt::Scale] {
+            assert!(o.enhanced_only(), "{o:?}");
+        }
+        for o in [Opt::Smooth, Opt::Display, Opt::Sensor, Opt::Fixes, Opt::Fullscreen] {
+            assert!(!o.enhanced_only(), "{o:?}");
+        }
+        let mut s = crate::settings::Settings::default();
+        s.video.xbrz = 0;
+        assert_eq!(Options::value(Opt::Textures, &s, false), "SHARP PIXELS");
+        // Classic really switches xBRZ off: what the greying-out reports.
+        s.video.xbrz = 4;
+        s.video.mode = "classic".into();
+        assert_eq!((s.video.texture_scale(), s.video.layer_xbrz(false)), (1, false));
+    }
+
+    /// Every label, value and help line can be drawn in the game's font and
+    /// fits the OPTIONS box.
+    #[test]
+    fn options_text_fits_the_game_font() {
+        let Some(dir) = obc_testdata::data_dir() else {
+            eprintln!("SKIPPED: original game data not found (set OBC_DATA_DIR)");
+            return;
+        };
+        let a = Assets::load(obc_formats::DataDir::open(dir).unwrap()).unwrap();
+        let font = &a.fonts[0];
+        let s = crate::settings::Settings::default();
+        let mut classic = s.clone();
+        classic.video.mode = "classic".into();
+        for o in OPTS {
+            let help = o.help();
+            for (text, max) in [
+                (Options::label(o).to_owned(), 158),
+                (Options::value(o, &s, true), 124),
+                (Options::value(o, &classic, false), 124),
+                (help.to_owned(), 288),
+                ("ENHANCED DISPLAY ONLY".to_owned(), 288),
+            ] {
+                for b in text.bytes() {
+                    assert!(
+                        b == b' ' || font.widths[usize::from(b)] > 0,
+                        "{o:?}: no glyph {:?}",
+                        b as char
+                    );
+                }
+                assert!(text_width(font, text.as_bytes()) <= max, "{o:?}: {text:?} too wide");
+            }
+        }
+        for v in ["DIMMED", "GREY", "HIDDEN", "ORIGINAL"] {
+            assert!(text_width(font, v.as_bytes()) <= 124);
+        }
     }
 }

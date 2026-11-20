@@ -109,6 +109,8 @@ pub struct Game {
     music: bool,
     /// Overhead-map player blink (DS:0x3272), toggled each drawn frame.
     map_blink: bool,
+    /// VIDEO `sensor_dead`, copied each tic for drawing.
+    sensor_dead: String,
     /// The bogus-mode warp prompt being typed, and the warp it produced.
     warp_prompt: Option<String>,
     pending_cheat: obc_sim::world::Cheat,
@@ -220,6 +222,7 @@ impl Game {
             viewsize: 18,
             music: true,
             map_blink: false,
+            sensor_dead: ctx.settings.video.sensor_dead.clone(),
             warp_prompt: None,
             pending_cheat: obc_sim::world::Cheat::None,
             blackout: 0,
@@ -647,6 +650,7 @@ impl Screen for Game {
             self.in_menu = false;
             self.set_view_size(ctx.settings.game.viewsize);
             self.sound.set_channels(ctx.settings.audio.channels);
+            self.sensor_dead.clone_from(&ctx.settings.video.sensor_dead);
             self.sound.effects = crate::sound::Effects::from_setting(&ctx.settings.audio.effects);
             self.start_music(ctx);
         }
@@ -1033,7 +1037,8 @@ impl Screen for Game {
             draw_health(out.layer, a, w.gamestate.health, vx + vw, vy);
         }
         if w.ply.map_overlay == 1 {
-            draw_overhead_map(out.layer, w, self.viewsize, self.map_blink);
+            let dead = SensorDead::from_setting(&self.sensor_dead, &a.gamepal);
+            draw_overhead_map(out.layer, w, self.viewsize, self.map_blink, dead);
         }
         self.hud.draw(out.layer, a, w);
         self.hud.draw_message(out.layer, a, vx, vy);
@@ -1131,9 +1136,76 @@ fn prepare_textures(a: &(dyn obc_render::view3d::Textures + Sync), w: &World) {
     crate::assets::prepare_upscaled(a, &walls, &flats, &sprites);
 }
 
+/// How the heat sensor shows dead enemies (issue #8, VIDEO `sensor_dead`):
+/// the original draws every actor that ran this frame, corpses included.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SensorDead {
+    Original,
+    /// Drawn in this palette colour instead of the living's.
+    Colour(u8),
+    Hidden,
+}
+
+impl SensorDead {
+    pub(crate) fn from_setting(s: &str, pal: &Palette) -> Self {
+        let living = pal[usize::from(SENSOR_DOT)];
+        match s {
+            "dimmed" => Self::Colour(crate::menu::nearest_except(
+                pal,
+                [living[0] / 3, living[1] / 3, living[2] / 3],
+                SENSOR_DOT,
+            )),
+            "grey" => Self::Colour(crate::menu::nearest(pal, [110, 110, 110])),
+            "hidden" => Self::Hidden,
+            _ => Self::Original,
+        }
+    }
+}
+
+/// The heat sensor's dot colour (`2f4d:0d31`).
+const SENSOR_DOT: u8 = 1;
+
+/// Whether `o` is a killed enemy: an enemy class, no longer shootable and
+/// out of hit points (`KillActor` clears `FL_SHOOTABLE` after `DamageActor`
+/// takes the hit points to 0 or below; an enemy not yet shootable, such as
+/// one still in its manhole, keeps its hit points).
+fn dead_enemy(o: &obc_sim::world::Obj) -> bool {
+    use obc_sim::world::{class, fl};
+    let enemy = matches!(
+        o.obclass,
+        class::RAT | class::SOLDIER | class::SAUCER | class::GIANT_RAT | class::STOOL
+            ..=class::FAT_MAN | class::FIRE | class::MANHOLE | class::SWAMP
+    );
+    enemy && o.flags & fl::SHOOTABLE == 0 && o.hitpoints <= 0
+}
+
+/// The tiles where the sensor's dot stands only for dead enemies: every
+/// non-ally actor on the tile is a dead enemy (a living one, or a projectile,
+/// keeps the dot as it is).
+fn dead_only_tiles(w: &World) -> Vec<(u16, u16)> {
+    let mut dead = Vec::new();
+    let mut alive = Vec::new();
+    for id in w.obj_ids() {
+        let o = w.obj(id);
+        if id == w.player || o.obclass == obc_sim::world::class::ALLY {
+            continue;
+        }
+        let t = (o.tilex, o.tiley);
+        if dead_enemy(o) { dead.push(t) } else { alive.push(t) }
+    }
+    dead.retain(|t| !alive.contains(t));
+    dead
+}
+
 /// The Tab overhead map (`2f4d:0d31`, RENDERER.md §9.2), one pixel per tile
 /// at absolute page coordinates, drawn over the view without a background.
-fn draw_overhead_map(fb: &mut Framebuffer, w: &World, viewsize: u16, blink: bool) {
+fn draw_overhead_map(
+    fb: &mut Framebuffer,
+    w: &World,
+    viewsize: u16,
+    blink: bool,
+    dead: SensorDead,
+) {
     let (vw, vh) = (i32::from(viewsize) * 16, i32::from(viewsize) * 8);
     let (x0, y0) = ((320 - vw) / 2 + 4, (200 - vh) / 2 + 4);
     // Frame: a 64×64 outline in 0x0C.
@@ -1159,10 +1231,23 @@ fn draw_overhead_map(fb: &mut Framebuffer, w: &World, viewsize: u16, blink: bool
     if w.gamestate.difficulty < 4 {
         // ThermoSensor: every actor that ran this frame, inside the window.
         if w.gamestate.cheatmode || w.thermosensor {
+            let corpses =
+                if dead == SensorDead::Original { Vec::new() } else { dead_only_tiles(w) };
             for &v in &w.actorpos {
                 let (tx, ty) = (i32::from(v >> 8), i32::from(v & 0xFF));
                 if v != 0 && (c0..c0 + 24).contains(&tx) && (r0..r0 + 24).contains(&ty) {
-                    fb.put(x0 + tx, y0 + ty, 1);
+                    let colour = if corpses.contains(&(tx as u16, ty as u16)) {
+                        match dead {
+                            SensorDead::Colour(c) => Some(c),
+                            SensorDead::Hidden => None,
+                            SensorDead::Original => Some(SENSOR_DOT),
+                        }
+                    } else {
+                        Some(SENSOR_DOT)
+                    };
+                    if let Some(c) = colour {
+                        fb.put(x0 + tx, y0 + ty, c);
+                    }
                 }
             }
         }
@@ -1230,5 +1315,63 @@ fn move_player_start(map: &mut obc_formats::maps::Map, x: u8, y: u8, dir: u16) {
     }
     if let Some(c) = map.planes[1].get_mut(usize::from(y) * w + usize::from(x)) {
         *c = 19 + dir.min(3);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Issue #8: the SENSOR: DEAD option changes only the dots of killed
+    /// enemies; ORIGINAL draws exactly what the original does.
+    #[test]
+    fn the_sensor_option_changes_only_dead_enemy_dots() {
+        let Some(dir) = obc_testdata::data_dir() else {
+            eprintln!("SKIPPED: original game data not found (set OBC_DATA_DIR)");
+            return;
+        };
+        let a = Assets::load(obc_formats::DataDir::open(dir).unwrap()).unwrap();
+        let mut w = World::new(a.game.clone(), a.trig.clone());
+        obc_sim::player::new_game(&mut w, 2);
+        w.setup_game_level(&a.maps.map(0).unwrap().unwrap(), 0);
+        w.thermosensor = true;
+        // Two enemies beside the player: one alive, one killed.
+        let (px, py) = (w.plr().tilex, w.plr().tiley);
+        let enemies: Vec<_> = w
+            .obj_ids()
+            .into_iter()
+            .filter(|&id| id != w.player && w.obj(id).obclass == obc_sim::world::class::RAT)
+            .take(2)
+            .collect();
+        assert_eq!(enemies.len(), 2, "floor 1 has rats");
+        w.actorpos = [0; obc_sim::world::MAXACTORS];
+        for (k, &id) in enemies.iter().enumerate() {
+            let o = w.obj_mut(id);
+            o.tilex = px;
+            o.tiley = py + 1 + k as u16;
+            w.actorpos[k + 1] = (px << 8) | (py + 1 + k as u16);
+        }
+        let dead = enemies[1];
+        w.obj_mut(dead).flags &= !obc_sim::world::fl::SHOOTABLE;
+        w.obj_mut(dead).hitpoints = 0;
+        let draw = |mode: &str| {
+            let mut fb = Framebuffer::new(320, 200);
+            draw_overhead_map(&mut fb, &w, 18, false, SensorDead::from_setting(mode, &a.gamepal));
+            fb.pixels.clone()
+        };
+        let original = draw("original");
+        let diff = |other: &[u8]| -> Vec<usize> {
+            (0..original.len()).filter(|&i| original[i] != other[i]).collect()
+        };
+        let (x0, y0) = ((320 - 18 * 16) / 2 + 4, (200 - 18 * 8) / 2 + 4);
+        let dead_at = (y0 + i32::from(py) + 2) as usize * 320 + (x0 + i32::from(px)) as usize;
+        let alive_at = (y0 + i32::from(py) + 1) as usize * 320 + (x0 + i32::from(px)) as usize;
+        assert_eq!((original[alive_at], original[dead_at]), (SENSOR_DOT, SENSOR_DOT));
+        for mode in ["dimmed", "grey", "hidden"] {
+            let other = draw(mode);
+            assert_eq!(diff(&other), vec![dead_at], "{mode}: only the dead enemy's dot changes");
+            assert_eq!(other[alive_at], SENSOR_DOT, "{mode}: the living keep theirs");
+        }
+        assert_eq!(draw("hidden")[dead_at], 0, "hidden: nothing drawn there");
     }
 }

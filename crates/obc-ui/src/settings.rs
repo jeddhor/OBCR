@@ -141,6 +141,10 @@ pub struct VideoSettings {
     /// Enhanced: perspective-correct floors and ceilings without the
     /// original's grout lines and per-tile shading (ADR-019).
     pub smooth_floors: bool,
+    /// How the heat sensor map shows dead enemies (issue #8): "original"
+    /// (the same dot as the living), "dimmed", "grey" or "hidden". Drawing
+    /// only; Classic and Enhanced alike.
+    pub sensor_dead: String,
     pub window_width: u32,
     pub window_height: u32,
 }
@@ -196,6 +200,7 @@ impl Default for VideoSettings {
             xbrz_menus: true,
             xbrz_hud: false,
             smooth_floors: true,
+            sensor_dead: "original".into(),
             window_width: 1280,
             window_height: 720,
         }
