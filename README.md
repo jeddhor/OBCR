@@ -4,7 +4,7 @@
 
 It plays the original game, floor for floor and tic for tic, from your own copy of the game files. You can play it in the original 320×200 picture, or in a modern one: high resolution and widescreen, smooth motion, xBRZ-upscaled textures, mouse and gamepad controls, and network play over the Internet.
 
-> **Status: beta, in testing.** The whole single-player game and network play run. Behaviour follows the disassembly of the original, but it has not yet been compared frame by frame with the original running in DOSBox-X. The current version is **1.0.0-beta.4** ([CHANGELOG.md](CHANGELOG.md), [releases](https://github.com/jeddhor/OBCR/releases)); progress is tracked in [docs/STATUS.md](docs/STATUS.md).
+> **Status: beta, in testing.** The whole single-player game and network play run. Behaviour follows the disassembly of the original, but it has not yet been compared frame by frame with the original running in DOSBox-X. The current version is **1.0.0-beta.5** ([CHANGELOG.md](CHANGELOG.md), [releases](https://github.com/jeddhor/OBCR/releases)); progress is tracked in [docs/STATUS.md](docs/STATUS.md).
 
 > ### 🎮 The controls are modern by default
 >

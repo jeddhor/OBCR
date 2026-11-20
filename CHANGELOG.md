@@ -2,9 +2,17 @@
 
 All notable changes to OBCR. Versions follow [Semantic Versioning](https://semver.org).
 
-## Unreleased
+## 1.0.0-beta.5 — 2026-11-19 (pre-release)
 
-Fixes for the issues reported on beta 4 (#5–#15). The plan and findings: [docs/ISSUES_M19.md](docs/ISSUES_M19.md).
+The fifth beta: fixes for the issues reported on beta 4 (#5–#15), opt-in fixes for bugs of the original game, and new FRAME RATE and SENSOR: DEAD options. The investigation behind each change: [docs/ISSUES_M19.md](docs/ISSUES_M19.md).
+
+### Installers
+
+- **Windows** (Windows 10 or 11): `OBCR-Setup-1.0.0-beta.5-windows-x64.exe`. **Linux** (x86-64, glibc 2.35 or newer, such as Ubuntu 22.04+): `OBCR-Setup-1.0.0-beta.5-linux-x86_64` (make it executable and run it).
+- Running Setup over an earlier beta updates the installation; settings, saved games and high scores are kept.
+- Built by GitHub Actions from the tagged source. `SHA256SUMS.txt` lists the files' checksums. They are not code-signed: Windows SmartScreen warns on first run (*More info* > *Run anyway*).
+
+### Changes
 
 - **Door sounds** (#15): every door, elevator doors included, played the blood-splat sounds instead of the original's door sound.
 - **Far-away sounds** (#9): like the original, distant creature calls (sounds 50 and up) are no longer heard across the whole floor.
@@ -20,6 +28,13 @@ Fixes for the issues reported on beta 4 (#5–#15). The plan and findings: [docs
 - **OPTIONS** (#6): options that only work in Enhanced display are greyed out in Classic and say so, and a help line explains the selected option. TEXTURES' unsmoothed setting is now called SHARP PIXELS.
 - Saved games use format 5 (they record the gameplay fixes); older saves still load.
 - The README states the supported systems: Windows 10 and 11, and Linux (#5).
+
+### Known limitations
+
+- Behaviour follows the disassembly of the original; it has not yet been checked frame by frame against the original running in DOSBox-X. The findings for these issues come from the disassembly too.
+- Saves made with this version cannot be loaded by earlier betas.
+- Saved games are tied to the release they were made with: floppy saves do not load with CD files, and the other way round.
+- Multiplayer has been tested on one machine (several game processes), not yet across a real network.
 
 ## 1.0.0-beta.4 — 2026-11-15 (pre-release)
 
