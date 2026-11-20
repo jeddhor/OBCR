@@ -1,6 +1,6 @@
 # GitHub issues #5–#15 — the remediation plan
 
-**Milestone M19.** Status: planned 2026-11-19, being worked on `m19/*` branches.
+**Milestone M19.** Status: implemented 2026-11-19 on `m19/issues`; what was found is in §4.
 
 Eleven issues were reported against 1.0.0-beta.4, most by a player comparing OBCR with the DOS original side by side. This document is the plan for all of them: what each report means, whether it is a defect of OBCR (it differs from the original) or of the original (OBCR copies a DOS bug faithfully), how it is investigated, how it is fixed and how the fix is proved.
 
@@ -98,3 +98,24 @@ Each workstream is one branch `m19/<name>`, worked in its own git worktree. Ever
 3. Merge into `m19/issues`; renumber the quirks if needed; update DELTA_SPEC's quirk list, CHANGELOG, options documentation, STATUS.
 4. Full verification: `cargo xtask ci`, `cargo xtask test-data`, the OBCEdit suites.
 5. With the owner's go-ahead: merge and push, a release, and a note on each issue saying what was found and changed. Where the original has the bug too, the note names the GAMEPLAY FIXES option.
+
+## 4. As built: what each issue turned out to be
+
+| # | Finding | Confidence | What changed |
+|---|---|---|---|
+| 5 | The Rust standard library, Qt 6 and PySide6 all need Windows 10 | — | README and installer README state the supported systems; a troubleshooting row names the error |
+| 6 | xBRZ works in Enhanced; the reporter plays in Classic, where it is off by design, and the menu offered it anyway. The "filter" in Enhanced is xBRZ itself (TEXTURES 4X by default); SMOOTH FILTER only affects stretching the finished picture | CONFIRMED (screenshots compared) | Enhanced-only options greyed out in Classic; a help line per option; TEXTURES off is SHARP PIXELS; no rendering change |
+| 7 | The original picks items up in its sprite pass (`DrawScaleds` 1b4a:0d98 via `TransformTile` 1b4a:01af): only when 0.13–0.79 tiles ahead and within half a tile sideways. OBCR already did the same | CONFIRMED | Quirk **K-002**, opt-in fix PICK UP ITEMS UNDERFOOT |
+| 8 | Feature request | — | Option SENSOR: DEAD (ORIGINAL, DIMMED, GREY, HIDDEN), drawing only |
+| 9 | `PlaySoundLocGlobal` (1823:0106) drops a far sound with id ≥ 50 unless an SB Pro mixer is present; OBCR never dropped it. The creatures' calls are 50 and 57 | LIKELY (the save-and-load cure was not reproduced) | `sound::culled`, the original's rule |
+| 10 | The sewer man stands on an ambush tile his spawner ignores: area 254; the original reads `areabyplayer[254]` past its end, landing on `actorat[0][30]`, a wall (non-zero), so he always hears the player. OBCR returned false | CONFIRMED | `World::area_by_player` reproduces the read (quirk **K-005**, preserved) |
+| 11 | `PlayLoop` (1942:1315) picks the palette from the loaded floor's generator switch; OBCR computed it, then kept floor 1's | CONFIRMED | `Game::from_world` keeps the loaded floor's lighting |
+| 12a | `PlayLoop` clears the sensor flag (DS:0x3304) on every entry and the save has no field for it: DOS loses it too | CONFIRMED | Quirk **K-001**, opt-in fix KEEP HEAT SENSOR ON LOAD |
+| 12b | `CheckLine` (1e43:1982) lets a wall cell through only for plane-1 0x69–0x6B; an opened door-look wall (103) keeps its open frame and blocks shots and sight. OBCR ported it exactly. The shareware difference the reporter mentions was not checked | CONFIRMED (retail) | Quirk **K-004**, opt-in fix SEE THROUGH OPEN DOOR WALLS |
+| 13 | The clock is 70 Hz (700 or 140 Hz timer, `TimeCount` every 10th or 2nd interrupt); tics-scaled motion matches. But with no frame limiter, the bob, booby-trap knock-back and `Thrust`'s per-frame cap ran at the machine's frame rate. OBCR played as a 35 fps machine; the reporter's DOS setup was likely about 17 fps | CONFIRMED (code); the reporter's frame rate is an inference | Option FRAME RATE (70, 35, 23, 17, 14), default 35 unchanged |
+| 14 | `GiveWeapon` (208c:066c, identical in BCCD.EXE) selects a weapon at least as good as the best even when owned. OBCR already did the same | CONFIRMED | Quirk **K-003**, opt-in fix KEEP WEAPON ON PICKUP |
+| 15 | `DoorOpening`/`CloseDoor` play sound 82; OBCR played 62 and 63 (blood splats) for every door | CONFIRMED | Door sounds fixed |
+
+The quirks were numbered in reserved blocks per workstream and renumbered densely when merged (K-001 to K-005).
+
+Not verified on the original by observation: nothing was run in DOSBox-X (no project setup exists yet). Every finding above comes from the `COUNT.EXE` disassembly and OBCR tests, several against the reporter's saves.

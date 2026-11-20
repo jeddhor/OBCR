@@ -622,6 +622,27 @@ Done (recorded as M15.6–M15.7 in STATUS): release OBC-CD, the CD build's code 
 - [x] A map drawn in OBCEdit, exported and checked by OBCR, with a snapshot through OBCR's renderer (GUI slice test, data-gated).
 - [x] The installers carry OBCEdit; an unattended install creates it and the uninstaller removes it (Windows checked; Linux by CI).
 
+## M19 — GitHub issues #5–#15
+
+**Goal:** investigate and remedy every issue reported on 1.0.0-beta.4. The plan and findings: [ISSUES_M19.md](ISSUES_M19.md).
+
+| Id | Task |
+|---|---|
+| M19.0 | Groundwork: opt-in gameplay fixes (`obc_sim::fixes`, ADR-008), save format 5, OPTIONS > GAMEPLAY FIXES. |
+| M19.1 | Saved state: lights after loading (#11), the heat sensor on load (#12, K-001). |
+| M19.2 | The player: pickups (#7, K-002), weapon switching (#14, K-003). |
+| M19.3 | Sound: door sounds (#15), far sounds (#9). |
+| M19.4 | Doors and alertness: the sewer man (#10, K-005), open door walls (#12, K-004). |
+| M19.5 | Game speed (#13): FRAME RATE. |
+| M19.6 | Presentation: xBRZ and the options menu (#6), SENSOR: DEAD (#8). |
+| M19.7 | Supported systems (#5). |
+
+### Acceptance criteria
+
+- [x] Each issue has a finding with its confidence and citation, and a test where behaviour changed.
+- [x] Classic plays as the original unless a gameplay fix is turned on; the fixes are saved with each game.
+- [x] `cargo xtask ci` and `cargo xtask test-data` pass.
+
 ## M18 — Mod art, sounds, music, arenas; patrol routes
 
 **Goal:** mods carry their own art, sounds and music and their own network arenas; OBCEdit makes them and draws patrol routes; the Linux installer slimmed. The plan: [MOD_ASSETS_AND_ARENAS.md](MOD_ASSETS_AND_ARENAS.md) (ADR-025, ADR-026).

@@ -125,6 +125,17 @@ Fixed keys that are not in the list: **Alt+Enter** (fullscreen); with the CD rel
 | **SOUND VOICES** | 1 ORIGINAL, **4 MIXED** | 1 plays one digitized sound at a time with the original's priorities, as a Sound Blaster did. 4 mixes up to four, so a shot does not cut off a scream. |
 | **SOUND EFFECTS** | **DIGITIZED**, ADLIB, PC SPEAKER | The effects device, as in the original's sound setup: digitized samples, AdLib (FM) effects, or the PC speaker. |
 
+### Gameplay fixes
+
+OPTIONS > **GAMEPLAY FIXES** lists fixes for bugs of the original game. Each is off by default, so OBCR plays exactly like the original; turn one on and it applies to every **new** game. A saved game keeps the fixes it was started with, whatever the menu says now, and network players must have the same fixes to see each other. Each is a quirk recorded in [re/DELTA_SPEC.md](re/DELTA_SPEC.md):
+
+| Fix | What the original does | With the fix |
+|---|---|---|
+| **K-001 KEEP HEAT SENSOR ON LOAD** | Loading a game loses the heat sensor picked up on that floor; the save does not hold it. | A loaded game keeps the sensor. A new floor still starts without it. |
+| **K-002 PICK UP ITEMS UNDERFOOT** | Items are picked up only when they are a little ahead of you, so walking backward onto one never works, and strafing works only when it is slightly in front. | The item in your own cell is picked up too, however you got there. |
+| **K-003 KEEP WEAPON ON PICKUP** | Picking up a weapon switches to it whenever it is at least as good as your best, even one you already have. | Only a weapon you did not have switches; the others give ammunition. |
+| **K-004 SEE THROUGH OPEN DOOR WALLS** | An opened door-look wall still stops shots and the enemies' sight, until you stand in the doorway. | Shots and sight pass any opened animated wall. |
+
 ---
 
 ## The command line
@@ -248,6 +259,7 @@ gametype = 1             # GAME TYPE: 0..2 difficulty 1..3, 3 Random, 4 N, 5 T, 
 viewsize = 18            # VIEW SIZE: 12, 14, 16, 18, 20
 floor_textures = true    # F5 / F6
 frame_tics = 2           # FRAME RATE: tics per frame, 1-5 (70, 35, 23, 17, 14 frames a second)
+fixes = 0                # GAMEPLAY FIXES for new games: a bit per quirk number (K-001 is 2, K-002 is 4, ...)
 # quicksave_slot = 3     # the slot F9 saves to (the last one saved from the menu)
 # scores = [...]         # the high-score table
 

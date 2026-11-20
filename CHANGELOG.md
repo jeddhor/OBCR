@@ -2,6 +2,25 @@
 
 All notable changes to OBCR. Versions follow [Semantic Versioning](https://semver.org).
 
+## Unreleased
+
+Fixes for the issues reported on beta 4 (#5–#15). The plan and findings: [docs/ISSUES_M19.md](docs/ISSUES_M19.md).
+
+- **Door sounds** (#15): every door, elevator doors included, played the blood-splat sounds instead of the original's door sound.
+- **Far-away sounds** (#9): like the original, distant creature calls (sounds 50 and up) are no longer heard across the whole floor.
+- **Lights after loading** (#11): a loaded floor keeps the lights it was saved with; before, it took floor 1's, so a lit floor could load dark and the switch needed two uses.
+- **Floor 4's sewer man** (#10) wakes from gunfire as in DOS. He stands on a tile that gives him an area number past the end of the game's table, and the original's out-of-range read always says he is near the player; OBCR now reproduces it.
+- **FRAME RATE** option (#13): the original computed as many frames as the computer could, and a few things ran once per frame (the weapon's bob, a booby trap's knock-back, a cap on running). OBCR played like a machine at 35 frames a second; choose 17 or 14 to match a slower DOS machine. Walking, enemies and doors are unchanged: the game clock is 70 Hz, as in the original.
+- **GAMEPLAY FIXES** (OPTIONS): opt-in fixes for bugs of the original, off by default and kept with each saved game:
+  - K-001 KEEP HEAT SENSOR ON LOAD (#12);
+  - K-002 PICK UP ITEMS UNDERFOOT (#7);
+  - K-003 KEEP WEAPON ON PICKUP (#14);
+  - K-004 SEE THROUGH OPEN DOOR WALLS (#12).
+- **SENSOR: DEAD** option (#8): killed enemies on the heat sensor map can be dimmed, grey or hidden.
+- **OPTIONS** (#6): options that only work in Enhanced display are greyed out in Classic and say so, and a help line explains the selected option. TEXTURES' unsmoothed setting is now called SHARP PIXELS.
+- Saved games use format 5 (they record the gameplay fixes); older saves still load.
+- The README states the supported systems: Windows 10 and 11, and Linux (#5).
+
 ## 1.0.0-beta.4 — 2026-11-15 (pre-release)
 
 The fourth beta. Mods can now bring their own art, sounds, music and network arenas, and OBCEdit gains a resources panel and a patrol-route tool.
