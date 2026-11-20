@@ -32,28 +32,35 @@ These are the original game's own settings, in its main menu. OBCR keeps them as
 
 Press **O** in the main menu. Up and Down choose an option and Left and Right change it; changes apply at once and are saved when you quit. **Enter** on KEY BINDINGS opens the bindings screen. **Esc** goes back.
 
-Some options apply only in **Enhanced** mode. **Classic** always shows the original picture, whatever they are set to.
+Some options apply only in **Enhanced** mode. **Classic** always shows the original picture, whatever they are set to: in Classic, OPTIONS greys those options out and says *ENHANCED DISPLAY ONLY*. A line under the list says what the selected option does.
 
 ### Display
 
 | Option | Values (default in bold) | What it does |
 |---|---|---|
-| **DISPLAY** | CLASSIC 320X200, **ENHANCED** | Classic is the original picture, pixel for pixel, scaled up to your window. Enhanced renders at a higher resolution and allows everything below. |
+| **DISPLAY** | CLASSIC, **ENHANCED** | Classic is the original picture, pixel for pixel, scaled up to your window. Enhanced renders at a higher resolution and allows everything below. |
 | **RESOLUTION** | 2X to 8X (**4X**) | Enhanced: the multiple of the original 200 lines the game renders at. 4X is 800 lines, 6X is 1200. |
 | **ASPECT** | 4:3, 16:10, **16:9**, 21:9 | Enhanced: the shape of the picture. Wider shapes show more to the sides (Hor+), as Wolfenstein 3D ports do. 4:3 is the original's shape. |
 | **FULLSCREEN** | ON, **OFF** | Fullscreen instead of a window. Alt+Enter toggles it at any time. |
-| **SMOOTH FILTER** | ON, **OFF** | Bilinear filtering when the picture is stretched to the window. Off keeps pixels sharp. |
+| **SMOOTH FILTER** | ON, **OFF** | Bilinear filtering when the finished picture is stretched to the window. Off keeps pixels sharp. It does not smooth the textures themselves: that is TEXTURES. |
 | **INTEGER SCALING** | ON, **OFF** | Scale only by whole multiples, with black borders, so every original pixel is the same size. |
-| **SMOOTH MOTION** | **ON**, OFF | Enhanced: draws the view and every actor between game tics, so motion is as smooth as your monitor's refresh rate. The game itself still runs at the original's 70 tics per second (35 frames). Off shows only the frames the game computes. |
+| **SMOOTH MOTION** | **ON**, OFF | Enhanced: draws the view and every actor between game tics, so motion is as smooth as your monitor's refresh rate. The game itself still runs at the original's 70 tics per second, at the FRAME RATE below. Off shows only the frames the game computes. |
+| **FRAME RATE** | 70, **35**, 23, 17, 14 FPS | How many frames a second the game computes, as the original did on a computer of that speed. The game clock is always 70 tics a second, so walking, enemies and doors keep their speed; what the original did once per frame follows this setting: the weapon's bob, the knock-back of a booby trap, and, at 14 frames a second, a slightly slower run (the original limited how far one frame can move you). Choose 17 or 14 to match the original on a slower DOS machine or emulator. |
 
 ### Textures and floors
 
 | Option | Values | What it does |
 |---|---|---|
-| **TEXTURES** | ORIGINAL, XBRZ 2X to XBRZ 6X (**4X**) | Enhanced: upscales walls, doors, floors, ceilings, enemies, items and the hand weapon with xBRZ, which rounds off blocky texels while keeping edges sharp. The upscaling works on palette indices, so shading, damage and bonus flashes, fades and the generators-off darkness still work as in the original. Textures are built when first needed, about 0.2 MB each at 4X and 0.4 MB at 6X. |
+| **TEXTURES** | SHARP PIXELS, XBRZ 2X to XBRZ 6X (**4X**) | Enhanced: SHARP PIXELS draws the original texels, blocky as in DOS (with FLOORS SMOOTH, floors stay steady and sharp). XBRZ upscales walls, doors, floors, ceilings, enemies, items and the hand weapon with xBRZ, which rounds off blocky texels while keeping edges sharp. The upscaling works on palette indices, so shading, damage and bonus flashes, fades and the generators-off darkness still work as in the original. Textures are built when first needed, about 0.2 MB each at 4X and 0.4 MB at 6X. |
 | **FLOORS** | **SMOOTH**, ORIGINAL | Enhanced: SMOOTH draws floors and ceilings in true perspective, continuous across tiles, with the light fading smoothly with distance. ORIGINAL keeps the original's look: each tile drawn separately, the texture pasted flat on screen, a grout line between tiles and one brightness per tile. |
 | **XBRZ MENUS** | **ON**, OFF | Enhanced: upscales the menus, the title and story pictures, the animated sequences and movies, and the help and score pages, at the resolution multiple (up to 6X). |
 | **XBRZ STATUS BAR** | ON, **OFF** | Enhanced: upscales the in-game status bar and overlays too. Off by default: xBRZ distorts its small lettering. |
+
+### Heat sensor
+
+| Option | Values | What it does |
+|---|---|---|
+| **SENSOR: DEAD** | **ORIGINAL**, DIMMED, GREY, HIDDEN | How the heat sensor map (Tab, once you have the sensor) shows killed enemies. The original draws them as the same red dot as the living. DIMMED draws them dark red, GREY grey, HIDDEN not at all. A tile with a living enemy, or anything else moving, keeps its normal dot. Only the map's drawing changes, in Classic and Enhanced alike. |
 
 ### Controls
 
@@ -117,6 +124,17 @@ Fixed keys that are not in the list: **Alt+Enter** (fullscreen); with the CD rel
 | **CD TRACK END** | **NEXT TRACK**, ORIGINAL | What happens when a CD track ends. The original fell silent until the next floor, then played the same track again; NEXT TRACK goes on to the next of the four. See [cd-release.md](cd-release.md). |
 | **SOUND VOICES** | 1 ORIGINAL, **4 MIXED** | 1 plays one digitized sound at a time with the original's priorities, as a Sound Blaster did. 4 mixes up to four, so a shot does not cut off a scream. |
 | **SOUND EFFECTS** | **DIGITIZED**, ADLIB, PC SPEAKER | The effects device, as in the original's sound setup: digitized samples, AdLib (FM) effects, or the PC speaker. |
+
+### Gameplay fixes
+
+OPTIONS > **GAMEPLAY FIXES** lists fixes for bugs of the original game. Each is off by default, so OBCR plays exactly like the original; turn one on and it applies to every **new** game. A saved game keeps the fixes it was started with, whatever the menu says now, and network players must have the same fixes to see each other. Each is a quirk recorded in [re/DELTA_SPEC.md](re/DELTA_SPEC.md):
+
+| Fix | What the original does | With the fix |
+|---|---|---|
+| **K-001 KEEP HEAT SENSOR ON LOAD** | Loading a game loses the heat sensor picked up on that floor; the save does not hold it. | A loaded game keeps the sensor. A new floor still starts without it. |
+| **K-002 PICK UP ITEMS UNDERFOOT** | Items are picked up only when they are a little ahead of you, so walking backward onto one never works, and strafing works only when it is slightly in front. | The item in your own cell is picked up too, however you got there. |
+| **K-003 KEEP WEAPON ON PICKUP** | Picking up a weapon switches to it whenever it is at least as good as your best, even one you already have. | Only a weapon you did not have switches; the others give ammunition. |
+| **K-004 SEE THROUGH OPEN DOOR WALLS** | An opened door-look wall still stops shots and the enemies' sight, until you stand in the doorway. | Shots and sight pass any opened animated wall. |
 
 ---
 
@@ -208,6 +226,7 @@ xbrz = 4                 # TEXTURES: 0 (original) or 2..6
 xbrz_menus = true
 xbrz_hud = false
 smooth_floors = true     # FLOORS
+sensor_dead = "original" # SENSOR: DEAD: "original", "dimmed", "grey", "hidden"
 window_width = 1280      # remembered window size
 window_height = 720
 
@@ -239,6 +258,8 @@ use = ["SPACE", "E", "MOUSE RIGHT", "PAD A"]
 gametype = 1             # GAME TYPE: 0..2 difficulty 1..3, 3 Random, 4 N, 5 T, 6 M
 viewsize = 18            # VIEW SIZE: 12, 14, 16, 18, 20
 floor_textures = true    # F5 / F6
+frame_tics = 2           # FRAME RATE: tics per frame, 1-5 (70, 35, 23, 17, 14 frames a second)
+fixes = 0                # GAMEPLAY FIXES for new games: a bit per quirk number (K-001 is 2, K-002 is 4, ...)
 # quicksave_slot = 3     # the slot F9 saves to (the last one saved from the menu)
 # scores = [...]         # the high-score table
 

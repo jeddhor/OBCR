@@ -1,6 +1,7 @@
 //! Doors and area connectivity (`WOLFSRC/WL_ACT1.C`; OBC `SpawnDoor`
 //! ghidra 2281:0437, `OperateDoor` 2281:07f3).
-//! DELTA-UNCHECKED: door kinds, locks and sounds per docs/re/LEVEL_CODES.md.
+//! DELTA-UNCHECKED: door kinds and locks per docs/re/LEVEL_CODES.md; the
+//! door sound is checked (`sounds`).
 
 use crate::world::{AREATILE, DoorAction, NUMAREAS, Occ, World};
 
@@ -186,7 +187,12 @@ impl World {
 }
 
 /// Door sound ids. DELTA-UNCHECKED: OBC ids per docs/re/LEVEL_CODES.md / AUDIO.md.
+/// Door sounds. OBC plays one sound, 0x52 (82), both when a door starts to
+/// open (`DoorOpening` 2281:0868) and when it closes (`CloseDoor` 2281:0528),
+/// through `PlaySoundLocTile` (1823:0106). CONFIRMED (docs/re/AUDIO.md §10).
+/// Every door kind uses it, elevator doors included. Before M19 this port
+/// played 62 and 63, the visor blood-splat sounds (issue #15).
 pub mod sounds {
-    pub const DOOR_OPEN: u16 = 62;
-    pub const DOOR_CLOSE: u16 = 63;
+    pub const DOOR_OPEN: u16 = 82;
+    pub const DOOR_CLOSE: u16 = 82;
 }

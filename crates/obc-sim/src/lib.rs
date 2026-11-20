@@ -6,6 +6,7 @@ pub mod animwalls;
 pub mod data;
 pub mod doors;
 pub mod events;
+pub mod fixes;
 pub mod level;
 pub mod net;
 pub mod player;

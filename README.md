@@ -4,7 +4,7 @@
 
 It plays the original game, floor for floor and tic for tic, from your own copy of the game files. You can play it in the original 320×200 picture, or in a modern one: high resolution and widescreen, smooth motion, xBRZ-upscaled textures, mouse and gamepad controls, and network play over the Internet.
 
-> **Status: beta, in testing.** The whole single-player game and network play run. Behaviour follows the disassembly of the original, but it has not yet been compared frame by frame with the original running in DOSBox-X. The current version is **1.0.0-beta.4** ([CHANGELOG.md](CHANGELOG.md), [releases](https://github.com/jeddhor/OBCR/releases)); progress is tracked in [docs/STATUS.md](docs/STATUS.md).
+> **Status: beta, in testing.** The whole single-player game and network play run. Behaviour follows the disassembly of the original, but it has not yet been compared frame by frame with the original running in DOSBox-X. The current version is **1.0.0-beta.5** ([CHANGELOG.md](CHANGELOG.md), [releases](https://github.com/jeddhor/OBCR/releases)); progress is tracked in [docs/STATUS.md](docs/STATUS.md).
 
 > ### 🎮 The controls are modern by default
 >
@@ -190,7 +190,7 @@ Whichever route you take, OBCR keeps your settings and saved games in your user 
 
 Download the installer for your system from the [releases page](https://github.com/jeddhor/OBCR/releases):
 
-- **Windows** (64-bit): `OBCR-Setup-<version>-windows-x64.exe`. It is not code-signed, so SmartScreen warns the first time: choose *More info → Run anyway*.
+- **Windows** (Windows 10 or 11, 64-bit): `OBCR-Setup-<version>-windows-x64.exe`. It is not code-signed, so SmartScreen warns the first time: choose *More info → Run anyway*.
 - **Linux** (x86-64, glibc 2.35 or newer, such as Ubuntu 22.04 and later): `OBCR-Setup-<version>-linux-x86_64`. Make it executable (`chmod +x`) and run it. It carries its own Qt; the graphics drivers, X11 or Wayland and the sound system come from your desktop.
 
 Setup installs for your user account only and never asks for administrator rights. Its pages:
@@ -367,6 +367,7 @@ How mods work and how to write one by hand: [docs/modding.md](docs/modding.md). 
 | A saved game will not load (*"saved with data release …"*) | Saved games belong to the release they were made with. Floppy saves need the floppy files, and CD saves need the CD files. |
 | SmartScreen blocks Setup | The installers are not code-signed. Choose *More info → Run anyway*. |
 | Linux Setup will not start | It needs glibc 2.35 or newer. Run it from a terminal to see the error. |
+| *"The procedure entry point GetSystemTimePreciseAsFileTime could not be located"* (or another missing `KERNEL32.dll` function) | OBCR needs Windows 10 or 11. The Rust toolchain it is built with, Qt 6 (Setup) and PySide6 (OBCEdit) all require Windows 10, so Windows 7 and 8 are not supported. On an older PC, the Linux version is the way to play. |
 | The picture looks too soft or too sharp | Toggle *TEXTURES* (xBRZ), *SMOOTH FILTER* and *INTEGER SCALING* in OPTIONS, or use `--classic`. |
 | Text on the status bar looks distorted | *XBRZ STATUS BAR* is on; it is off by default for that reason. |
 

@@ -303,3 +303,93 @@ fn screen_splats_consume_random_numbers() {
     player::clear_screen_splats(&mut w);
     assert_eq!(w.ply.splatcount, 0);
 }
+
+/// Walks the player (at the centre of cell (12, 12) offset by `off`, facing
+/// `dir`) with `cmd` for up to 40 frames; true if the item at `at` is taken.
+fn walk_onto(
+    fixes: u64,
+    dir: u16,
+    at: (u8, u8),
+    off: (i32, i32),
+    cmd: obc_sim::world::TicCmd,
+) -> bool {
+    let mut w = room_world();
+    start(&mut w, 1, 12, 12, dir);
+    w.fixes = obc_sim::fixes::Fixes(fixes);
+    let p = w.player;
+    w.obj_mut(p).x += off.0;
+    w.obj_mut(p).y += off.1;
+    w.statics.push(Static { tilex: at.0, tiley: at.1, shape: 30, flags: fl::BONUS, item: 11 });
+    let i = w.statics.len() - 1;
+    for _ in 0..40 {
+        w.frame(&cmd, 2);
+        if w.statics[i].shape == -1 {
+            return true;
+        }
+    }
+    false
+}
+
+/// Issue #7 (quirk K-002). The original takes an item only when it projects
+/// ahead of the view (`TransformTile`, docs/re/PLAYER.md §4.5): walking
+/// forward onto it, or strafing past it while it is a little ahead; never
+/// walking backward, nor strafing onto one level with the player.
+#[test]
+fn items_are_taken_ahead_only_unless_k005() {
+    use obc_sim::world::{TicCmd, bt};
+    let forward = TicCmd { controly: -40, ..TicCmd::default() };
+    let backward = TicCmd { controly: 40, ..TicCmd::default() };
+    let mut strafe_east = TicCmd { controlx: 40, ..TicCmd::default() };
+    strafe_east.buttons[bt::STRAFE] = true;
+    let k002 = 1 << obc_sim::fixes::K_002.number;
+    // Facing north (dir 0).
+    assert!(walk_onto(0, 0, (12, 10), (0, 0), forward));
+    assert!(!walk_onto(0, 0, (12, 14), (0, 0), backward), "the original: never backward");
+    assert!(!walk_onto(0, 0, (13, 12), (0, 0), strafe_east), "level with the player");
+    assert!(walk_onto(0, 0, (13, 12), (0, 0x4000), strafe_east), "a quarter tile ahead");
+    // K-002: also the item in the player's own cell.
+    assert!(walk_onto(k002, 0, (12, 14), (0, 0), backward));
+    assert!(walk_onto(k002, 0, (13, 12), (0, 0), strafe_east));
+}
+
+/// Issue #14 (quirk K-003). `GiveWeapon` selects a weapon at least as good as
+/// the best one even when it is already owned (`COUNT.EXE` and `BCCD.EXE`,
+/// 208c:066c): a dropped Galil takes a player holding the Uzi back to the
+/// Galil. With K-003 only a new weapon is selected.
+#[test]
+fn owned_weapons_switch_unless_k006() {
+    let galil = |w: &mut World| {
+        w.gamestate.weapons = 1 | 2 | 4; // shotgun, Uzi, Galil
+        w.gamestate.bestweapon = 2;
+        w.gamestate.chosenweapon = 1;
+        w.gamestate.weapon = 1;
+        w.gamestate.clips[1] = 1;
+    };
+    let mut w = world();
+    galil(&mut w);
+    let i = item(&mut w, 5);
+    player::get_bonus(&mut w, i);
+    assert_eq!((w.gamestate.weapon, w.gamestate.chosenweapon), (2, 2), "the original switches");
+
+    let mut w = world();
+    w.fixes.set(&obc_sim::fixes::K_003, true);
+    galil(&mut w);
+    let i = item(&mut w, 5);
+    player::get_bonus(&mut w, i);
+    assert_eq!((w.gamestate.weapon, w.gamestate.chosenweapon), (1, 1), "K-003 keeps the Uzi");
+    assert_eq!(w.gamestate.clips[1], 3, "the clips are still given");
+    // A weapon not owned before is still selected.
+    let i = item(&mut w, 12);
+    player::get_bonus(&mut w, i);
+    assert_eq!((w.gamestate.weapon, w.gamestate.bestweapon), (3, 3));
+
+    // After a network respawn's ResetInventory (bestweapon 1, weapons kept):
+    // no switch, but bestweapon rises so the Galil's key works again.
+    let mut w = world();
+    w.fixes.set(&obc_sim::fixes::K_003, true);
+    galil(&mut w);
+    w.gamestate.bestweapon = 1;
+    let i = item(&mut w, 5);
+    player::get_bonus(&mut w, i);
+    assert_eq!((w.gamestate.weapon, w.gamestate.bestweapon), (1, 2));
+}

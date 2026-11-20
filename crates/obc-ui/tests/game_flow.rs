@@ -97,6 +97,41 @@ impl Harness {
     }
 }
 
+/// FRAME RATE (issue #13): the game advances the world one original frame
+/// every `frame_tics` tics of the 70 Hz clock, with that many tics, so the
+/// simulation clock keeps real time at any setting.
+#[test]
+fn frame_rate_sets_the_tics_of_each_original_frame() {
+    let Some(mut h) = Harness::new("framerate") else {
+        eprintln!("skipped: OBC_DATA_DIR not set");
+        return;
+    };
+    for (frame_tics, setting) in [(2u32, 2i16), (4, 4), (1, 1), (5, 9)] {
+        h.settings.game.frame_tics = setting;
+        let g = h.with_ctx(|ctx| Game::new(ctx, 1));
+        h.stack.clear();
+        h.stack.push(Box::new(g));
+        h.idle(40); // past the fade-in
+        // Each time the world moves, it moves `frame_tics` tics, once every
+        // `frame_tics` tics of the clock.
+        let (mut last, mut since, mut steps) = (h.game().world().tic, 0u32, 0u32);
+        for _ in 0..60 {
+            h.idle(1);
+            since += 1;
+            let t = h.game().world().tic;
+            if t != last {
+                assert_eq!(t - last, frame_tics, "FRAME RATE {setting}: world step");
+                if steps > 0 {
+                    assert_eq!(since, frame_tics, "FRAME RATE {setting}: clock tics per frame");
+                }
+                (last, since, steps) = (t, 0, steps + 1);
+            }
+        }
+        assert_eq!(steps, 60 / frame_tics, "FRAME RATE {setting}: frames in 60 tics");
+    }
+    let _ = std::fs::remove_dir_all(&h.saves);
+}
+
 #[test]
 fn completing_a_floor_autosaves_plays_the_sequence_and_starts_the_next() {
     let Some(mut h) = Harness::new("floor") else {
@@ -147,6 +182,66 @@ fn a_saved_game_loads_and_plays() {
     let w = h.game().world();
     assert_eq!(w.gamestate.mapon, 6);
     assert_eq!(w.gamestate.score, before.gamestate.score);
+    let _ = std::fs::remove_dir_all(&h.saves);
+}
+
+/// Saves `w` in slot 4 and loads it as `LoadTheGame` + `PlayLoop` would.
+fn save_and_load(h: &mut Harness, w: &obc_sim::world::World) -> Game {
+    h.with_ctx(|ctx| obc_ui::saves::write(ctx, 4, w, "LIGHTS")).unwrap();
+    let (_, back) = h.with_ctx(|ctx| obc_ui::saves::read(ctx, 4)).unwrap();
+    h.with_ctx(|ctx| Game::from_world(ctx, back))
+}
+
+/// Issue #11: the lights come from the loaded floor's generator switch, as
+/// `PlayLoop`'s scan of the restored `tilemap` decides (30d6:1b3d), not from
+/// floor 1's.
+#[test]
+fn a_loaded_floor_keeps_its_lights() {
+    let Some(mut h) = Harness::new("lights") else {
+        eprintln!("skipped: OBC_DATA_DIR not set");
+        return;
+    };
+    let g = h.with_ctx(|ctx| Game::new_at(ctx, 2, 6));
+    h.stack.push(Box::new(g));
+    h.idle(10);
+    // Lit: no switch in the off position.
+    let mut lit = h.game().world().clone();
+    for t in lit.tilemap.iter_mut().filter(|t| **t == 0x60) {
+        *t = 0x5F;
+    }
+    assert_eq!(save_and_load(&mut h, &lit).lighting(), 1, "lit floor loads lit");
+    // Dark: one generator switch, off.
+    let mut dark = h.game().world().clone();
+    for t in dark.tilemap.iter_mut().filter(|t| **t == 0x5F || **t == 0x60) {
+        *t = 1;
+    }
+    let wall = dark.tilemap.iter().position(|&t| t == 1).unwrap();
+    dark.tilemap[wall] = 0x60;
+    assert_eq!(save_and_load(&mut h, &dark).lighting(), 2, "dark floor loads dark");
+    let _ = std::fs::remove_dir_all(&h.saves);
+}
+
+/// Issue #12: the original's `PlayLoop` clears the Map ThermoSensor on a load
+/// too (quirk K-001); the opt-in fix keeps it.
+#[test]
+fn the_heat_sensor_is_lost_on_load_unless_k001_is_on() {
+    let Some(mut h) = Harness::new("sensor") else {
+        eprintln!("skipped: OBC_DATA_DIR not set");
+        return;
+    };
+    for (fix, kept) in [(false, false), (true, true)] {
+        h.settings.game.fixes.set(&obc_sim::fixes::K_001, fix);
+        let g = h.with_ctx(|ctx| Game::new_at(ctx, 2, 6));
+        h.stack.clear();
+        h.stack.push(Box::new(g));
+        h.idle(10);
+        h.game().world_mut().thermosensor = true;
+        let w = h.game().world().clone();
+        assert_eq!(w.fixes.on(&obc_sim::fixes::K_001), fix);
+        let loaded = save_and_load(&mut h, &w);
+        assert_eq!(loaded.world().thermosensor, kept, "fix {fix}");
+        assert_eq!(loaded.world().fixes, w.fixes, "the save keeps its fixes");
+    }
     let _ = std::fs::remove_dir_all(&h.saves);
 }
 

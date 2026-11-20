@@ -429,6 +429,26 @@ CONFIRMED. If weapon = −1 nothing is drawn. Each weapon is two 64×64 sprites 
 | C018 | 0x6E0 | 0x6D6 | 0x820 | 0x816 | 0x960 | 0x906 | 0xA8C | 0xA46 | 0xE0C | 0xB36 | 0xF96 | 0 |
 | C016 | 10 | 12 | 12 | 14 | 14 | 16 | 12 | 18 | 14 | 21 | 24 | 0 |
 
+### 3.11a Game speed: the clock, `tics`, and what depends on the frame rate (issue #13)
+
+**The clock is 70 Hz.** CONFIRMED (disassembly of `COUNT.EXE`):
+- `SDL_SetTimerSpeed` (`2b79:0069`) programs the PIT for **700 Hz** with the handler at `2d04:0010` when AdLib music is on (`MusicMode == 1`), otherwise for **140 Hz** with the handler at `2d04:01ee`. `SDL_SetIntsPerSec` (`2b79:0037`) divides 0x12305E by the rate; `2b79:000f` writes ports 0x43/0x40.
+- The 700 Hz handler runs its sound section every 5th interrupt (counter DS:0x2E4E) and adds one to `TimeCount` (DS:0x8F1B) every 2nd of those (counter DS:0x2E4C, `2d04:010f`–`0131`): 700 / 5 / 2 = 70 Hz.
+- The 140 Hz handler adds one every 2nd interrupt (`2d04:01f5`–`0217`): 70 Hz.
+
+**`tics` is the time since the last frame, at least 1 and at most 10.** *CalcTics* (`1b4a:111f`, called first by *PollControls* `1942:0400`, CONFIRMED) is Wolf3D's: it waits while `TimeCount` has not moved, sets `tics = TimeCount − lasttimecount`, and caps `tics` at 10, pulling `TimeCount` back by the excess. There is no frame limiter (*ThreeDRefresh* `1b4a:129c` only flips pages), so a frame takes as many tics as the machine needs to draw it: one on a machine drawing 70 frames a second, two at 35, four at 17.
+
+**What scales with `tics` runs at the same speed on every machine:** walking and running (*PollKeyboardMove* `1942:010d`: ±35·tics walking, ±70·tics running, CONFIRMED), turning, actors' movement and state timers, doors, push walls, animated walls.
+
+**What runs once per frame runs at the machine's speed.** CONFIRMED in each case:
+- *Thrust*'s cap of 0xAFFF per call (§3.3). Running asks for 70·tics·150 = 10,500·tics a frame, so from 5 tics a frame (14 frames a second) the cap holds the player back: at 14 frames a second running covers 14 × 0xAFFF = 630,770 units a second instead of 735,000 (86%), at 10 frames a second 450,550 (61%). Walking reaches the cap only below 8 frames a second.
+- The hand bob `walkcount` (§3.4, §3.11): one step of the 16-step bob per frame. That is 2.2 bob cycles a second at 35 frames a second and 1.1 at 17.
+- The knock-back speed (§3.4), the event-box animations (§5.4), the sparkle every 301 frames, and the chip-wall stages while fire is held (§3.9).
+
+So **the original's speed depended on the computer**. On a machine drawing fewer than 35 frames a second, the original bobs more slowly and, below 14, runs more slowly than on a fast one. OBCR runs it as on a machine drawing a fixed number of frames a second, 35 by default (ADR-013), and **FRAME RATE** (OPTIONS) chooses 70, 35, 23, 17 or 14 frames a second, that is 1-5 tics a frame. Each is the original's behaviour on a machine of that speed.
+- Measured in OBCR (`speed_depends_on_frames_only_where_the_original_does`): one second of running is 734,930–734,965 units at 70 and 35 frames a second (FixedByFrac rounding per call), and capped from 5 tics a frame; the bob advances 70, 35 and 14 steps.
+- What frame rate the reporter's DOS setup reached was not measured (no DOSBox-X build in the workspace); a bob "about twice as fast" in OBCR fits a DOS setup drawing about 17 frames a second.
+
 ---
 
 ## 4. Pickups, damage and difficulty
@@ -496,6 +516,30 @@ Armor model: armor absorbs half the incoming points, health takes the other half
 | 4–6 | 800 | 0 | ×3 (4, 5) / ×4 (6) | ×1 | network path | network modes; 5 = team mode (friendly-fire check), ≥ 6 enables Alt ally keys |
 
 The multipliers are CONFIRMED from code; the labels of 0–6 are LIKELY.
+
+### 4.5 When an item is taken, and which weapon is selected (GitHub #7, #14)
+
+**Reach.** *GetBonus* has one caller, the first *DrawScaleds* (`1b4a:0d98`; functions.tsv). It is called for a static with `FL_BONUS` whose cell is in this frame's `spotvis` when *TransformTile* (`1b4a:01af`) returns true. CONFIRMED by instruction read of `1b4a:02fd`–`0327`:
+
+- `nx = gx·cos − gy·sin − 0x2000` must be at least `mindist` (`DS:0x0D1E`, 0x5800, initialized data, no writer) and below 0x10000.
+- `ny` must lie strictly between −0x8000 and 0x8000.
+- `gx`, `gy` are measured from the item's cell centre to the view point, which is `focallength` 0x5700 behind the player (*WallRefresh* `1b4a:0651`: `viewx = player.x − FixedByFrac(focallength, viewcos)`).
+
+The reach is therefore a box ahead of the player: the item's centre 0x2100–0xC8FF (0.13–0.79 tiles) ahead and within half a tile sideways. Consequences, in both releases:
+
+- walking forward onto an item takes it;
+- strafing takes it only if it is at least about 0.13 tiles ahead (an item level with the player stays);
+- walking backward never takes anything (an item behind does not project).
+
+OBCR's `World::scan_scaleds` is the same test. A probe over start offsets inside the cell gave the same boundary. Quirk **K-002** (DELTA_SPEC) records it; its opt-in fix also takes an item in the player's own cell.
+
+**Weapon selection.** *GiveWeapon* (`208c:066c`) compares `w` with `bestweapon` (`DS:0x8714`) by `cmp ax,[0x8714]; jl`. CONFIRMED in `COUNT.EXE` (`208c:0684`) and the same bytes in `BCCD.EXE` (file 0x14798; DS offsets 0x50 lower).
+
+- So a weapon *at least* as good as the best is selected even when already owned. Wolf3D's `GiveWeapon` (`WL_AGENT.C:581`) selects only a better one.
+- `bestweapon` is written only by *NewGame*, *ResetInventory* (`2f4d:0f7c`, called by NewGame and the network respawn `358f:1796`, which keep the owned weapons) and *GiveWeapon*. It is the best weapon owned since the last reset.
+- A black suit drops a Galil (item 5, *GiveWeapon*(2) at `208c:08a9`). Taking it selects the Galil whenever the Galil is the best weapon, even while the player holds the Uzi.
+
+OBCR's `give_weapon` matches. Quirk **K-003** records it; its opt-in fix selects only a weapon not owned before, and still raises `bestweapon` so that *CheckWeaponChange* (keys `0..=bestweapon`) reaches it.
 
 ---
 
@@ -594,6 +638,8 @@ All CONFIRMED in code; their in-game effect is unverified.
 9. Shotgun cycle: entry 3 holds the raised frame for 56 tics (one shot per 80 tics).
 10. *HealSelf* clamps health *down* to maxhealth (100 on most levels); only caller guards prevent losing health by healing.
 11. *TryExit* needs half the kills; the kill lamp shows this state.
+12. Items are taken only ahead of the view: never walking backward, and strafing only when the item is a little ahead (§4.5; DELTA_SPEC K-002).
+13. *GiveWeapon* selects a weapon at least as good as the best even when already owned (§4.5; DELTA_SPEC K-003).
 
 ## 8. Open questions
 

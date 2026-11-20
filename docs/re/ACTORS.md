@@ -349,6 +349,8 @@ temp2 = reaction[class]; return false;
 see: FirstSighting(ob); return true;
 ```
 
+The area test reads `areabyplayer` (22 words at `DS:0x48EA`) with no bound: `cmp word [area*2 + 0x48EA], 0` (1e43:23a7). An actor on an ambush tile spawned without SpawnStand's ambush handling (class 17 on floor 4) has area 254 and reads `actorat[0][30]`, a wall, so it is always "near the player". Quirk K-005, reproduced in `World::area_by_player`.
+
 Reaction time `temp2` (table `1e43:246f`; quotient of `US_RndT()`): rat, fire, classes 22, 23: `1 + rnd/4`; soldier and ally: 2; all others 6–17: `1 + rnd/6`; classes 18–20: unchanged.
 
 FirstSighting (table `1e43:22e9`): sound, chase state, speed change; then `distance < 0 → 0`, `flags |= ATTACKMODE|FIRSTATTACK`, `active = 1`. A trailing `switch(dir)` (when `DS:0x0954 != 0`) only validates `dir <= 8` (`QuitNum(307)`). Returns at once in network modes.
@@ -379,6 +381,7 @@ Wolf3D multipliers for comparison: guard ×3, officer ×5, SS ×4, mutant ×3, d
 Wolf3D's DDA (player position `plux` = `DS:0xCD8B`, `pluy` = `DS:0xCD89`), with two deltas, CONFIRMED:
 - `deltafrac == 0` → `QuitNum(305)` (x pass) / `QuitNum(306)` (y pass).
 - Before the tile test, a cell whose **plane-1** value is 0x69, 0x6A or 0x6B (105, 106, 107) is skipped (see-through). 106 and 107 are the special-wall types 1 and 2 of §6.1.
+- Plane-1 103 (door-look walls) is not in that list: an opened door-look wall keeps its open frame in `tilemap` and blocks the line, so it stops shots and sight although the player walks through it. Quirk K-004 (DELTA_SPEC), GitHub issue #12; opt-in fix `K_004`.
 
 ### 7.9 T_Shoot (`ghidra 2390:2506`) and enemy damage
 

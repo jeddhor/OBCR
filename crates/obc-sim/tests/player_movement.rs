@@ -392,3 +392,46 @@ fn tremors_key_toggles_with_a_message() {
     assert!(!w.ply.tremors);
     assert_eq!(messages(&take_events(&mut w)), ["TREMORS OFF"]);
 }
+
+/// Issue #13 (docs/re/PLAYER.md §3.11a): one second of running east (70
+/// tics) at different frame lengths. The original advances by `tics` per
+/// frame, so tic-scaled movement covers the same ground at any frame rate,
+/// but three things are per frame: Thrust's cap of 0xAFFF per call, the hand
+/// bob (`walkcount`) and the knock-back. A slow machine (5 or more tics a
+/// frame) therefore runs more slowly and bobs less often than a fast one.
+#[test]
+fn speed_depends_on_frames_only_where_the_original_does() {
+    let run_for_a_second = |tics: i16| {
+        let mut w = room_world();
+        for x in 2..62 {
+            set_floor(&mut w, x, 12, ROOM_AREA);
+        }
+        start(&mut w, 1, 2, 12, 1);
+        let x0 = w.plr().x;
+        let mut frames = 0;
+        let mut elapsed = 0;
+        while elapsed < 70 {
+            w.tics = tics;
+            let mut c = with_button(cmd(), bt::RUN);
+            c.controly = -70 * tics; // PollKeyboardMove, run held (1942:010d)
+            frame(&mut w, &c);
+            elapsed += tics;
+            frames += 1;
+        }
+        (w.plr().x - x0, w.ply.walkcount, frames)
+    };
+    let (d1, bob1, f1) = run_for_a_second(1);
+    let (d2, bob2, f2) = run_for_a_second(2);
+    let (d5, bob5, f5) = run_for_a_second(5);
+    let (d7, _, f7) = run_for_a_second(7);
+    assert_eq!((f1, f2, f5, f7), (70, 35, 14, 10));
+    // Below the cap (10,500 a tic, 0xAFFF a frame) the distance is the same,
+    // up to FixedByFrac's rounding in each Thrust call (a few units).
+    assert!((d1 - d2).abs() < d2 / 10_000, "70 and 35 frames a second: {d1} vs {d2}");
+    // At 5 tics a frame a frame asks for 52,500 and gets 0xAFFF.
+    let per_frame = |d: i32, f: i32| d / f;
+    assert!(per_frame(d5, f5) <= 0xAFFF && per_frame(d7, f7) <= 0xAFFF);
+    assert!(d5 < d2 * 9 / 10, "slow machines run slower: {d5} vs {d2}");
+    // The hand bob advances once per frame.
+    assert_eq!((bob1, bob2, bob5), (70, 35, 14));
+}

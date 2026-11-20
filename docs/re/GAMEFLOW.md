@@ -405,6 +405,11 @@ Fixed part = 16,680 bytes; file size = 16,680 + 66·n. Checked against the sampl
 
 `LoadTheGame` reads the header and `gamestate`, runs `SetupGameLevel` (so the map is reloaded from `MAPTEMP`), then overwrites tilemap, `actorat`, areas, actors, statics, doors and the rest in the same order.
 
+**After a load** `GameLoop` enters `PlayLoop` as on any floor start (1942:1315, CONFIRMED), and its entry decides two things from scratch:
+
+- **The lights.** `PlayLoop` calls 30d6:1b3d, which scans the restored `tilemap` for the generator switch (0x5F on, 0x60 off; a second switch on one floor is a `Quit` error) and sets `SetPaletteMode(2)` when it finds 0x60, else `SetPaletteMode(1)` (CONFIRMED, decompilation of both). A floor saved with its lights on therefore loads lit, and one with them off loads dark. OBCR 1.0.0-beta.4 computed this but kept floor 1's value instead (`Game::from_world`, issue #11), fixed in M19.
+- **The Map ThermoSensor.** `PlayLoop` clears DS:0x3304 on every entry (CONFIRMED), and the save holds no copy of it (the field list above). So the original loses the sensor on a load, as on a new floor or a restart after death. This is quirk K-001 (DELTA_SPEC), preserved by default; the opt-in fix keeps it across a load only.
+
 ## 10. CONFIG.DAT (`WriteConfig` 1497:036b) — CONFIRMED
 
 287 bytes; decodes the shipped `CONFIG.DAT` exactly. Resolves most of Q-014.

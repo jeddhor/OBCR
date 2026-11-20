@@ -2,13 +2,15 @@
 //! postcard-serialized [`World`]. Not the original `.SAV` layout.
 //!
 //! ```text
-//! format 4: "OBCRSAVE"  u32 header length  header  u32 extra length  extra  world
+//! format 5: "OBCRSAVE"  u32 header length  header  u32 extra length  extra  world
+//! format 4: as 5, the extra block without its fixes
 //! format 3: "OBCRSAVE"  u32 header length  header                          world
 //! ```
 //!
 //! The extra block (format 4, M17) carries the floor's [`LevelProfile`] and
-//! the mod the game belongs to. Format-3 saves still load: they are original
-//! games, and their profile is the stock one of their floor.
+//! the mod the game belongs to; format 5 (M19) adds the opt-in fixes in force
+//! ([`crate::fixes`]). Older saves still load, as original games without
+//! fixes; format 3's profile is the stock one of its floor.
 
 use std::sync::Arc;
 
@@ -16,22 +18,33 @@ use obc_core::trig::Tables;
 use serde::{Deserialize, Serialize};
 
 use crate::data::GameData;
+use crate::fixes::Fixes;
 use crate::level::LevelProfile;
 use crate::world::World;
 
 pub const MAGIC: &[u8; 8] = b"OBCRSAVE";
 /// Bumped whenever `World` or the header changes shape.
-pub const FORMAT: u32 = 4;
+pub const FORMAT: u32 = 5;
 /// The oldest format still read (format 3: no extra block).
 pub const OLDEST_FORMAT: u32 = 3;
 
-/// What format 4 adds after the header.
+/// What format 5 adds after the header.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct SaveExtra {
     pub level: LevelProfile,
     /// The mod's id, empty for the original game.
     pub mod_id: String,
     pub mod_version: String,
+    /// The opt-in fixes the game was played with.
+    pub fixes: Fixes,
+}
+
+/// Format 4's extra block (no fixes).
+#[derive(Deserialize)]
+struct SaveExtra4 {
+    level: LevelProfile,
+    mod_id: String,
+    mod_version: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -78,6 +91,7 @@ pub fn write_mod(
         level: w.level.clone(),
         mod_id: mod_id.to_owned(),
         mod_version: mod_version.to_owned(),
+        fixes: w.fixes,
     })?;
     let mut out = Vec::with_capacity(64 * 1024);
     out.extend_from_slice(MAGIC);
@@ -110,7 +124,18 @@ fn split(bytes: &[u8]) -> Result<(SaveHeader, Option<SaveExtra>, &[u8]), SaveErr
         return Ok((header, None, rest));
     }
     let elen = u32_at(rest, 0)?;
-    let extra: SaveExtra = postcard::from_bytes(rest.get(4..4 + elen).ok_or(SaveError::BadMagic)?)?;
+    let block = rest.get(4..4 + elen).ok_or(SaveError::BadMagic)?;
+    let extra = if header.format == 4 {
+        let e: SaveExtra4 = postcard::from_bytes(block)?;
+        SaveExtra {
+            level: e.level,
+            mod_id: e.mod_id,
+            mod_version: e.mod_version,
+            fixes: Fixes::ORIGINAL,
+        }
+    } else {
+        postcard::from_bytes(block)?
+    };
     Ok((header, Some(extra), &rest[4 + elen..]))
 }
 
@@ -135,6 +160,7 @@ pub fn read(
 ) -> Result<(SaveHeader, World), SaveError> {
     let (header, extra, body) = split(bytes)?;
     let mut w: World = postcard::from_bytes(body)?;
+    w.fixes = extra.as_ref().map_or(Fixes::ORIGINAL, |e| e.fixes.known());
     w.level = match extra {
         Some(e) => e.level,
         None => LevelProfile::stock(w.gamestate.mapon, data.cd),

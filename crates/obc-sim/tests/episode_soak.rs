@@ -175,6 +175,48 @@ fn save_and_load_continue_identically() {
     }
 }
 
+/// Format 5 keeps the opt-in fixes a game was played with; a format-4 save
+/// (no fixes in its extra block) still loads, as a game without fixes.
+#[test]
+fn saves_keep_their_fixes_and_format_4_still_loads() {
+    let Some((data, trig, maps)) = load() else {
+        eprintln!("skipped: OBC_DATA_DIR not set");
+        return;
+    };
+    let mut w = World::new(data.clone(), trig.clone());
+    obc_sim::player::new_game(&mut w, 1);
+    w.setup_game_level(&maps.map(0).unwrap().unwrap(), 0);
+    w.fixes = obc_sim::fixes::Fixes(1 << 9);
+    let header = obc_sim::save::SaveHeader {
+        format: obc_sim::save::FORMAT,
+        obcr: "test".into(),
+        release: "OBC-A".into(),
+        mapon: 0,
+        difficulty: 1,
+        name: "FIXES".into(),
+        timestamp: 0,
+    };
+    let bytes = obc_sim::save::write(&w, &header).unwrap();
+    let (_, back) = obc_sim::save::read(&bytes, data.clone(), trig.clone()).unwrap();
+    // Unknown bits are dropped on load (`Fixes::known`): with no fix defined
+    // yet, nothing survives; with fix 9 defined, it would.
+    assert_eq!(back.fixes, w.fixes.known());
+
+    // The same game as format 4: header format 4, extra without fixes.
+    let head4 = obc_sim::save::SaveHeader { format: 4, ..header };
+    let h = postcard::to_stdvec(&head4).unwrap();
+    let e = postcard::to_stdvec(&(w.level.clone(), String::new(), String::new())).unwrap();
+    let mut old = obc_sim::save::MAGIC.to_vec();
+    old.extend_from_slice(&(h.len() as u32).to_le_bytes());
+    old.extend_from_slice(&h);
+    old.extend_from_slice(&(e.len() as u32).to_le_bytes());
+    old.extend_from_slice(&e);
+    old.extend_from_slice(&postcard::to_stdvec(&w).unwrap());
+    let (h4, back4) = obc_sim::save::read(&old, data, trig).unwrap();
+    assert_eq!((h4.format, back4.fixes), (4, obc_sim::fixes::Fixes::ORIGINAL));
+    assert_eq!(back4.level, w.level);
+}
+
 /// Every first-episode floor has an exit reachable from the player start
 /// through open floor, doors, push walls and barriers.
 #[test]
