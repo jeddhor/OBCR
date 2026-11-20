@@ -32,17 +32,17 @@ These are the original game's own settings, in its main menu. OBCR keeps them as
 
 Press **O** in the main menu. Up and Down choose an option and Left and Right change it; changes apply at once and are saved when you quit. **Enter** on KEY BINDINGS opens the bindings screen. **Esc** goes back.
 
-Some options apply only in **Enhanced** mode. **Classic** always shows the original picture, whatever they are set to.
+Some options apply only in **Enhanced** mode. **Classic** always shows the original picture, whatever they are set to: in Classic, OPTIONS greys those options out and says *ENHANCED DISPLAY ONLY*. A line under the list says what the selected option does.
 
 ### Display
 
 | Option | Values (default in bold) | What it does |
 |---|---|---|
-| **DISPLAY** | CLASSIC 320X200, **ENHANCED** | Classic is the original picture, pixel for pixel, scaled up to your window. Enhanced renders at a higher resolution and allows everything below. |
+| **DISPLAY** | CLASSIC, **ENHANCED** | Classic is the original picture, pixel for pixel, scaled up to your window. Enhanced renders at a higher resolution and allows everything below. |
 | **RESOLUTION** | 2X to 8X (**4X**) | Enhanced: the multiple of the original 200 lines the game renders at. 4X is 800 lines, 6X is 1200. |
 | **ASPECT** | 4:3, 16:10, **16:9**, 21:9 | Enhanced: the shape of the picture. Wider shapes show more to the sides (Hor+), as Wolfenstein 3D ports do. 4:3 is the original's shape. |
 | **FULLSCREEN** | ON, **OFF** | Fullscreen instead of a window. Alt+Enter toggles it at any time. |
-| **SMOOTH FILTER** | ON, **OFF** | Bilinear filtering when the picture is stretched to the window. Off keeps pixels sharp. |
+| **SMOOTH FILTER** | ON, **OFF** | Bilinear filtering when the finished picture is stretched to the window. Off keeps pixels sharp. It does not smooth the textures themselves: that is TEXTURES. |
 | **INTEGER SCALING** | ON, **OFF** | Scale only by whole multiples, with black borders, so every original pixel is the same size. |
 | **SMOOTH MOTION** | **ON**, OFF | Enhanced: draws the view and every actor between game tics, so motion is as smooth as your monitor's refresh rate. The game itself still runs at the original's 70 tics per second (35 frames). Off shows only the frames the game computes. |
 
@@ -50,10 +50,16 @@ Some options apply only in **Enhanced** mode. **Classic** always shows the origi
 
 | Option | Values | What it does |
 |---|---|---|
-| **TEXTURES** | ORIGINAL, XBRZ 2X to XBRZ 6X (**4X**) | Enhanced: upscales walls, doors, floors, ceilings, enemies, items and the hand weapon with xBRZ, which rounds off blocky texels while keeping edges sharp. The upscaling works on palette indices, so shading, damage and bonus flashes, fades and the generators-off darkness still work as in the original. Textures are built when first needed, about 0.2 MB each at 4X and 0.4 MB at 6X. |
+| **TEXTURES** | SHARP PIXELS, XBRZ 2X to XBRZ 6X (**4X**) | Enhanced: SHARP PIXELS draws the original texels, blocky as in DOS (with FLOORS SMOOTH, floors stay steady and sharp). XBRZ upscales walls, doors, floors, ceilings, enemies, items and the hand weapon with xBRZ, which rounds off blocky texels while keeping edges sharp. The upscaling works on palette indices, so shading, damage and bonus flashes, fades and the generators-off darkness still work as in the original. Textures are built when first needed, about 0.2 MB each at 4X and 0.4 MB at 6X. |
 | **FLOORS** | **SMOOTH**, ORIGINAL | Enhanced: SMOOTH draws floors and ceilings in true perspective, continuous across tiles, with the light fading smoothly with distance. ORIGINAL keeps the original's look: each tile drawn separately, the texture pasted flat on screen, a grout line between tiles and one brightness per tile. |
 | **XBRZ MENUS** | **ON**, OFF | Enhanced: upscales the menus, the title and story pictures, the animated sequences and movies, and the help and score pages, at the resolution multiple (up to 6X). |
 | **XBRZ STATUS BAR** | ON, **OFF** | Enhanced: upscales the in-game status bar and overlays too. Off by default: xBRZ distorts its small lettering. |
+
+### Heat sensor
+
+| Option | Values | What it does |
+|---|---|---|
+| **SENSOR: DEAD** | **ORIGINAL**, DIMMED, GREY, HIDDEN | How the heat sensor map (Tab, once you have the sensor) shows killed enemies. The original draws them as the same red dot as the living. DIMMED draws them dark red, GREY grey, HIDDEN not at all. A tile with a living enemy, or anything else moving, keeps its normal dot. Only the map's drawing changes, in Classic and Enhanced alike. |
 
 ### Controls
 
@@ -208,6 +214,7 @@ xbrz = 4                 # TEXTURES: 0 (original) or 2..6
 xbrz_menus = true
 xbrz_hud = false
 smooth_floors = true     # FLOORS
+sensor_dead = "original" # SENSOR: DEAD: "original", "dimmed", "grey", "hidden"
 window_width = 1280      # remembered window size
 window_height = 720
 
