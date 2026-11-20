@@ -517,6 +517,30 @@ Armor model: armor absorbs half the incoming points, health takes the other half
 
 The multipliers are CONFIRMED from code; the labels of 0–6 are LIKELY.
 
+### 4.5 When an item is taken, and which weapon is selected (GitHub #7, #14)
+
+**Reach.** *GetBonus* has one caller, the first *DrawScaleds* (`1b4a:0d98`; functions.tsv). It is called for a static with `FL_BONUS` whose cell is in this frame's `spotvis` when *TransformTile* (`1b4a:01af`) returns true. CONFIRMED by instruction read of `1b4a:02fd`–`0327`:
+
+- `nx = gx·cos − gy·sin − 0x2000` must be at least `mindist` (`DS:0x0D1E`, 0x5800, initialized data, no writer) and below 0x10000.
+- `ny` must lie strictly between −0x8000 and 0x8000.
+- `gx`, `gy` are measured from the item's cell centre to the view point, which is `focallength` 0x5700 behind the player (*WallRefresh* `1b4a:0651`: `viewx = player.x − FixedByFrac(focallength, viewcos)`).
+
+The reach is therefore a box ahead of the player: the item's centre 0x2100–0xC8FF (0.13–0.79 tiles) ahead and within half a tile sideways. Consequences, in both releases:
+
+- walking forward onto an item takes it;
+- strafing takes it only if it is at least about 0.13 tiles ahead (an item level with the player stays);
+- walking backward never takes anything (an item behind does not project).
+
+OBCR's `World::scan_scaleds` is the same test. A probe over start offsets inside the cell gave the same boundary. Quirk **K-002** (DELTA_SPEC) records it; its opt-in fix also takes an item in the player's own cell.
+
+**Weapon selection.** *GiveWeapon* (`208c:066c`) compares `w` with `bestweapon` (`DS:0x8714`) by `cmp ax,[0x8714]; jl`. CONFIRMED in `COUNT.EXE` (`208c:0684`) and the same bytes in `BCCD.EXE` (file 0x14798; DS offsets 0x50 lower).
+
+- So a weapon *at least* as good as the best is selected even when already owned. Wolf3D's `GiveWeapon` (`WL_AGENT.C:581`) selects only a better one.
+- `bestweapon` is written only by *NewGame*, *ResetInventory* (`2f4d:0f7c`, called by NewGame and the network respawn `358f:1796`, which keep the owned weapons) and *GiveWeapon*. It is the best weapon owned since the last reset.
+- A black suit drops a Galil (item 5, *GiveWeapon*(2) at `208c:08a9`). Taking it selects the Galil whenever the Galil is the best weapon, even while the player holds the Uzi.
+
+OBCR's `give_weapon` matches. Quirk **K-003** records it; its opt-in fix selects only a weapon not owned before, and still raises `bestweapon` so that *CheckWeaponChange* (keys `0..=bestweapon`) reaches it.
+
 ---
 
 ## 5. Status bar
@@ -614,6 +638,8 @@ All CONFIRMED in code; their in-game effect is unverified.
 9. Shotgun cycle: entry 3 holds the raised frame for 56 tics (one shot per 80 tics).
 10. *HealSelf* clamps health *down* to maxhealth (100 on most levels); only caller guards prevent losing health by healing.
 11. *TryExit* needs half the kills; the kill lamp shows this state.
+12. Items are taken only ahead of the view: never walking backward, and strafing only when the item is a little ahead (§4.5; DELTA_SPEC K-002).
+13. *GiveWeapon* selects a weapon at least as good as the best even when already owned (§4.5; DELTA_SPEC K-003).
 
 ## 8. Open questions
 

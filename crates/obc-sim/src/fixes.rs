@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 /// One fixable quirk.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Fix {
-    /// Its quirk number (`K-005` is 5): the bit it uses.
+    /// Its quirk number (`K-002` is 2): the bit it uses.
     pub number: u32,
     /// Shown in the menu (upper case; the game font).
     pub label: &'static str,
@@ -66,17 +66,31 @@ impl Fixes {
 pub const K_001: Fix =
     Fix { number: 1, label: "KEEP HEAT SENSOR ON LOAD", about: "A LOADED GAME KEEPS THE SENSOR" };
 
-/// K-013: an opened door-look wall (an animated wall in its open state)
+/// K-004: an opened door-look wall (an animated wall in its open state)
 /// blocks `CheckLine`, so shots and enemy sight stop at it although the
 /// player walks through (docs/re/DELTA_SPEC.md; GitHub issue #12).
-pub const K_013: Fix = Fix {
-    number: 13,
+pub const K_004: Fix = Fix {
+    number: 4,
     label: "SEE THROUGH OPEN DOOR WALLS",
     about: "SHOTS AND SIGHT PASS OPEN WALL DOORS",
 };
 
+/// K-002: items are picked up only when they are ahead of the view
+/// (docs/re/DELTA_SPEC.md); the fix also picks up an item in the player's
+/// own cell, whichever way the player moves.
+pub const K_002: Fix = Fix {
+    number: 2,
+    label: "PICK UP ITEMS UNDERFOOT",
+    about: "ALSO WHEN STRAFING OR BACKING ONTO",
+};
+
+/// K-003: picking up a weapon selects it whenever it is at least the best
+/// weapon, even one already owned; the fix selects only a newly owned one.
+pub const K_003: Fix =
+    Fix { number: 3, label: "KEEP WEAPON ON PICKUP", about: "SWITCH ONLY TO A NEW WEAPON" };
+
 /// Every fix, in menu order.
-pub const ALL: &[&Fix] = &[&K_001, &K_013];
+pub const ALL: &[&Fix] = &[&K_001, &K_002, &K_003, &K_004];
 
 #[cfg(test)]
 mod tests {

@@ -1381,13 +1381,13 @@ fn clamp_step(ltemp: i32) -> i16 {
 /// 0x69, 0x6B or 0x6A (`1e43:1af8`-`1b2d`, CONFIRMED). An opened door-look
 /// wall (plane 1 = 103, an animated wall whose open frame stays in
 /// `tilemap`) is therefore opaque to shots and sight even when the player
-/// can walk through it: quirk K-013, preserved unless its fix is on.
+/// can walk through it: quirk K-004, preserved unless its fix is on.
 fn line_cell_clear(w: &World, x: i32, y: i32, frac: i16, step: i16) -> bool {
     let value = u16::from(w.tile(x, y));
     if matches!(w.mapspot(x, y, 1), 0x69..=0x6B) {
         return true;
     }
-    if w.fixes.on(&crate::fixes::K_013)
+    if w.fixes.on(&crate::fixes::K_004)
         && w.anim_wall_at(x, y).is_some_and(|i| matches!(w.animwalls[i].state, 0 | 4))
     {
         return true;
@@ -2490,7 +2490,7 @@ pub fn t_projectile(w: &mut World, id: ObjId) {
 
 /// `GrenadeSplash(dmg, ob)` (ghidra 2f4d:116e): every shootable actor whose
 /// `actorat` tile is in `[tx-2, tx+2) × [ty-2, ty+2)` around the grenade's
-/// position takes `100 - (|Δtilex| + |Δtiley|)` (quirk K-6: asymmetric box,
+/// position takes `100 - (|Δtilex| + |Δtiley|)` (quirk K-003: asymmetric box,
 /// `dmg` ignored); only network games hurt the player (`dmg / 2`). CONFIRMED.
 ///
 /// CD release (cd:307f:000c, CD_RELEASE.md §3.4): actors take

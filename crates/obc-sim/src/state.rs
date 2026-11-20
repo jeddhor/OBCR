@@ -208,7 +208,7 @@ impl World {
     /// 508 bytes on, in `actorat` (`DS:0x4AAA`, words `[x][y]`): areas 224-255
     /// read `actorat[0][area - 224]`, the map's west edge, which is a wall,
     /// so the actor counts as near the player everywhere (GitHub issue #10:
-    /// it hears every shot). Quirk K-014, reproduced. Areas 22-223 would read
+    /// it hears every shot). Quirk K-005, reproduced. Areas 22-223 would read
     /// other globals (DS:0x4916-0x4AA9, UNKNOWN in play); they read false.
     pub fn area_by_player(&self, area: u8) -> bool {
         match self.areabyplayer.get(area as usize) {

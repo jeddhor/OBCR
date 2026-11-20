@@ -198,13 +198,25 @@ Template:
 - **Evidence**: `PlayLoop` 1942:1315 (`DAT_3304 = 0` at entry; CONFIRMED); the save layout, GAMEFLOW.md §9.4 (no 0x3304 field; CONFIRMED by size arithmetic).
 - **OBCR handling**: Classic and Enhanced clear it on load as the original does. With the fix on, `World::resume_play_loop` keeps it across a load (OBCR's save holds it); a new floor and a restart after death still start without it.
 
-### K-013 — An opened door-look wall blocks shots and sight
-- **Class**: gameplay  **Status**: PRESERVED; FIXED with flag `K_013` (OPTIONS > GAMEPLAY FIXES, off by default)
+### K-002 — Items are taken only ahead of the view
+- **Class**: gameplay  **Status**: PRESERVED; FIXED (flag `K_002`, OPTIONS > GAMEPLAY FIXES)
+- **Behavior**: *GetBonus* runs only from *DrawScaleds*, for an item *TransformTile* places 0.13–0.79 tiles ahead of the player and within half a tile sideways. Walking backward never picks anything up, and strafing does only when the item is a little ahead (GitHub #7).
+- **Evidence**: `1b4a:0d98`, `1b4a:01af` (`1b4a:02fd`–`0327`), `mindist` `DS:0x0D1E` = 0x5800, `focallength` 0x5700; CONFIRMED by instruction read. docs/re/PLAYER.md §4.5.
+- **OBCR handling**: Classic as the original. The fix also takes an item in the player's own cell, in the same loop and order (`World::scan_scaleds`).
+
+### K-003 — Picking up an owned weapon selects it
+- **Class**: gameplay  **Status**: PRESERVED; FIXED (flag `K_003`, OPTIONS > GAMEPLAY FIXES)
+- **Behavior**: *GiveWeapon* selects any weapon at least as good as `bestweapon`, owned or not, so a dropped Galil switches a player holding the Uzi back to the Galil (GitHub #14). Wolf3D selects only a better weapon.
+- **Evidence**: `208c:066c` (`cmp ax,[0x8714]; jl` at `208c:0684`) in `COUNT.EXE`; the same bytes in `BCCD.EXE` (file 0x14798); CONFIRMED by instruction read. docs/re/PLAYER.md §4.5.
+- **OBCR handling**: Classic as the original. The fix selects only a weapon not owned before; `bestweapon` still rises so the number keys reach it (`player::give_weapon`).
+
+### K-004 — An opened door-look wall blocks shots and sight
+- **Class**: gameplay  **Status**: PRESERVED; FIXED with flag `K_004` (OPTIONS > GAMEPLAY FIXES, off by default)
 - **Behavior**: A door-look wall (plane 0 = its wall code, plane 1 = 103) opens as an animated wall: the player walks through, but its open frame stays in `tilemap` (69 → 72 for the floor-6 door at (10,48)). `CheckLine` passes a wall cell only when its plane-1 value is 0x69, 0x6A or 0x6B (105–107), so an open door-look wall stops the player's hit-scan shots (`GunAttack` retries with `CheckLine`), enemy sight (`CheckSight`) and enemy shots (`T_Shoot`). An enemy beyond it reacts only once the player stands in the doorway. GitHub issue #12. The reporter says the shareware build does not have this; UNKNOWN here (no shareware `COUNT.EXE` was examined).
 - **Evidence**: `CheckLine` 1e43:1982, the plane-1 tests at 1e43:1af8, 1b0e, 1b2d (x pass) and 1e43:1ca0, 1cb6, 1cd5 (y pass), then `tilemap` 0 → clear, 0x80–0x100 → door test, anything else → blocked. CONFIRMED.
 - **OBCR handling**: Classic plays it as the original (`actors::line_cell_clear`). With the fix, a cell holding an animated wall in state 0 (open) or 4 (permanently open) is clear, for shots and sight alike. Test: `crates/obc-sim/tests/doors_and_noise.rs`.
 
-### K-014 — An actor on an ambush tile without ambush handling reads `areabyplayer` out of bounds
+### K-005 — An actor on an ambush tile without ambush handling reads `areabyplayer` out of bounds
 - **Class**: gameplay  **Status**: PRESERVED (reproduced; no fix offered)
 - **Behavior**: `areabyplayer` is a 22-word array at `DS:0x48EA`, read with the actor's area byte and no bound check. Spawners other than `SpawnStand` do not handle ambush tiles (plane 0 = 0x8A). The sewer fat man (class 17, spawner 2390:0f7e) on floor 4's ambush tile at (58,10) is an example. Such an actor gets area 0x8A − 0x8C = 254, and `areabyplayer[254]` reads `DS:0x4AE6` = `actorat[0][30]` (`actorat` is `DS:0x4AAA`, words `[x][y]`). That is the map's west-edge wall, so the read is non-zero. The actor therefore always thinks (`DoActor`), hears every shot anywhere on the floor (`SightPlayer`'s `madenoise` path) and passes `CheckSight`'s area test. GitHub issue #10: in DOS the fat man wakes when the rats near him are shot; beta 4 returned false for out-of-range areas and he never woke.
 - **Evidence**: `cmp word [area*2 + 0x48EA], 0` in SightPlayer 1e43:23a7, CheckSight 1e43:1d48, DoActor 1942:113a and A_IdleSound 2390:21c7; `DS:0x4AAA` is `actorat` (`SHL BX,7` indexing at 1e43:0452; 8,192 bytes saved by `SaveTheGame`). The fat man's area 254 was read from the reporter's beta-4 save and from the floor-4 map (plane 0 = 138, plane 1 = 179 at (58,10)). CONFIRMED.

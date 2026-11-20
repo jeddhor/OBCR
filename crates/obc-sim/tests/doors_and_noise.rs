@@ -2,9 +2,9 @@
 //!
 //! - #10: floor 4's sewer fat man stands on an ambush tile (58,10), so his
 //!   area is 254; the original reads `areabyplayer[254]` out of bounds, from
-//!   `actorat`, and he hears every shot (quirk K-014, reproduced).
+//!   `actorat`, and he hears every shot (quirk K-005, reproduced).
 //! - #12: an opened door-look wall blocks shots and sight in the original
-//!   (quirk K-013); its opt-in fix lets them through.
+//!   (quirk K-004); its opt-in fix lets them through.
 //!
 //! Each is shown on the original map, and again on the reporter's own beta-4
 //! save when it is present (`.local/issues`, never committed).
@@ -18,7 +18,7 @@ use obc_formats::exe::MzExe;
 use obc_formats::maps::{Compression, MapArchive};
 use obc_sim::actors::check_line;
 use obc_sim::data::GameData;
-use obc_sim::fixes::K_013;
+use obc_sim::fixes::K_004;
 use obc_sim::world::{NUMBUTTONS, ObjId, TicCmd, World, bt};
 
 fn data() -> Option<(Arc<GameData>, MapArchive)> {
@@ -135,8 +135,8 @@ fn an_open_door_wall_blocks_sight_unless_fixed() {
         return;
     };
     assert!(!check_line(&w, enemy), "the original: no line through the open wall");
-    w.fixes.set(&K_013, true);
-    assert!(check_line(&w, enemy), "K-013 fixed: the line passes");
+    w.fixes.set(&K_004, true);
+    assert!(check_line(&w, enemy), "K-004 fixed: the line passes");
 }
 
 #[test]
@@ -154,7 +154,7 @@ fn shots_reach_the_enemy_behind_an_open_door_wall_only_when_fixed() {
             }
             None => opened_door_scene().unwrap(),
         };
-        w.fixes.set(&K_013, fixed);
+        w.fixes.set(&K_004, fixed);
         let before = w.obj(enemy).hitpoints;
         for _ in 0..20 {
             w.frame(&fire(), 2);
