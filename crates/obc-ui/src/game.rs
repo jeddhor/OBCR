@@ -1,7 +1,7 @@
 //! The in-game screen (`GameLoop` 1823:0ea3, `PlayLoop` 1942:1315).
 //!
-//! Owns the [`World`] and runs one original frame of two tics every other
-//! 70 Hz tic (ADR-013). Simulation events drive sound, the status bar,
+//! Owns the [`World`] and runs one original frame every FRAME RATE tics of
+//! the 70 Hz clock (two by default, ADR-013; issue #13, PLAYER.md §3.11a). Simulation events drive sound, the status bar,
 //! palette flashes, the tremor shake and gamepad rumble. Level ends follow
 //! GAMEFLOW §5.3–5.5: exit sequence and next map, death sequence and the
 //! menu, or victory.
@@ -25,8 +25,6 @@ use crate::sequence::Sequence;
 use crate::sound::{Listener, SoundManager};
 use crate::viewer::{Layout, layout, tile_background};
 
-/// Tics per original frame (ADR-013).
-const FRAME_TICS: i16 = 2;
 /// Red and white palette shifts (RENDERER.md §8.1).
 const NUMREDSHIFTS: i32 = 4;
 const REDSTEPS: i32 = 8;
@@ -88,7 +86,11 @@ pub struct Game {
     splats: Vec<SplatView>,
     shade: [[u8; 256]; 2],
     phase: Phase,
-    odd_tic: bool,
+    /// Tics in the current original frame: `CalcTics`' `tics` (FRAME RATE,
+    /// read at the start of each frame).
+    frame_tics: i16,
+    /// 70 Hz tics since the last original frame.
+    tic_in_frame: i16,
     damagecount: i32,
     bonuscount: i32,
     /// Palette mode: 1 normal, 2 dark (generators off).
@@ -203,7 +205,8 @@ impl Game {
             splats: Vec::new(),
             shade: [build_shade_table(false), build_shade_table(true)],
             phase: Phase::FadeIn(0),
-            odd_tic: false,
+            frame_tics: 2,
+            tic_in_frame: 0,
             damagecount: 0,
             bonuscount: 0,
             lighting: 1,
@@ -474,7 +477,7 @@ impl Game {
             l.receive(&mut self.world);
         }
         let respawning = self.world.net.as_deref().is_some_and(|n| n.respawn);
-        self.world.frame(cmd, FRAME_TICS);
+        self.world.frame(cmd, self.frame_tics);
         if let (true, Some((x, y, angle))) = (respawning, self.dev_place) {
             let p = self.world.player;
             let o = self.world.obj_mut(p);
@@ -489,8 +492,8 @@ impl Game {
         }
         self.drain_events(ctx);
         self.sound.update(ctx.audio, self.listener());
-        self.hud.frame(FRAME_TICS);
-        self.palette_shifts(FRAME_TICS);
+        self.hud.frame(self.frame_tics);
+        self.palette_shifts(self.frame_tics);
         if self.world.ply.map_overlay == 1 {
             self.map_blink = !self.map_blink;
         }
@@ -697,12 +700,18 @@ impl Screen for Game {
             return Transition::None;
         }
         self.controls.accumulate(ctx.input, &ctx.settings.input, ctx.settings.game.nsr250);
-        self.odd_tic = !self.odd_tic;
-        if self.odd_tic {
+        // One original frame every `frame_tics` tics, run with that many
+        // tics, as CalcTics measures them on a machine drawing at that rate.
+        if self.tic_in_frame == 0 {
+            self.frame_tics = ctx.settings.game.frame_tics();
+        }
+        self.tic_in_frame += 1;
+        if self.tic_in_frame < self.frame_tics {
             return Transition::None;
         }
+        self.tic_in_frame = 0;
         let (mut cmd, ui) =
-            self.controls.build(ctx.input, &ctx.settings.input, &self.world, FRAME_TICS);
+            self.controls.build(ctx.input, &ctx.settings.input, &self.world, self.frame_tics);
         if self.pending_cheat != obc_sim::world::Cheat::None {
             cmd.cheat = std::mem::take(&mut self.pending_cheat);
         }
@@ -711,7 +720,8 @@ impl Screen for Game {
 
         match self.phase {
             Phase::FadeIn(t) => {
-                self.phase = if t + 2 >= FADE_IN { Phase::Playing } else { Phase::FadeIn(t + 2) };
+                let t = t + self.frame_tics as u32;
+                self.phase = if t >= FADE_IN { Phase::Playing } else { Phase::FadeIn(t) };
                 Transition::None
             }
             Phase::Playing => {
@@ -813,13 +823,13 @@ impl Screen for Game {
                 Transition::None
             }
             Phase::Dying { target, wait } => {
-                self.palette_shifts(FRAME_TICS);
+                self.palette_shifts(self.frame_tics);
                 if let Some(t) = target
-                    && !self.world.death_turn(t, FRAME_TICS)
+                    && !self.world.death_turn(t, self.frame_tics)
                 {
                     return Transition::None;
                 }
-                let wait = wait + FRAME_TICS as u32;
+                let wait = wait + self.frame_tics as u32;
                 if self.net.is_some() && (wait >= SCREAM_WAIT || !self.sound.digi_playing()) {
                     // GameLoop (1823:1060): respawn on the same floor, no reload.
                     self.damagecount = 0;
@@ -845,7 +855,7 @@ impl Screen for Game {
                 Transition::None
             }
             Phase::DeathFade(t) => {
-                let t = t + FRAME_TICS as u32;
+                let t = t + self.frame_tics as u32;
                 if t >= DEATH_RED + DEATH_BLACK {
                     return self.push_sequence(ctx, "F6", After::Scores);
                 }
@@ -853,7 +863,7 @@ impl Screen for Game {
                 Transition::None
             }
             Phase::ExitFade(t) => {
-                let t = t + FRAME_TICS as u32;
+                let t = t + self.frame_tics as u32;
                 if t >= FADE_OUT && self.net.is_some() {
                     // NetLevelDone (358f:1720): forget the players, KILLS table.
                     obc_sim::net::level_done(&mut self.world);
@@ -916,7 +926,7 @@ impl Screen for Game {
             }
             Phase::Sequence(After::Restart | After::Quit) => Transition::None,
             Phase::Victory(t) => {
-                let t = t + FRAME_TICS as u32;
+                let t = t + self.frame_tics as u32;
                 if t >= 1000 || ui.menu || cmd.buttons.iter().any(|&b| b) {
                     ctx.audio.send(AudioCommand::StopMusic);
                     // VictoryScreen, then F7 (not shipped), then the scores (GAMEFLOW §5.5).
@@ -955,8 +965,10 @@ impl Screen for Game {
         tile_background(out.frame, a, p.scale);
         let w = &self.world;
         // Time since the last frame boundary, in frames (Enhanced only).
-        let lerp = (self.interpolate && !p.is_classic())
-            .then(|| ((f32::from(u8::from(self.odd_tic)) + out.alpha) / 2.0).clamp(0.0, 1.0));
+        let lerp = (self.interpolate && !p.is_classic()).then(|| {
+            ((f32::from(self.tic_in_frame) + out.alpha) / f32::from(self.frame_tics))
+                .clamp(0.0, 1.0)
+        });
         self.buffers.fill(w, lerp.map(|t| (self.prev_objs.as_slice(), t)));
         let plr = w.plr();
         let (px, py, fine) = match lerp {

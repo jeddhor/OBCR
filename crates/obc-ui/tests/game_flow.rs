@@ -97,6 +97,41 @@ impl Harness {
     }
 }
 
+/// FRAME RATE (issue #13): the game advances the world one original frame
+/// every `frame_tics` tics of the 70 Hz clock, with that many tics, so the
+/// simulation clock keeps real time at any setting.
+#[test]
+fn frame_rate_sets_the_tics_of_each_original_frame() {
+    let Some(mut h) = Harness::new("framerate") else {
+        eprintln!("skipped: OBC_DATA_DIR not set");
+        return;
+    };
+    for (frame_tics, setting) in [(2u32, 2i16), (4, 4), (1, 1), (5, 9)] {
+        h.settings.game.frame_tics = setting;
+        let g = h.with_ctx(|ctx| Game::new(ctx, 1));
+        h.stack.clear();
+        h.stack.push(Box::new(g));
+        h.idle(40); // past the fade-in
+        // Each time the world moves, it moves `frame_tics` tics, once every
+        // `frame_tics` tics of the clock.
+        let (mut last, mut since, mut steps) = (h.game().world().tic, 0u32, 0u32);
+        for _ in 0..60 {
+            h.idle(1);
+            since += 1;
+            let t = h.game().world().tic;
+            if t != last {
+                assert_eq!(t - last, frame_tics, "FRAME RATE {setting}: world step");
+                if steps > 0 {
+                    assert_eq!(since, frame_tics, "FRAME RATE {setting}: clock tics per frame");
+                }
+                (last, since, steps) = (t, 0, steps + 1);
+            }
+        }
+        assert_eq!(steps, 60 / frame_tics, "FRAME RATE {setting}: frames in 60 tics");
+    }
+    let _ = std::fs::remove_dir_all(&h.saves);
+}
+
 #[test]
 fn completing_a_floor_autosaves_plays_the_sequence_and_starts_the_next() {
     let Some(mut h) = Harness::new("floor") else {
