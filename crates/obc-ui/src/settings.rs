@@ -65,9 +65,19 @@ pub struct GameSettings {
     /// OPTIONS > GAMEPLAY FIXES: the opt-in fixes of original bugs a new
     /// game starts with (obc_sim::fixes; a loaded game keeps its own).
     pub fixes: obc_sim::fixes::Fixes,
+    /// FRAME RATE: 70 Hz tics per original frame, 1-5 (70, 35, 23, 17 or
+    /// 14 frames a second; default 2). The original measured `tics` per
+    /// frame, so its hand bob, knock-back and per-frame movement cap ran at
+    /// the speed of the machine (issue #13, docs/re/PLAYER.md §3.11a).
+    pub frame_tics: i16,
 }
 
 impl GameSettings {
+    /// FRAME RATE, clamped to the values offered (1-5 tics a frame).
+    pub fn frame_tics(&self) -> i16 {
+        self.frame_tics.clamp(1, 5)
+    }
+
     /// The high-score table of campaign `id` (empty: the original game).
     pub fn scores_for(&mut self, id: &str) -> &mut Vec<Score> {
         if id.is_empty() {
@@ -99,6 +109,7 @@ impl Default for GameSettings {
             mod_scores: Default::default(),
             mod_path: None,
             fixes: obc_sim::fixes::Fixes::ORIGINAL,
+            frame_tics: 2,
         }
     }
 }

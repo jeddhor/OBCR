@@ -1012,6 +1012,7 @@ enum Opt {
     Smooth,
     IntegerScale,
     Interpolate,
+    FrameRate,
     Textures,
     Floors,
     XbrzMenus,
@@ -1032,7 +1033,7 @@ enum Opt {
     Fixes,
 }
 
-const OPTS: [Opt; 25] = [
+const OPTS: [Opt; 26] = [
     Opt::Display,
     Opt::Scale,
     Opt::Aspect,
@@ -1040,6 +1041,7 @@ const OPTS: [Opt; 25] = [
     Opt::Smooth,
     Opt::IntegerScale,
     Opt::Interpolate,
+    Opt::FrameRate,
     Opt::Textures,
     Opt::Floors,
     Opt::XbrzMenus,
@@ -1082,6 +1084,7 @@ impl Options {
             Opt::Smooth => "SMOOTH FILTER",
             Opt::IntegerScale => "INTEGER SCALING",
             Opt::Interpolate => "SMOOTH MOTION",
+            Opt::FrameRate => "FRAME RATE",
             Opt::Textures => "TEXTURES",
             Opt::Floors => "FLOORS",
             Opt::XbrzMenus => "XBRZ MENUS",
@@ -1115,6 +1118,11 @@ impl Options {
             Opt::Smooth => on(s.video.smooth),
             Opt::IntegerScale => on(s.video.integer_scale),
             Opt::Interpolate => on(s.video.interpolate),
+            Opt::FrameRate => match s.game.frame_tics() {
+                1 => "70 FPS".into(),
+                2 => "35 FPS".into(),
+                t => format!("{} FPS", 70 / t),
+            },
             Opt::Textures => match s.video.xbrz {
                 n @ 2..=6 => format!("XBRZ {n}X"),
                 _ => "ORIGINAL".into(),
@@ -1187,6 +1195,10 @@ impl Options {
                 ctx.requests.apply_video = true;
             }
             Opt::Interpolate => s.video.interpolate = !s.video.interpolate,
+            // More frames a second is fewer tics a frame.
+            Opt::FrameRate => {
+                s.game.frame_tics = (s.game.frame_tics() as i32 - d).clamp(1, 5) as i16;
+            }
             Opt::Textures => {
                 let all = [0usize, 2, 3, 4, 5, 6];
                 let cur = all.iter().position(|&n| n == s.video.xbrz).unwrap_or(0) as i32;

@@ -429,6 +429,26 @@ CONFIRMED. If weapon = −1 nothing is drawn. Each weapon is two 64×64 sprites 
 | C018 | 0x6E0 | 0x6D6 | 0x820 | 0x816 | 0x960 | 0x906 | 0xA8C | 0xA46 | 0xE0C | 0xB36 | 0xF96 | 0 |
 | C016 | 10 | 12 | 12 | 14 | 14 | 16 | 12 | 18 | 14 | 21 | 24 | 0 |
 
+### 3.11a Game speed: the clock, `tics`, and what depends on the frame rate (issue #13)
+
+**The clock is 70 Hz.** CONFIRMED (disassembly of `COUNT.EXE`):
+- `SDL_SetTimerSpeed` (`2b79:0069`) programs the PIT for **700 Hz** with the handler at `2d04:0010` when AdLib music is on (`MusicMode == 1`), otherwise for **140 Hz** with the handler at `2d04:01ee`. `SDL_SetIntsPerSec` (`2b79:0037`) divides 0x12305E by the rate; `2b79:000f` writes ports 0x43/0x40.
+- The 700 Hz handler runs its sound section every 5th interrupt (counter DS:0x2E4E) and adds one to `TimeCount` (DS:0x8F1B) every 2nd of those (counter DS:0x2E4C, `2d04:010f`–`0131`): 700 / 5 / 2 = 70 Hz.
+- The 140 Hz handler adds one every 2nd interrupt (`2d04:01f5`–`0217`): 70 Hz.
+
+**`tics` is the time since the last frame, at least 1 and at most 10.** *CalcTics* (`1b4a:111f`, called first by *PollControls* `1942:0400`, CONFIRMED) is Wolf3D's: it waits while `TimeCount` has not moved, sets `tics = TimeCount − lasttimecount`, and caps `tics` at 10, pulling `TimeCount` back by the excess. There is no frame limiter (*ThreeDRefresh* `1b4a:129c` only flips pages), so a frame takes as many tics as the machine needs to draw it: one on a machine drawing 70 frames a second, two at 35, four at 17.
+
+**What scales with `tics` runs at the same speed on every machine:** walking and running (*PollKeyboardMove* `1942:010d`: ±35·tics walking, ±70·tics running, CONFIRMED), turning, actors' movement and state timers, doors, push walls, animated walls.
+
+**What runs once per frame runs at the machine's speed.** CONFIRMED in each case:
+- *Thrust*'s cap of 0xAFFF per call (§3.3). Running asks for 70·tics·150 = 10,500·tics a frame, so from 5 tics a frame (14 frames a second) the cap holds the player back: at 14 frames a second running covers 14 × 0xAFFF = 630,770 units a second instead of 735,000 (86%), at 10 frames a second 450,550 (61%). Walking reaches the cap only below 8 frames a second.
+- The hand bob `walkcount` (§3.4, §3.11): one step of the 16-step bob per frame. That is 2.2 bob cycles a second at 35 frames a second and 1.1 at 17.
+- The knock-back speed (§3.4), the event-box animations (§5.4), the sparkle every 301 frames, and the chip-wall stages while fire is held (§3.9).
+
+So **the original's speed depended on the computer**. On a machine drawing fewer than 35 frames a second, the original bobs more slowly and, below 14, runs more slowly than on a fast one. OBCR runs it as on a machine drawing a fixed number of frames a second, 35 by default (ADR-013), and **FRAME RATE** (OPTIONS) chooses 70, 35, 23, 17 or 14 frames a second, that is 1-5 tics a frame. Each is the original's behaviour on a machine of that speed.
+- Measured in OBCR (`speed_depends_on_frames_only_where_the_original_does`): one second of running is 734,930–734,965 units at 70 and 35 frames a second (FixedByFrac rounding per call), and capped from 5 tics a frame; the bob advances 70, 35 and 14 steps.
+- What frame rate the reporter's DOS setup reached was not measured (no DOSBox-X build in the workspace); a bob "about twice as fast" in OBCR fits a DOS setup drawing about 17 frames a second.
+
 ---
 
 ## 4. Pickups, damage and difficulty

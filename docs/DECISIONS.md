@@ -98,6 +98,7 @@ Template:
 - **Context**: The original's `PlayLoop` advances by `tics` measured by `CalcTics`; frame-rate-dependent logic (walk bob, animated walls, the event box, the 301-frame sparkle) runs once per frame, not per tic.
 - **Decision**: OBCR runs one original frame every two 70 Hz tics (`World::frame(cmd, 2)`, 35 Hz). Replays and the oracle may feed recorded `tics` values instead.
 - **Consequences**: Deterministic and close to the original on a typical machine; per-frame logic keeps its rate. Enhanced presentation interpolates between frames (ADR-015) without touching the simulation.
+- **Amended (2026-11-19, issue #13)**: the original measured `tics` per frame (1–10) and had no frame limiter, so its per-frame logic (hand bob, knock-back, Thrust's per-frame cap) ran at the speed of the machine (docs/re/PLAYER.md §3.11a). OPTIONS > FRAME RATE sets the tics per frame, 1–5 (70, 35, 23, 17 or 14 frames a second); 2 stays the default. Each setting is the original on a machine of that speed; the simulation stays deterministic for a given setting.
 
 ## ADR-014 — Modern input extends the tic command, not the simulation rules
 

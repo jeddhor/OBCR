@@ -44,7 +44,8 @@ Some options apply only in **Enhanced** mode. **Classic** always shows the origi
 | **FULLSCREEN** | ON, **OFF** | Fullscreen instead of a window. Alt+Enter toggles it at any time. |
 | **SMOOTH FILTER** | ON, **OFF** | Bilinear filtering when the picture is stretched to the window. Off keeps pixels sharp. |
 | **INTEGER SCALING** | ON, **OFF** | Scale only by whole multiples, with black borders, so every original pixel is the same size. |
-| **SMOOTH MOTION** | **ON**, OFF | Enhanced: draws the view and every actor between game tics, so motion is as smooth as your monitor's refresh rate. The game itself still runs at the original's 70 tics per second (35 frames). Off shows only the frames the game computes. |
+| **SMOOTH MOTION** | **ON**, OFF | Enhanced: draws the view and every actor between game tics, so motion is as smooth as your monitor's refresh rate. The game itself still runs at the original's 70 tics per second, at the FRAME RATE below. Off shows only the frames the game computes. |
+| **FRAME RATE** | 70, **35**, 23, 17, 14 FPS | How many frames a second the game computes, as the original did on a computer of that speed. The game clock is always 70 tics a second, so walking, enemies and doors keep their speed; what the original did once per frame follows this setting: the weapon's bob, the knock-back of a booby trap, and, at 14 frames a second, a slightly slower run (the original limited how far one frame can move you). Choose 17 or 14 to match the original on a slower DOS machine or emulator. |
 
 ### Textures and floors
 
@@ -239,6 +240,7 @@ use = ["SPACE", "E", "MOUSE RIGHT", "PAD A"]
 gametype = 1             # GAME TYPE: 0..2 difficulty 1..3, 3 Random, 4 N, 5 T, 6 M
 viewsize = 18            # VIEW SIZE: 12, 14, 16, 18, 20
 floor_textures = true    # F5 / F6
+frame_tics = 2           # FRAME RATE: tics per frame, 1-5 (70, 35, 23, 17, 14 frames a second)
 # quicksave_slot = 3     # the slot F9 saves to (the last one saved from the menu)
 # scores = [...]         # the high-score table
 
