@@ -197,7 +197,24 @@ impl World {
         self.set_actorat(o.tilex as i32, o.tiley as i32, Occ::Obj(id));
     }
 
+    /// `areabyplayer[area]`, as the original reads it.
+    ///
+    /// The original indexes a 22-word array at `DS:0x48EA` with the actor's
+    /// area byte and no bound (`cmp word [area*2 + 0x48EA], 0` in SightPlayer
+    /// 1e43:23a7, CheckSight 1e43:1d48, DoActor 1942:113a, A_IdleSound
+    /// 2390:21c7; CONFIRMED). An actor spawned on an ambush tile (plane 0
+    /// = 0x8A) by a spawner without SpawnStand's ambush handling (the sewer
+    /// fat man, class 17) has area `0x8A - 0x8C` = 254, so the read lands
+    /// 508 bytes on, in `actorat` (`DS:0x4AAA`, words `[x][y]`): areas 224-255
+    /// read `actorat[0][area - 224]`, the map's west edge, which is a wall,
+    /// so the actor counts as near the player everywhere (GitHub issue #10:
+    /// it hears every shot). Quirk K-014, reproduced. Areas 22-223 would read
+    /// other globals (DS:0x4916-0x4AA9, UNKNOWN in play); they read false.
     pub fn area_by_player(&self, area: u8) -> bool {
-        self.areabyplayer.get(area as usize).copied().unwrap_or(false)
+        match self.areabyplayer.get(area as usize) {
+            Some(&b) => b,
+            None if area >= 224 => !self.actorat(0, i32::from(area) - 224).is_empty(),
+            None => false,
+        }
     }
 }
