@@ -60,8 +60,14 @@ impl Fixes {
     }
 }
 
+/// K-001: `PlayLoop` clears the Map ThermoSensor on every entry, a load
+/// included, and the original's save does not hold it (docs/re/DELTA_SPEC.md).
+/// The fix keeps it across a load; a new floor still starts without it.
+pub const K_001: Fix =
+    Fix { number: 1, label: "KEEP HEAT SENSOR ON LOAD", about: "A LOADED GAME KEEPS THE SENSOR" };
+
 /// Every fix, in menu order.
-pub const ALL: &[&Fix] = &[];
+pub const ALL: &[&Fix] = &[&K_001];
 
 #[cfg(test)]
 mod tests {

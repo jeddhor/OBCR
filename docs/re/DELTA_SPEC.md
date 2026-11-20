@@ -192,4 +192,8 @@ Template:
 - **OBCR handling**: <what we do in Classic and Enhanced>
 ```
 
-None recorded yet.
+### K-001 — The Map ThermoSensor is lost when a game is loaded
+- **Class**: gameplay  **Status**: PRESERVED (fix flag `K_001`, KEEP HEAT SENSOR ON LOAD)
+- **Behavior**: `PlayLoop`'s entry clears the ThermoSensor flag DS:0x3304 every time it runs, and `SaveTheGame` does not write it; so loading a game (like starting a floor or restarting after death) loses a sensor picked up on that floor. Reported as GitHub issue #12.
+- **Evidence**: `PlayLoop` 1942:1315 (`DAT_3304 = 0` at entry; CONFIRMED); the save layout, GAMEFLOW.md §9.4 (no 0x3304 field; CONFIRMED by size arithmetic).
+- **OBCR handling**: Classic and Enhanced clear it on load as the original does. With the fix on, `World::resume_play_loop` keeps it across a load (OBCR's save holds it); a new floor and a restart after death still start without it.

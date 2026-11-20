@@ -86,14 +86,28 @@ impl World {
 
     /// `PlayLoop` entry (ghidra 1942:1315, GAMEFLOW §5.1): the player resets
     /// ([`player::play_loop_start`]), sewers start dark, allies are counted.
-    /// Returns the lighting mode: 2 when
-    /// the level's generator switch is off (a tile 96 in `tilemap`), else 1.
+    /// Returns the lighting mode: 2 when the level's generator switch is off
+    /// (a tile 96 in `tilemap`, the scan 30d6:1b3d; CONFIRMED), else 1.
     pub fn start_play_loop(&mut self) -> u8 {
         player::play_loop_start(self);
         self.dark = self.level.dark;
         allies::init_allies(self);
         self.lighting = if self.tilemap.contains(&96) { 2 } else { 1 };
         self.lighting
+    }
+
+    /// The `PlayLoop` entry after `LoadTheGame` (GameLoop skips
+    /// `SetupGameLevel`, then enters `PlayLoop` as usual): the lighting mode
+    /// comes from the restored `tilemap`, so a floor saved with its lights on
+    /// loads lit. The ThermoSensor is cleared as in the original (quirk K-001)
+    /// unless that fix is on.
+    pub fn resume_play_loop(&mut self) -> u8 {
+        let sensor = self.thermosensor && self.fixes.on(&crate::fixes::K_001);
+        let lighting = self.start_play_loop();
+        if sensor {
+            self.thermosensor = true;
+        }
+        lighting
     }
 
     /// Start of `Died` (ghidra 1823:0cda): hands away, random death scream
