@@ -103,9 +103,16 @@ pub(super) fn check_weapon_change(w: &mut World) {
     }
 }
 
-/// *GiveWeapon*(w) (ghidra 208c:066c, CONFIRMED; `WOLFSRC/WL_AGENT.C:581`):
-/// a weapon at least as good as the best one is selected at once; the weapon
-/// is marked owned and one clip given.
+/// *GiveWeapon*(w) (ghidra 208c:066c, CONFIRMED by instruction read in
+/// `COUNT.EXE` and `BCCD.EXE`: `cmp ax,[bestweapon]; jl`;
+/// `WOLFSRC/WL_AGENT.C:581`): a weapon at least as good as the best one is
+/// selected at once, **even one already owned** (Wolf3D: only a better
+/// one); the weapon is marked owned and one clip given.
+///
+/// Quirk K-006: so a black suit's dropped Galil switches a player holding
+/// the Uzi back to the Galil. With its opt-in fix only a weapon not owned
+/// before is selected; `bestweapon` still rises, so the number keys
+/// (`CheckWeaponChange` scans `0..=bestweapon`) reach it.
 #[doc(alias = "GiveWeapon")]
 pub fn give_weapon(w: &mut World, weapon: i16) {
     // 358f:1969: a dropped weapon of this kind was picked up.
@@ -113,9 +120,12 @@ pub fn give_weapon(w: &mut World, weapon: i16) {
         crate::net::clear_drop(w, weapon.clamp(0, 4) as usize);
     }
     if weapon >= w.gamestate.bestweapon {
-        w.gamestate.chosenweapon = weapon;
+        let owned = owns(w, weapon);
         w.gamestate.bestweapon = weapon;
-        w.gamestate.weapon = weapon;
+        if !(owned && w.fixes.on(&crate::fixes::K_006)) {
+            w.gamestate.chosenweapon = weapon;
+            w.gamestate.weapon = weapon;
+        }
     }
     let bit = 1u8.checked_shl(weapon as u32).unwrap_or(0);
     w.gamestate.weapons |= bit;

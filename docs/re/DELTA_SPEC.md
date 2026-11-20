@@ -192,4 +192,14 @@ Template:
 - **OBCR handling**: <what we do in Classic and Enhanced>
 ```
 
-None recorded yet.
+### K-005 — Items are taken only ahead of the view
+- **Class**: gameplay  **Status**: PRESERVED; FIXED (flag `K_005`, OPTIONS > GAMEPLAY FIXES)
+- **Behavior**: *GetBonus* runs only from *DrawScaleds*, for an item *TransformTile* places 0.13–0.79 tiles ahead of the player and within half a tile sideways. Walking backward never picks anything up, and strafing does only when the item is a little ahead (GitHub #7).
+- **Evidence**: `1b4a:0d98`, `1b4a:01af` (`1b4a:02fd`–`0327`), `mindist` `DS:0x0D1E` = 0x5800, `focallength` 0x5700; CONFIRMED by instruction read. docs/re/PLAYER.md §4.5.
+- **OBCR handling**: Classic as the original. The fix also takes an item in the player's own cell, in the same loop and order (`World::scan_scaleds`).
+
+### K-006 — Picking up an owned weapon selects it
+- **Class**: gameplay  **Status**: PRESERVED; FIXED (flag `K_006`, OPTIONS > GAMEPLAY FIXES)
+- **Behavior**: *GiveWeapon* selects any weapon at least as good as `bestweapon`, owned or not, so a dropped Galil switches a player holding the Uzi back to the Galil (GitHub #14). Wolf3D selects only a better weapon.
+- **Evidence**: `208c:066c` (`cmp ax,[0x8714]; jl` at `208c:0684`) in `COUNT.EXE`; the same bytes in `BCCD.EXE` (file 0x14798); CONFIRMED by instruction read. docs/re/PLAYER.md §4.5.
+- **OBCR handling**: Classic as the original. The fix selects only a weapon not owned before; `bestweapon` still rises so the number keys reach it (`player::give_weapon`).

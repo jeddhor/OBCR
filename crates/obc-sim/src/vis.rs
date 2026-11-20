@@ -328,9 +328,26 @@ impl World {
     }
 
     /// First `DrawScaleds` call: GetBonus for grabbable items; actor activation and visibility.
+    ///
+    /// An item is taken only when `TransformTile` (1b4a:01af, CONFIRMED by
+    /// instruction read; `mindist` 0x5800, `DS:0x0D1E`, has no writer) puts
+    /// its centre 0x7800..0x12000 ahead of the view point (0.13-0.79 tiles
+    /// ahead of the player, who is `focallength` 0x5700 in front of it) and
+    /// within half a tile sideways, in a cell this frame's rays reached. So
+    /// walking backward never picks anything up, and strafing does only when
+    /// the item is a little ahead: quirk K-005, whose opt-in fix also takes
+    /// an item in the player's own cell.
     fn scan_scaleds(&mut self, ray: &Ray) {
+        let underfoot = self.fixes.on(&crate::fixes::K_005).then(|| {
+            let p = self.plr();
+            ((p.x >> 16) as u8, (p.y >> 16) as u8)
+        });
         for i in 0..self.statics.len() {
             let s = self.statics[i];
+            if s.shape != -1 && s.flags & fl::BONUS != 0 && underfoot == Some((s.tilex, s.tiley)) {
+                player::get_bonus(self, i);
+                continue;
+            }
             if s.shape == -1 || !self.spotvis[World::idx(i32::from(s.tilex), i32::from(s.tiley))] {
                 continue;
             }

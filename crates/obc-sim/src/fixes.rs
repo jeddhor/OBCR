@@ -60,8 +60,22 @@ impl Fixes {
     }
 }
 
+/// K-005: items are picked up only when they are ahead of the view
+/// (docs/re/DELTA_SPEC.md); the fix also picks up an item in the player's
+/// own cell, whichever way the player moves.
+pub const K_005: Fix = Fix {
+    number: 5,
+    label: "PICK UP ITEMS UNDERFOOT",
+    about: "ALSO WHEN STRAFING OR BACKING ONTO",
+};
+
+/// K-006: picking up a weapon selects it whenever it is at least the best
+/// weapon, even one already owned; the fix selects only a newly owned one.
+pub const K_006: Fix =
+    Fix { number: 6, label: "KEEP WEAPON ON PICKUP", about: "SWITCH ONLY TO A NEW WEAPON" };
+
 /// Every fix, in menu order.
-pub const ALL: &[&Fix] = &[];
+pub const ALL: &[&Fix] = &[&K_005, &K_006];
 
 #[cfg(test)]
 mod tests {
