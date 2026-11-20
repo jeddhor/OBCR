@@ -66,8 +66,17 @@ impl Fixes {
 pub const K_001: Fix =
     Fix { number: 1, label: "KEEP HEAT SENSOR ON LOAD", about: "A LOADED GAME KEEPS THE SENSOR" };
 
+/// K-013: an opened door-look wall (an animated wall in its open state)
+/// blocks `CheckLine`, so shots and enemy sight stop at it although the
+/// player walks through (docs/re/DELTA_SPEC.md; GitHub issue #12).
+pub const K_013: Fix = Fix {
+    number: 13,
+    label: "SEE THROUGH OPEN DOOR WALLS",
+    about: "SHOTS AND SIGHT PASS OPEN WALL DOORS",
+};
+
 /// Every fix, in menu order.
-pub const ALL: &[&Fix] = &[&K_001];
+pub const ALL: &[&Fix] = &[&K_001, &K_013];
 
 #[cfg(test)]
 mod tests {
