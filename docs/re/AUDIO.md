@@ -91,7 +91,7 @@ Differences from Wolf3D (`WOLFSRC/ID_SD.C` `SD_PlaySound`):
 
 `left + right < 13` **or** `id < 50` **or** (mixer type 1 **and** (`id > 62` **or** `id < 75`))
 
-The last clause is always true with an SB Pro mixer, so **with that mixer nothing is culled**; otherwise sounds 50–99 are skipped when both channels are attenuated (far away). The condition looks like a typo for `&&`; preserve it. Then `SD_PositionSound(left, right)` and `SD_PlaySound`; if a digitized sound started, `globalsoundx/y` are stored for `UpdateSoundLoc` (1823:017f, called by `PlayLoop`), as in Wolf3D.
+The last clause is always true with an SB Pro mixer, so **with that mixer nothing is culled**; otherwise sounds 50–99 are skipped when both channels are attenuated (far away). The condition looks like a typo for `&&`; preserve it. CONFIRMED by the decompiled `FUN_1823_0106` (re-read 2026-11-19 for issue #9). OBCR: `obc_ui::sound::culled`, applied to every positioned sound before it starts; the mixer flag is `ActorsState::sb_pro_mixer` (off, as on a plain Sound Blaster). Before M19 OBCR had no cull, so far-away calls of 50 and up (the swamp creature's 50, the sewer man's 57, sightings) played across the whole floor at the tables' floor of attenuation 7. Then `SD_PositionSound(left, right)` and `SD_PlaySound`; if a digitized sound started, `globalsoundx/y` are stored for `UpdateSoundLoc` (1823:017f, called by `PlayLoop`), as in Wolf3D.
 
 ### 4.3 Waiting
 
@@ -277,7 +277,7 @@ Digitized lengths come from the `AUDIOMUS` sound map, in seconds at 9,009 Hz. "P
 | 79 | 3712 / 0.41 | 20, 80 | 23, 80 | `Cmd_Use` on wall tiles 0x41/0x44/0x45/0x48 |
 | 80 | 7552 / 0.84 | 27, 80 | 57, 80 | `Cmd_Use` on wall tiles 0x1D/0x20 |
 | 81 | 5424 / 0.60 | 43, 80 | 43, 80 | `Cmd_Use` on wall tiles 0x0D/0x10 |
-| 82 | 3440 / 0.38 | 51, 80 | 53, 80 | **door** open and close (2281:0868, 2281:0528) |
+| 82 | 3440 / 0.38 | 51, 80 | 53, 80 | **door** open and close (2281:0868, 2281:0528), every door kind; CONFIRMED (`PlaySoundLocTile(0x52, …)` in both). OBCR played 62/63 before M19 (issue #15) |
 | 83 | 19520 / 2.17 | 196, 80 | 217, 80 | **push wall** (2281:0ce2) |
 | 84 | 6896 / 0.77 | 62, 99 | 53, 99 | **generator switch** (`Cmd_Use` tiles 0x5F/0x60) |
 | 85 | 2096 / 0.23 | 35, 90 | 89, 90 | **menu cursor move** (`HandleMenu`); also 208c:074f and 208c:1d24 (weapon change, HYPOTHESIS) |
