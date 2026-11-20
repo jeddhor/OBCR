@@ -2,6 +2,11 @@
 
 All notable changes to OBCR. Versions follow [Semantic Versioning](https://semver.org).
 
+## Unreleased
+
+- **Push walls** (#17): a push wall seen on its east or west face no longer flips its texture when it starts to move (the original mirrors it the other way round; north and south faces were already right).
+- **GAMEPLAY FIXES menu** (#16): readable. Each fix takes two lines, and the selected fix's description is at the bottom, wrapped to the box.
+
 ## 1.0.0-beta.5 — 2026-11-19 (pre-release)
 
 The fifth beta: fixes for the issues reported on beta 4 (#5–#15), opt-in fixes for bugs of the original game, and new FRAME RATE and SENSOR: DEAD options. The investigation behind each change: [docs/ISSUES_M19.md](docs/ISSUES_M19.md).
