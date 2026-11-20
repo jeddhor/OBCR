@@ -232,6 +232,11 @@ impl Game {
         }
     }
 
+    /// The palette mode in use: 1 normal, 2 dark (generators off).
+    pub fn lighting(&self) -> u8 {
+        self.lighting
+    }
+
     /// True in a network game.
     pub fn is_net(&self) -> bool {
         self.net.is_some()
@@ -246,7 +251,9 @@ impl Game {
         g.set_view_size(ctx.settings.game.viewsize);
         g.world.events.clear();
         g.start_music(ctx);
-        g.world.start_play_loop();
+        // The lighting mode comes from the loaded floor's generator switch.
+        // (OBCR 1.0.0-beta.4 dropped it and kept floor 1's: issue #11.)
+        g.lighting = g.world.resume_play_loop();
         g.hud = Hud::default();
         g.capture_prev();
         g.phase = Phase::FadeIn(0);

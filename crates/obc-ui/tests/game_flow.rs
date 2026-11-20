@@ -150,6 +150,66 @@ fn a_saved_game_loads_and_plays() {
     let _ = std::fs::remove_dir_all(&h.saves);
 }
 
+/// Saves `w` in slot 4 and loads it as `LoadTheGame` + `PlayLoop` would.
+fn save_and_load(h: &mut Harness, w: &obc_sim::world::World) -> Game {
+    h.with_ctx(|ctx| obc_ui::saves::write(ctx, 4, w, "LIGHTS")).unwrap();
+    let (_, back) = h.with_ctx(|ctx| obc_ui::saves::read(ctx, 4)).unwrap();
+    h.with_ctx(|ctx| Game::from_world(ctx, back))
+}
+
+/// Issue #11: the lights come from the loaded floor's generator switch, as
+/// `PlayLoop`'s scan of the restored `tilemap` decides (30d6:1b3d), not from
+/// floor 1's.
+#[test]
+fn a_loaded_floor_keeps_its_lights() {
+    let Some(mut h) = Harness::new("lights") else {
+        eprintln!("skipped: OBC_DATA_DIR not set");
+        return;
+    };
+    let g = h.with_ctx(|ctx| Game::new_at(ctx, 2, 6));
+    h.stack.push(Box::new(g));
+    h.idle(10);
+    // Lit: no switch in the off position.
+    let mut lit = h.game().world().clone();
+    for t in lit.tilemap.iter_mut().filter(|t| **t == 0x60) {
+        *t = 0x5F;
+    }
+    assert_eq!(save_and_load(&mut h, &lit).lighting(), 1, "lit floor loads lit");
+    // Dark: one generator switch, off.
+    let mut dark = h.game().world().clone();
+    for t in dark.tilemap.iter_mut().filter(|t| **t == 0x5F || **t == 0x60) {
+        *t = 1;
+    }
+    let wall = dark.tilemap.iter().position(|&t| t == 1).unwrap();
+    dark.tilemap[wall] = 0x60;
+    assert_eq!(save_and_load(&mut h, &dark).lighting(), 2, "dark floor loads dark");
+    let _ = std::fs::remove_dir_all(&h.saves);
+}
+
+/// Issue #12: the original's `PlayLoop` clears the Map ThermoSensor on a load
+/// too (quirk K-001); the opt-in fix keeps it.
+#[test]
+fn the_heat_sensor_is_lost_on_load_unless_k001_is_on() {
+    let Some(mut h) = Harness::new("sensor") else {
+        eprintln!("skipped: OBC_DATA_DIR not set");
+        return;
+    };
+    for (fix, kept) in [(false, false), (true, true)] {
+        h.settings.game.fixes.set(&obc_sim::fixes::K_001, fix);
+        let g = h.with_ctx(|ctx| Game::new_at(ctx, 2, 6));
+        h.stack.clear();
+        h.stack.push(Box::new(g));
+        h.idle(10);
+        h.game().world_mut().thermosensor = true;
+        let w = h.game().world().clone();
+        assert_eq!(w.fixes.on(&obc_sim::fixes::K_001), fix);
+        let loaded = save_and_load(&mut h, &w);
+        assert_eq!(loaded.world().thermosensor, kept, "fix {fix}");
+        assert_eq!(loaded.world().fixes, w.fixes, "the save keeps its fixes");
+    }
+    let _ = std::fs::remove_dir_all(&h.saves);
+}
+
 #[test]
 fn dying_ends_in_the_high_score_entry_then_the_menu() {
     let Some(mut h) = Harness::new("death") else {
