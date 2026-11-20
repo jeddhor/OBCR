@@ -421,6 +421,7 @@ impl Game {
 
     fn drain_events(&mut self, ctx: &mut Ctx) {
         let l = self.listener();
+        self.sound.sb_pro_mixer = self.world.act.sb_pro_mixer;
         for e in std::mem::take(&mut self.world.events) {
             match e {
                 SimEvent::Sound(id) => {

@@ -27,6 +27,19 @@ const FOCALLENGTH: i32 = 0x5700;
 /// `ATABLEMAX`.
 const ATABLEMAX: i32 = 15;
 
+/// Whether `PlaySoundLocGlobal` (ghidra 1823:0106) drops a positioned sound
+/// before it starts: it plays only when `leftchannel + rightchannel < 13`
+/// (near), or `id < 50`, or the mixer is an SB Pro and (`id > 62 || id < 75`),
+/// which is always true, so an SB Pro culls nothing. Without one, sounds
+/// 50-99 (sighting, alert and idle calls among them) are not heard from far
+/// away. CONFIRMED (docs/re/AUDIO.md §4.2). Missing before M19, so a swamp
+/// creature's call carried across the whole floor (issue #9).
+#[doc(alias = "PlaySoundLocGlobal")]
+pub fn culled(id: u16, pan: Pan, sb_pro_mixer: bool) -> bool {
+    let near = u16::from(pan.left) + u16::from(pan.right) < 13;
+    !(near || id < 50 || (sb_pro_mixer && (id > 62 || id < 75)))
+}
+
 /// Where the listener is (the player), for positioned sounds.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Listener {
@@ -79,6 +92,9 @@ pub struct SoundManager {
     adlib_voice: Voice,
     clock: u64,
     pub enabled: bool,
+    /// Bit 0 of `DS:0x46A2` (an SB Pro mixer), copied from the world
+    /// (`ActorsState::sb_pro_mixer`): with it, far sounds are never culled.
+    pub sb_pro_mixer: bool,
 }
 
 impl SoundManager {
@@ -103,6 +119,7 @@ impl SoundManager {
             adlib_voice: Voice::default(),
             clock: 0,
             enabled: true,
+            sb_pro_mixer: false,
         }
     }
 
@@ -136,6 +153,10 @@ impl SoundManager {
             return;
         }
         let i = usize::from(id);
+        let pan = at.map_or(Pan::default(), |(x, y)| self.sound_loc(l, x, y));
+        if at.is_some() && culled(id, pan, self.sb_pro_mixer) {
+            return;
+        }
         if self.effects == Effects::PcSpeaker {
             // SoundMode 1: the PC chunk supplies sound and priority; no digitized path.
             let Some(Some(pc)) = self.pc.get(i).cloned() else { return };
@@ -150,7 +171,6 @@ impl SoundManager {
         }
         let Some(Some(adlib)) = self.adlib.get(i).cloned() else { return };
         let priority = adlib.priority;
-        let pan = at.map_or(Pan::default(), |(x, y)| self.sound_loc(l, x, y));
 
         if self.effects == Effects::Digitized
             && let Some(Some(samples)) = self.digi.get(i).cloned()
@@ -228,5 +248,22 @@ impl SoundManager {
             left: self.game.pan_left.get(i).copied().unwrap_or(0),
             right: self.game.pan_right.get(i).copied().unwrap_or(0),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn far_sounds_from_50_up_are_culled_without_an_sb_pro_mixer() {
+        let far = Pan { left: 7, right: 6 };
+        let near = Pan { left: 6, right: 6 };
+        assert!(culled(50, far, false), "a swamp creature's call, far away");
+        assert!(culled(99, far, false));
+        assert!(!culled(49, far, false), "below 50: always played");
+        assert!(!culled(50, near, false), "near: played");
+        assert!(!culled(50, far, true), "an SB Pro mixer culls nothing");
+        assert!(!culled(82, far, true));
     }
 }
