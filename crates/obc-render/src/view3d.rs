@@ -784,13 +784,19 @@ impl View3D {
             Hit::PushWall { vertical, x, y, xi, yi, page } => {
                 let offset = i32::from(scene.pwall_pos) << 10;
                 let (mut xi, mut yi) = (xi, yi);
+                // `HitVertPWall` (1b4a:0ade) mirrors the texture when
+                // `xtilestep == -1`, as `HitVertWall` does; `HitHorizPWall`
+                // (1b4a:09f3) when `ytilestep != -1`. CONFIRMED (issue #17:
+                // the vertical face was mirrored the other way, so an east-
+                // or west-moving push wall flipped its texture as it began
+                // to move).
                 let (along, flip) = if vertical {
                     if xs == -1 {
                         xi += TILEGLOBAL - offset;
                     } else {
                         xi += offset;
                     }
-                    (yi, xs != -1)
+                    (yi, xs == -1)
                 } else {
                     if ys == -1 {
                         yi += TILEGLOBAL - offset;
@@ -2008,6 +2014,85 @@ mod tests {
         };
         fb.begin_frame();
         v.render(fb, 0, 0, &scene, tex);
+    }
+
+    /// A page whose every column is its own colour (40 + column), so a
+    /// mirrored texture shows; other pages are flat.
+    struct ColumnTex {
+        pages: Vec<Vec<u8>>,
+    }
+
+    impl Textures for ColumnTex {
+        fn wall(&self, page: u16) -> Option<&[u8]> {
+            self.pages.get(usize::from(page)).map(Vec::as_slice)
+        }
+        fn sprite(&self, _: u16) -> Option<&Shape> {
+            None
+        }
+    }
+
+    /// Issue #17: a push wall that starts moving (`pwall_pos` 0) looks
+    /// exactly like the wall it was, on east, west, north and south faces,
+    /// as `HitVertPWall`/`HitHorizPWall` draw it.
+    #[test]
+    fn a_push_wall_keeps_its_texture_when_it_starts_to_move() {
+        let mut pages = vec![vec![20u8; 4096]; 16];
+        for c in 0..64 {
+            for r in 0..64 {
+                pages[9][c * 64 + r] = 40 + c as u8;
+            }
+        }
+        let tex = ColumnTex { pages };
+        let table = build_shade_table(false);
+        // The player at (32.5, 32.5); the block two cells away in each
+        // direction (angle 0 east, 90 north, 180 west, 270 south).
+        for (angle, (bx, by)) in [(0, (34, 32)), (90, (32, 30)), (180, (30, 32)), (270, (32, 34))] {
+            let frame = |moving: bool| {
+                let (mut tiles, mut info, plane0) = room();
+                tiles[bx * 64 + by] = if moving { 10 | 0x80 } else { 10 };
+                if moving {
+                    info[by * 64 + bx] = 98;
+                }
+                let cfg = ViewConfig::classic(18);
+                let mut v = View3D::new(cfg);
+                let mut fb = Framebuffer::new(cfg.width, cfg.height());
+                let scene = Scene {
+                    tiles: &tiles,
+                    info: &info,
+                    plane0: &plane0,
+                    doors: &[],
+                    pwall_pos: 0,
+                    floor: FloorParams {
+                        mode: 0,
+                        cc: 81,
+                        fc: 116,
+                        rc: 46,
+                        rlim: 33,
+                        rf: 65,
+                        fl: 78,
+                        quad: 0x7600,
+                        sets: [(81, 82); 10],
+                    },
+                    shade_table: &table,
+                    shade_bias: 0,
+                    player_x: (32 << 16) + 0x8000,
+                    player_y: (32 << 16) + 0x8000,
+                    player_angle: angle,
+                    player_fine_angle: None,
+                    sprites: &[],
+                    weapon: None,
+                    smooth_floors: false,
+                };
+                fb.begin_frame();
+                v.render(&mut fb, 0, 0, &scene, &tex);
+                fb
+            };
+            let (still, moving) = (frame(false), frame(true));
+            let mid = still.height / 2;
+            let row = |fb: &Framebuffer| (0..fb.width).map(|x| fb.get(x, mid)).collect::<Vec<u8>>();
+            assert!(row(&still).iter().any(|&p| p > 40), "angle {angle}: the block is in view");
+            assert_eq!(row(&still), row(&moving), "angle {angle}: the texture runs the same way");
+        }
     }
 
     /// Lower-half pixels left with the background's floor colours (115–127).
